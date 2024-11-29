@@ -72,7 +72,7 @@ async def create_table_from_fields(table_name, fields_list):
         if field_type == 'boolean':
             attrs[field_name] = Column(BOOLEAN)
         if field_type == 'url':
-            attrs[field_name] = Column(URL)
+            attrs[field_name] = Column(String)
         if field_type == 'json':
             attrs[field_name] = Column(JSON)
         if field_type == 'array':

@@ -66,15 +66,18 @@ async def main():
     prepareFields=workBitrix.prepare_user_fields_to_postgres(fields)
     allFields=prepareFields+prepareUserFields
     await workPostgres.create_table_from_fields('user_fields',allFields)
-    # #DynamicItem
-    # fields=await workBitrix.get_all_fields_dynamicItem()
-    # userFields=await workBitrix.get_all_userfields_dynamicItem()
     
-    # prepareUserFields=workBitrix.prepare_userfields_dynamicItem_to_postgres(userFields)
-    # prepareFields= workBitrix.prepare_fields_dynamicItem_to_postgres(fields)
-    
-    # allFields=prepareFields+prepareUserFields
-    # await workPostgres.create_table_from_fields('dynamicItem_fields',allFields) #TODO: нет данных
+
+
+    #DynamicItem
+    items=await workBitrix.get_all_dynamic_item()
+    for item in items:
+        entityTypeId=item.get('entityTypeId')
+        fields=await workBitrix.get_dynamic_item_field(entityTypeId)
+        prepareFields=workBitrix.prepare_dynamic_item_field_to_postgres(fields,entityTypeId)
+        await workPostgres.create_table_from_fields(f'dynamic_item_fields_{entityTypeId}',prepareFields)
+
+
 
     # Вставка записей после создания таблиц
     await insert_records()
@@ -129,6 +132,16 @@ async def insert_records():
         except Exception as e:
             print(f"Ошибка при добавлении записи: {str(e)}")
 
+    items=await workBitrix.get_all_dynamic_item()
+    for item in items:
+        entityTypeId=item.get('entityTypeId')
+        fields=await workBitrix.get_dynamic_item_all_entity(entityTypeId)
+        for field in fields:
+            try:
+                await workPostgres.insert_record(f'dynamic_item_fields_{entityTypeId}', field)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
 async def drop_table():
     await workPostgres.drop_table('deal_fields')
     await workPostgres.drop_table('company_fields')
@@ -136,6 +149,10 @@ async def drop_table():
     await workPostgres.drop_table('contact_fields')
     await workPostgres.drop_table('task_fields')
     await workPostgres.drop_table('user_fields')
+    items=await workBitrix.get_all_dynamic_item()
+    for item in items:
+        entityTypeId=item.get('entityTypeId')
+        await workPostgres.drop_table(f'dynamic_item_fields_{entityTypeId}')
 
 async def update_records():
     deal = await workBitrix.get_deal(2)

@@ -166,6 +166,7 @@ async def get_all_company()->list:
     return companies
 
 
+
 #Lead
 async def get_lead(leadID):
     items={
@@ -226,6 +227,8 @@ async def get_all_lead()->list:
     leads=await bit.call('crm.lead.list',items=items,raw=True)
     leads=leads['result']
     return leads
+
+
 
 
 #Contact
@@ -291,6 +294,7 @@ async def get_all_contact()->list:
 
 
 
+
 #Task
 async def get_task(taskID):
     items={
@@ -332,6 +336,9 @@ async def get_all_task()->list:
     tasks=await bit.call('tasks.task.list',items=items,raw=True)
     tasks=tasks['result']['tasks']
     return tasks
+
+
+
 
 #User
 async def get_user(userID)->dict:
@@ -398,15 +405,79 @@ def prepare_user_fields_to_postgres(fields:dict)->list:
         })
     return fieldsToPostgres
 
+
+
+#DynamicItem
+async def get_all_dynamic_item()->list:
+    items={
+        # 'ID':dynamicItemID,
+        'select':['*', 'UF_'],
+    }
+    dynamicItem=await bit.call('crm.type.list',items=items,raw=True)
+    dynamicItem=dynamicItem['result']['types']
+    return dynamicItem
+    
+async def get_dynamic_item_all_entity(dynamicItemID)->list:
+    items={
+        'entityTypeId':dynamicItemID,
+    }
+    dynamicItem=await bit.call('crm.item.list',items=items,raw=True)
+    dynamicItem=dynamicItem['result']['items']
+    return dynamicItem
+
+async def get_dynamic_item_entity(dynamicItemID, entityID)->list:
+    items={
+        'entityTypeId':dynamicItemID,
+        'id':entityID,
+    }
+    dynamicItem=await bit.call('crm.item.get',items=items,raw=True)
+    dynamicItem=dynamicItem['result']
+    return dynamicItem
+
+async def get_dynamic_item_field(dynamicItemID)->dict:
+    items={
+        'entityTypeId':dynamicItemID,
+        'select':['*', 'UF_'],
+    }
+    dynamicItem=await bit.call('crm.item.fields',items=items,raw=True)
+    dynamicItem=dynamicItem['result']['fields']
+    return dynamicItem
+
+def prepare_dynamic_item_field_to_postgres(fields:dict,entityTypeId:int)->list:
+    entityID=f'CRM_DYNAMIC_ITEM_{entityTypeId}'
+    fieldsToPostgres=[]
+    for fieldID, meta in fields.items():
+        fieldType=meta.get('type')
+        fieldsToPostgres.append({
+            'fieldID':fieldID,
+            'fieldType':fieldType,
+            'entityID':entityID,
+        })
+    return fieldsToPostgres
+
+
+
+
+
+
+
 async def main():
     #Deal
     # fields= await get_all_userfields_deal()
     # prepareFields=prepare_userfields_deal_to_postgres(fields)
     # pprint(prepareFields)
+    types=await get_all_dynamic_item()
+    pprint(types)
+    for type in types:
+        entityTypeId=type.get('entityTypeId')
+        fields=await get_dynamic_item_field(entityTypeId)
+        pprint(fields)
 
+        prepareFields=prepare_dynamic_item_field_to_postgres(fields,entityTypeId)
+        pprint(prepareFields)
     
-    users= await get_all_user_fields()
-    pprint(users)
+    # users= await get_dynamic_item_field(1036)
+    # pprint(users)
     # prepareFields=prepare_fields_company_to_postgres(fields)
     # pprint(prepareFields)
 

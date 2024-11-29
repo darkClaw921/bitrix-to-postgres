@@ -203,8 +203,9 @@ async def delete_deal(request: Request):
 
         case 'ONCRMDYNAMICITEMDELETE':
             dynamicItemID=body_dict.get('data').get('FIELDS').get('ID')
-            print(dynamicItemID)
-            await workPostgres.delete_record('dynamic_item_fields', dynamicItemID)
+            entityTypeId=body_dict.get('data').get('FIELDS').get('ENTITY_TYPE_ID')
+            print(dynamicItemID, entityTypeId)
+            await workPostgres.delete_record(f'dynamic_item_fields_{entityTypeId}', dynamicItemID)
 
         case _:
             print('unknown event')

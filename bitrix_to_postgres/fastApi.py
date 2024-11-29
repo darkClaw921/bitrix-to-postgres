@@ -91,7 +91,7 @@ async def update_deal(request: Request):
             dynamicItemID=body_dict.get('data').get('FIELDS').get('ID')
             entityTypeId=body_dict.get('data').get('FIELDS').get('ENTITY_TYPE_ID')
             print(dynamicItemID, entityTypeId)
-            dynamicItem=await workBitrix.get_dynamic_item_entity(dynamicItemID, entityTypeId)
+            dynamicItem=await workBitrix.get_dynamic_item_entity(entityTypeId, dynamicItemID)
             await workPostgres.update_record(f'dynamic_item_fields_{entityTypeId}', dynamicItem)
 
         case 'ONCRMREQUISITEUSERFIELDUPDATE':

@@ -100,7 +100,11 @@ async def get_all_deal()->list:
 
 # Работа с Company
 async def get_company(companyID):
-    company=await bit.call('crm.company.get',items={'ID':companyID},raw=True)
+    items={
+        'ID':companyID,
+        'select':['*', 'UF_'],
+    }
+    company=await bit.call('crm.company.get',items=items,raw=True)
     company=company['result']
     return company
 
@@ -164,7 +168,11 @@ async def get_all_company()->list:
 
 #Lead
 async def get_lead(leadID):
-    lead=await bit.call('crm.lead.get',items={'ID':leadID},raw=True)
+    items={
+        'ID':leadID,
+        'select':['*', 'UF_'],
+    }
+    lead=await bit.call('crm.lead.get',items=items,raw=True)
     lead=lead['result']
     return lead 
 
@@ -222,7 +230,11 @@ async def get_all_lead()->list:
 
 #Contact
 async def get_contact(contactID):
-    contact=await bit.call('crm.contact.get',items={'ID':contactID},raw=True)
+    items={
+        'ID':contactID,
+        'select':['*', 'UF_'],
+    }
+    contact=await bit.call('crm.contact.get',items=items,raw=True)
     contact=contact['result']
     return contact  
 
@@ -321,8 +333,70 @@ async def get_all_task()->list:
     tasks=tasks['result']['tasks']
     return tasks
 
+#User
+async def get_user(userID)->dict:
+    items={
+        # 'ID':userID,
+        'filter':{
+            'ID':userID,
+        },
+        # 'select':['*', 'UF_'],
+    }
+    user=await bit.call('user.get',items=items,raw=True)
+    user=user['result'][0]
+    return user
 
+async def get_all_user()->list:
+    items={
+        'filter':{
+            '>ID':0,
+        },
+        'ADMIN_MODE':True,
+    }
+    users=await bit.call('user.get',items=items,raw=True)
+    users=users['result']
+    return users
 
+async def get_all_user_fields()->list:
+    fields=await bit.call('user.fields',raw=True)
+    fields=fields['result']
+    return fields
+
+async def get_all_user_userfield()->list:
+    items={
+        'filter':{
+            '>ID':0,
+        }
+    }
+    fields=await bit.call('user.userfield.list',items=items,raw=True)
+    fields=fields['result']
+    return fields
+
+def prepare_user_userfields_to_postgres(fields:list)->list:
+    fieldsToPostgres=[]
+    for field in fields:
+        fieldName=field.get('FIELD_NAME')
+        entityID=field.get('ENTITY_ID')
+        userTypeID=field.get('USER_TYPE_ID')
+        fieldToPostgres={
+            'fieldID':fieldName,
+            'entityID':entityID,
+            'fieldType':userTypeID,
+        }
+        fieldsToPostgres.append(fieldToPostgres)
+    return fieldsToPostgres
+
+def prepare_user_fields_to_postgres(fields:dict)->list:
+    entityID='CRM_USER'
+    fieldsToPostgres=[]
+    for fieldID, meta in fields.items():
+        fieldType='string'
+        fieldsToPostgres.append({
+            'fieldID':fieldID,
+            'fieldType':fieldType,
+            'entityID':entityID,
+        })
+    return fieldsToPostgres
 
 async def main():
     #Deal
@@ -331,8 +405,8 @@ async def main():
     # pprint(prepareFields)
 
     
-    tasks= await get_deal(2)
-    pprint(tasks)
+    users= await get_all_user_fields()
+    pprint(users)
     # prepareFields=prepare_fields_company_to_postgres(fields)
     # pprint(prepareFields)
 

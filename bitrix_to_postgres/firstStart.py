@@ -57,6 +57,15 @@ async def main():
     allFields=prepareFields
     await workPostgres.create_table_from_fields('task_fields',allFields)
 
+
+    #User
+    fields=await workBitrix.get_all_user_fields()
+    userFields=await workBitrix.get_all_user_userfield()
+    
+    prepareUserFields=workBitrix.prepare_user_userfields_to_postgres(userFields)
+    prepareFields=workBitrix.prepare_user_fields_to_postgres(fields)
+    allFields=prepareFields+prepareUserFields
+    await workPostgres.create_table_from_fields('user_fields',allFields)
     # #DynamicItem
     # fields=await workBitrix.get_all_fields_dynamicItem()
     # userFields=await workBitrix.get_all_userfields_dynamicItem()
@@ -112,13 +121,21 @@ async def insert_records():
         except Exception as e:
             print(f"Ошибка при добавлении записи: {str(e)}")
 
+    users = await workBitrix.get_all_user()
+    print(f'Всего записей User: {len(users)}')
+    for user in tqdm(users):
+        try:
+            await workPostgres.insert_record('user_fields', user)
+        except Exception as e:
+            print(f"Ошибка при добавлении записи: {str(e)}")
+
 async def drop_table():
     await workPostgres.drop_table('deal_fields')
     await workPostgres.drop_table('company_fields')
     await workPostgres.drop_table('lead_fields')
     await workPostgres.drop_table('contact_fields')
     await workPostgres.drop_table('task_fields')
-
+    await workPostgres.drop_table('user_fields')
 
 async def update_records():
     deal = await workBitrix.get_deal(2)

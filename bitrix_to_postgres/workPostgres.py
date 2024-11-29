@@ -388,7 +388,7 @@ async def update_record(table_name: str, data: dict):
     # Преобразуем имена колонок в нижний регистр в column_types
     column_types = {k.lower(): v for k, v in column_types.items()}
     
-    # Преобразуем данные в соответствии с типами столбцов
+    # Преоб��азуем данные в соответствии с типами столбцов
     converted_data = {}
     for key, value in prepared_data.items():
         if key in column_types:
@@ -488,10 +488,77 @@ async def drop_table(table_name: str):
         print(f"Ошибка при удалении таблицы {table_name}: {e}")
         raise e
 
+async def get_database_structure():
+    """
+    Получает структуру всех таблиц в базе данных, включая типы полей и пример данных
+    """
+    try:
+        # Запрос для получения всех таблиц
+        tables_query = text("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+        """)
+        
+        output = []
+        
+        async with engine.begin() as conn:
+            # Получаем список таблиц
+            tables_result = await conn.execute(tables_query)
+            tables = tables_result.fetchall()
+            
+            for table in tables:
+                table_name = table[0]
+                output.append(f"\nТаблица: {table_name}")
+                output.append("-" * 50)
+                
+                # Получаем информацию о столбцах
+                columns_query = text("""
+                    SELECT column_name, data_type, udt_name
+                    FROM information_schema.columns
+                    WHERE table_name = :table_name
+                    ORDER BY ordinal_position
+                """)
+                
+                columns_result = await conn.execute(columns_query, {"table_name": table_name})
+                columns = columns_result.fetchall()
+                
+                # Выводим информацию о столбцах
+                output.append("\nСтруктура:")
+                for column in columns:
+                    column_name, data_type, udt_name = column
+                    output.append(f"{column_name}: {data_type}")
+                
+                # Получаем пример данных
+                sample_query = text(f'SELECT * FROM "{table_name}" LIMIT 1')
+                try:
+                    sample_result = await conn.execute(sample_query)
+                    sample_data = sample_result.fetchone()
+                    
+                    if sample_data:
+                        output.append("\nПример данных:")
+                        for col, value in zip(columns, sample_data):
+                            output.append(f"{col[0]}: {value}")
+                    else:
+                        output.append("\nТаблица пуста")
+                except Exception as e:
+                    output.append(f"\nОшибка при получении примера данных: {e}")
+                
+                output.append("\n" + "=" * 80)
+        
+        # Записываем результат в файл
+        with open('database_structure.txt', 'w', encoding='utf-8') as f:
+            f.write('\n'.join(output))
+            
+        print("Структура базы данных сохранена в файл database_structure.txt")
+        
+    except Exception as e:
+        print(f"Ошибка при получении структуры базы данных: {e}")
+        raise e
 
+# Изменяем main для тестирования
 async def main():
-    pass
-
+    await get_database_structure()
 
 if __name__ == '__main__':
-    asyncio.run(add_column_to_table('CompanyFields','test','string'))
+    asyncio.run(main())

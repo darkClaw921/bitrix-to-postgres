@@ -121,37 +121,37 @@ async def create_deal(request: Request):
     event = body_dict.get('event')
 
     match event:
-        case 'ONCRMDEALCREATE':
+        case 'ONCRMDEALADD':
             dealID=body_dict.get('data').get('FIELDS').get('ID')
             print(dealID)
             deal=await workBitrix.get_deal(dealID)
             await workPostgres.insert_record('deal_fields', deal)
             
-        case 'ONCRMCOMPANYCREATE':
+        case 'ONCRMCOMPANYADD':
             companyID=body_dict.get('data').get('FIELDS').get('ID')
             print(companyID)
             company=await workBitrix.get_company(companyID)
             await workPostgres.insert_record('company_fields', company)
 
-        case 'ONCRMCONTACTCREATE':
+        case 'ONCRMCONTACTADD':
             contactID=body_dict.get('data').get('FIELDS').get('ID')
             print(contactID)
             contact=await workBitrix.get_contact(contactID)
             await workPostgres.insert_record('contact_fields', contact) 
 
-        case 'ONCRMLEADCREATE':
+        case 'ONCRMLEADADD':
             leadID=body_dict.get('data').get('FIELDS').get('ID')
             print(leadID)
             lead=await workBitrix.get_lead(leadID)
             await workPostgres.insert_record('lead_fields', lead)
 
-        case 'ONCRMDYNAMICITEMCREATE':
+        case 'ONCRMDYNAMICITEMADD':
             dynamicItemID=body_dict.get('data').get('FIELDS').get('ID')
             print(dynamicItemID)
             dynamicItem=await workBitrix.get_dynamic_item(dynamicItemID)
             await workPostgres.insert_record('dynamic_item_fields', dynamicItem)
         
-        case 'ONCRMREQUISITEUSERFIELDCREATE':
+        case 'ONCRMREQUISITEUSERFIELDADD':
             userFieldID=body_dict.get('data').get('FIELDS').get('ID')
             entityID=body_dict.get('data').get('FIELDS').get('ENTITY_ID')
             fieldID=body_dict.get('data').get('FIELDS').get('FIELD_ID')

@@ -1,0 +1,701 @@
+
+Таблица: deal_fields
+--------------------------------------------------
+
+Структура:
+record_id: bigint
+created_date: timestamp without time zone
+bitrix_id: character varying
+title: character varying
+type_id: character varying
+category_id: character varying
+stage_id: character varying
+stage_semantic_id: character varying
+is_new: character varying
+is_recurring: character varying
+is_return_customer: character varying
+is_repeated_approach: character varying
+probability: character varying
+currency_id: character varying
+opportunity: character varying
+is_manual_opportunity: character varying
+tax_value: character varying
+company_id: character varying
+contact_id: character varying
+contact_ids: character varying
+quote_id: character varying
+begindate: character varying
+closedate: character varying
+opened: character varying
+closed: character varying
+comments: character varying
+assigned_by_id: character varying
+created_by_id: character varying
+modify_by_id: character varying
+moved_by_id: character varying
+date_create: character varying
+date_modify: character varying
+moved_time: character varying
+source_id: character varying
+source_description: character varying
+lead_id: character varying
+additional_info: character varying
+location_id: character varying
+originator_id: character varying
+origin_id: character varying
+utm_source: character varying
+utm_medium: character varying
+utm_campaign: character varying
+utm_content: character varying
+utm_term: character varying
+last_activity_time: character varying
+last_activity_by: character varying
+uf_crm_1732840659: character varying
+uf_crm_1732841579: character varying
+
+Пример данных:
+record_id: 1
+created_date: None
+bitrix_id: 2
+title: te
+type_id: SALE
+category_id: 0
+stage_id: NEW
+stage_semantic_id: P
+is_new: Y
+is_recurring: N
+is_return_customer: N
+is_repeated_approach: N
+probability: None
+currency_id: RUB
+opportunity: 0.00
+is_manual_opportunity: N
+tax_value: None
+company_id: 0
+contact_id: None
+contact_ids: None
+quote_id: None
+begindate: 2024-11-29T03:00:00+03:00
+closedate: 2024-12-06T03:00:00+03:00
+opened: Y
+closed: N
+comments: asdasfasffdfd
+
+assigned_by_id: 1
+created_by_id: 1
+modify_by_id: 1
+moved_by_id: 1
+date_create: 2024-11-29T03:27:26+03:00
+date_modify: 2024-11-29T05:47:11+03:00
+moved_time: 2024-11-29T03:27:26+03:00
+source_id: None
+source_description: None
+lead_id: None
+additional_info: None
+location_id: None
+originator_id: None
+origin_id: None
+utm_source: None
+utm_medium: None
+utm_campaign: None
+utm_content: None
+utm_term: None
+last_activity_time: 2024-11-29T03:27:26+03:00
+last_activity_by: 1
+uf_crm_1732840659: None
+uf_crm_1732841579: None
+
+================================================================================
+
+Таблица: company_fields
+--------------------------------------------------
+
+Структура:
+record_id: bigint
+created_date: timestamp without time zone
+bitrix_id: character varying
+title: character varying
+company_type: character varying
+logo: character varying
+address: character varying
+address_2: character varying
+address_city: character varying
+address_postal_code: character varying
+address_region: character varying
+address_province: character varying
+address_country: character varying
+address_country_code: character varying
+address_loc_addr_id: character varying
+address_legal: character varying
+reg_address: character varying
+reg_address_2: character varying
+reg_address_city: character varying
+reg_address_postal_code: character varying
+reg_address_region: character varying
+reg_address_province: character varying
+reg_address_country: character varying
+reg_address_country_code: character varying
+reg_address_loc_addr_id: character varying
+banking_details: character varying
+industry: character varying
+employees: character varying
+currency_id: character varying
+revenue: character varying
+opened: character varying
+comments: character varying
+has_phone: character varying
+has_email: character varying
+has_imol: character varying
+is_my_company: character varying
+assigned_by_id: character varying
+created_by_id: character varying
+modify_by_id: character varying
+date_create: character varying
+date_modify: character varying
+contact_id: character varying
+lead_id: character varying
+originator_id: character varying
+origin_id: character varying
+origin_version: character varying
+utm_source: character varying
+utm_medium: character varying
+utm_campaign: character varying
+utm_content: character varying
+utm_term: character varying
+last_activity_time: character varying
+last_activity_by: character varying
+phone: character varying
+email: character varying
+web: character varying
+im: character varying
+link: character varying
+
+Пример данных:
+record_id: 1
+created_date: None
+bitrix_id: 2
+title: asd
+company_type: CUSTOMER
+logo: None
+address: None
+address_2: None
+address_city: None
+address_postal_code: None
+address_region: None
+address_province: None
+address_country: None
+address_country_code: None
+address_loc_addr_id: None
+address_legal: None
+reg_address: None
+reg_address_2: None
+reg_address_city: None
+reg_address_postal_code: None
+reg_address_region: None
+reg_address_province: None
+reg_address_country: None
+reg_address_country_code: None
+reg_address_loc_addr_id: None
+banking_details: None
+industry: IT
+employees: EMPLOYEES_1
+currency_id: RUB
+revenue: 0
+opened: Y
+comments: [p]salads
+[/p]
+has_phone: N
+has_email: N
+has_imol: N
+is_my_company: N
+assigned_by_id: 1
+created_by_id: 1
+modify_by_id: 1
+date_create: 2024-11-29T03:31:31+03:00
+date_modify: 2024-11-29T03:31:41+03:00
+contact_id: None
+lead_id: None
+originator_id: None
+origin_id: None
+origin_version: None
+utm_source: None
+utm_medium: None
+utm_campaign: None
+utm_content: None
+utm_term: None
+last_activity_time: 2024-11-29T03:31:31+03:00
+last_activity_by: 1
+phone: None
+email: None
+web: None
+im: None
+link: None
+
+================================================================================
+
+Таблица: lead_fields
+--------------------------------------------------
+
+Структура:
+record_id: bigint
+created_date: timestamp without time zone
+bitrix_id: character varying
+title: character varying
+honorific: character varying
+name: character varying
+second_name: character varying
+last_name: character varying
+birthdate: character varying
+company_title: character varying
+source_id: character varying
+source_description: character varying
+status_id: character varying
+status_description: character varying
+status_semantic_id: character varying
+post: character varying
+address: character varying
+address_2: character varying
+address_city: character varying
+address_postal_code: character varying
+address_region: character varying
+address_province: character varying
+address_country: character varying
+address_country_code: character varying
+address_loc_addr_id: character varying
+currency_id: character varying
+opportunity: character varying
+is_manual_opportunity: character varying
+opened: character varying
+comments: character varying
+has_phone: character varying
+has_email: character varying
+has_imol: character varying
+assigned_by_id: character varying
+created_by_id: character varying
+modify_by_id: character varying
+moved_by_id: character varying
+date_create: character varying
+date_modify: character varying
+moved_time: character varying
+company_id: character varying
+contact_id: character varying
+contact_ids: character varying
+is_return_customer: character varying
+date_closed: character varying
+originator_id: character varying
+origin_id: character varying
+utm_source: character varying
+utm_medium: character varying
+utm_campaign: character varying
+utm_content: character varying
+utm_term: character varying
+last_activity_time: character varying
+last_activity_by: character varying
+phone: character varying
+email: character varying
+web: character varying
+im: character varying
+link: character varying
+
+Пример данных:
+record_id: 1
+created_date: None
+bitrix_id: 2
+title: tesasd as
+honorific: None
+name: None
+second_name: None
+last_name: None
+birthdate: None
+company_title: None
+source_id: CALL
+source_description: None
+status_id: NEW
+status_description: None
+status_semantic_id: P
+post: None
+address: None
+address_2: None
+address_city: None
+address_postal_code: None
+address_region: None
+address_province: None
+address_country: None
+address_country_code: None
+address_loc_addr_id: None
+currency_id: RUB
+opportunity: 0.00
+is_manual_opportunity: N
+opened: N
+comments: asdafsdf
+
+has_phone: Y
+has_email: N
+has_imol: N
+assigned_by_id: 1
+created_by_id: 1
+modify_by_id: 1
+moved_by_id: 1
+date_create: 2024-11-22T15:44:57+03:00
+date_modify: 2024-11-29T03:26:28+03:00
+moved_time: 2024-11-22T15:44:57+03:00
+company_id: 0
+contact_id: None
+contact_ids: None
+is_return_customer: N
+date_closed: None
+originator_id: None
+origin_id: None
+utm_source: None
+utm_medium: None
+utm_campaign: None
+utm_content: None
+utm_term: None
+last_activity_time: 2024-11-22T15:44:57+03:00
+last_activity_by: 1
+phone: None
+email: None
+web: None
+im: None
+link: None
+
+================================================================================
+
+Таблица: contact_fields
+--------------------------------------------------
+
+Структура:
+record_id: bigint
+created_date: timestamp without time zone
+bitrix_id: character varying
+honorific: character varying
+name: character varying
+second_name: character varying
+last_name: character varying
+photo: character varying
+birthdate: character varying
+type_id: character varying
+source_id: character varying
+source_description: character varying
+post: character varying
+address: character varying
+address_2: character varying
+address_city: character varying
+address_postal_code: character varying
+address_region: character varying
+address_province: character varying
+address_country: character varying
+address_country_code: character varying
+address_loc_addr_id: character varying
+comments: character varying
+opened: character varying
+export: character varying
+has_phone: character varying
+has_email: character varying
+has_imol: character varying
+assigned_by_id: character varying
+created_by_id: character varying
+modify_by_id: character varying
+date_create: character varying
+date_modify: character varying
+company_id: character varying
+company_ids: character varying
+lead_id: character varying
+originator_id: character varying
+origin_id: character varying
+origin_version: character varying
+face_id: character varying
+utm_source: character varying
+utm_medium: character varying
+utm_campaign: character varying
+utm_content: character varying
+utm_term: character varying
+last_activity_time: character varying
+last_activity_by: character varying
+phone: character varying
+email: character varying
+web: character varying
+im: character varying
+link: character varying
+
+Таблица пуста
+
+================================================================================
+
+Таблица: task_fields
+--------------------------------------------------
+
+Структура:
+record_id: bigint
+created_date: character varying
+bitrix_id: character varying
+parent_id: character varying
+title: character varying
+description: character varying
+mark: character varying
+priority: character varying
+status: character varying
+multitask: character varying
+not_viewed: character varying
+replicate: character varying
+group_id: character varying
+stage_id: character varying
+created_by: character varying
+responsible_id: character varying
+accomplices: ARRAY
+auditors: ARRAY
+changed_by: character varying
+changed_date: character varying
+status_changed_by: character varying
+status_changed_date: character varying
+closed_by: character varying
+closed_date: character varying
+activity_date: character varying
+date_start: character varying
+deadline: character varying
+start_date_plan: character varying
+end_date_plan: character varying
+guid: character varying
+xml_id: character varying
+comments_count: character varying
+service_comments_count: character varying
+new_comments_count: character varying
+allow_change_deadline: character varying
+allow_time_tracking: character varying
+task_control: character varying
+add_in_report: character varying
+forked_by_template_id: character varying
+time_estimate: character varying
+time_spent_in_logs: character varying
+match_work_time: character varying
+forum_topic_id: character varying
+forum_id: character varying
+site_id: character varying
+subordinate: character varying
+favorite: character varying
+exchange_modified: character varying
+exchange_id: character varying
+outlook_version: character varying
+viewed_date: character varying
+sorting: character varying
+duration_plan: character varying
+duration_fact: character varying
+checklist: ARRAY
+duration_type: character varying
+is_muted: character varying
+is_pinned: character varying
+is_pinned_in_group: character varying
+flow_id: character varying
+uf_crm_task: ARRAY
+uf_task_webdav_files: character varying
+uf_mail_message: character varying
+
+Пример данных:
+record_id: 1
+created_date: None
+bitrix_id: 2
+parent_id: 0
+title: test tast 1
+description: None
+mark: None
+priority: 1
+status: 5
+multitask: N
+not_viewed: None
+replicate: N
+group_id: 0
+stage_id: 0
+created_by: 1
+responsible_id: 1
+accomplices: ['1']
+auditors: []
+changed_by: None
+changed_date: None
+status_changed_by: None
+status_changed_date: None
+closed_by: None
+closed_date: None
+activity_date: None
+date_start: 2024-11-29T06:08:10+03:00
+deadline: 2024-11-30T19:00:00+03:00
+start_date_plan: None
+end_date_plan: None
+guid: {b5f52b1a-9bf5-4cec-8f6c-721dc633a1b7}
+xml_id: None
+comments_count: None
+service_comments_count: None
+new_comments_count: None
+allow_change_deadline: None
+allow_time_tracking: None
+task_control: None
+add_in_report: None
+forked_by_template_id: None
+time_estimate: None
+time_spent_in_logs: None
+match_work_time: None
+forum_topic_id: None
+forum_id: None
+site_id: None
+subordinate: N
+favorite: N
+exchange_modified: None
+exchange_id: None
+outlook_version: None
+viewed_date: None
+sorting: None
+duration_plan: None
+duration_fact: None
+checklist: None
+duration_type: None
+is_muted: None
+is_pinned: None
+is_pinned_in_group: None
+flow_id: None
+uf_crm_task: None
+uf_task_webdav_files: None
+uf_mail_message: None
+
+================================================================================
+
+Таблица: user_fields
+--------------------------------------------------
+
+Структура:
+record_id: bigint
+created_date: timestamp without time zone
+bitrix_id: character varying
+xml_id: character varying
+active: character varying
+name: character varying
+last_name: character varying
+second_name: character varying
+title: character varying
+email: character varying
+last_login: character varying
+date_register: character varying
+time_zone: character varying
+is_online: character varying
+time_zone_offset: character varying
+timestamp_x: character varying
+last_activity_date: character varying
+personal_gender: character varying
+personal_profession: character varying
+personal_www: character varying
+personal_birthday: character varying
+personal_photo: character varying
+personal_icq: character varying
+personal_phone: character varying
+personal_fax: character varying
+personal_mobile: character varying
+personal_pager: character varying
+personal_street: character varying
+personal_city: character varying
+personal_state: character varying
+personal_zip: character varying
+personal_country: character varying
+personal_mailbox: character varying
+personal_notes: character varying
+work_phone: character varying
+work_company: character varying
+work_position: character varying
+work_department: character varying
+work_www: character varying
+work_fax: character varying
+work_pager: character varying
+work_street: character varying
+work_mailbox: character varying
+work_city: character varying
+work_state: character varying
+work_zip: character varying
+work_country: character varying
+work_profile: character varying
+work_logo: character varying
+work_notes: character varying
+uf_skype_link: character varying
+uf_zoom: character varying
+uf_employment_date: character varying
+uf_timeman: character varying
+uf_department: character varying
+uf_interests: character varying
+uf_skills: character varying
+uf_web_sites: character varying
+uf_xing: character varying
+uf_linkedin: character varying
+uf_facebook: character varying
+uf_twitter: character varying
+uf_skype: character varying
+uf_district: character varying
+uf_phone_inner: character varying
+uf_usr_1732859788813: character varying
+user_type: character varying
+
+Пример данных:
+record_id: 1
+created_date: None
+bitrix_id: 1
+xml_id: 49041442
+active: True
+name: crm
+last_name: #
+second_name: None
+title: None
+email: crm@pkey-online.ru
+last_login: 2024-11-29T05:12:28+03:00
+date_register: 2024-11-21T03:00:00+03:00
+time_zone: None
+is_online: Y
+time_zone_offset: 0
+timestamp_x: {}
+last_activity_date: {}
+personal_gender: None
+personal_profession: None
+personal_www: None
+personal_birthday: None
+personal_photo: None
+personal_icq: None
+personal_phone: None
+personal_fax: None
+personal_mobile: None
+personal_pager: None
+personal_street: None
+personal_city: None
+personal_state: None
+personal_zip: None
+personal_country: None
+personal_mailbox: None
+personal_notes: None
+work_phone: None
+work_company: None
+work_position: None
+work_department: None
+work_www: None
+work_fax: None
+work_pager: None
+work_street: None
+work_mailbox: None
+work_city: None
+work_state: None
+work_zip: None
+work_country: None
+work_profile: None
+work_logo: None
+work_notes: None
+uf_skype_link: None
+uf_zoom: None
+uf_employment_date: None
+uf_timeman: None
+uf_department: [1]
+uf_interests: None
+uf_skills: None
+uf_web_sites: None
+uf_xing: None
+uf_linkedin: None
+uf_facebook: None
+uf_twitter: None
+uf_skype: None
+uf_district: None
+uf_phone_inner: None
+uf_usr_1732859788813: None
+user_type: employee
+
+================================================================================

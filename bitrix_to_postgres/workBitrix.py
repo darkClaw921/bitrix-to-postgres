@@ -425,7 +425,7 @@ async def get_dynamic_item_all_entity(dynamicItemID)->list:
     dynamicItem=dynamicItem['result']['items']
     return dynamicItem
 
-async def get_dynamic_item_entity(dynamicItemID, entityID)->list:
+async def get_dynamic_item_entity(dynamicItemID, entityID)->dict:
     items={
         'entityTypeId':dynamicItemID,
         'id':entityID,

@@ -89,9 +89,10 @@ async def update_deal(request: Request):
 
         case 'ONCRMDYNAMICITEMUPDATE':
             dynamicItemID=body_dict.get('data').get('FIELDS').get('ID')
-            print(dynamicItemID)
-            dynamicItem=await workBitrix.get_dynamic_item(dynamicItemID)
-            await workPostgres.update_record('dynamic_item_fields', dynamicItem)
+            entityTypeId=body_dict.get('data').get('FIELDS').get('ENTITY_TYPE_ID')
+            print(dynamicItemID, entityTypeId)
+            dynamicItem=await workBitrix.get_dynamic_item_entity(dynamicItemID, entityTypeId)
+            await workPostgres.update_record(f'dynamic_item_fields_{entityTypeId}', dynamicItem)
 
         case 'ONCRMREQUISITEUSERFIELDUPDATE':
             userFieldID=body_dict.get('data').get('FIELDS').get('ID')
@@ -147,9 +148,10 @@ async def create_deal(request: Request):
 
         case 'ONCRMDYNAMICITEMADD':
             dynamicItemID=body_dict.get('data').get('FIELDS').get('ID')
-            print(dynamicItemID)
-            dynamicItem=await workBitrix.get_dynamic_item(dynamicItemID)
-            await workPostgres.insert_record('dynamic_item_fields', dynamicItem)
+            entityTypeId=body_dict.get('data').get('FIELDS').get('ENTITY_TYPE_ID')
+            print(dynamicItemID, entityTypeId)
+            dynamicItem=await workBitrix.get_dynamic_item_entity(entityTypeId, dynamicItemID)
+            await workPostgres.insert_record(f'dynamic_item_fields_{entityTypeId}', dynamicItem)
         
         case 'ONCRMREQUISITEUSERFIELDADD':
             userFieldID=body_dict.get('data').get('FIELDS').get('ID')

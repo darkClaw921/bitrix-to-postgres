@@ -431,7 +431,7 @@ async def get_dynamic_item_entity(dynamicItemID, entityID)->dict:
         'id':entityID,
     }
     dynamicItem=await bit.call('crm.item.get',items=items,raw=True)
-    dynamicItem=dynamicItem['result']
+    dynamicItem=dynamicItem['result']['item']
     return dynamicItem
 
 async def get_dynamic_item_field(dynamicItemID)->dict:

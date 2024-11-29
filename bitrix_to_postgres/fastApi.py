@@ -179,27 +179,27 @@ async def delete_deal(request: Request):
 
     event = body_dict.get('event')
     match event:
-        case 'ONCRMDELETEDEAL':
+        case 'ONCRMDEALDELETE':
             dealID=body_dict.get('data').get('FIELDS').get('ID')
             print(dealID)
             await workPostgres.delete_record('deal_fields', dealID)
             
-        case 'ONCRMDELETECOMPANY':
+        case 'ONCRMCOMPANYDELETE':
             companyID=body_dict.get('data').get('FIELDS').get('ID')
             print(companyID)
             await workPostgres.delete_record('company_fields', companyID)
 
-        case 'ONCRMDELETECONTACT':
+        case 'ONCRMCONTACTDELETE':
             contactID=body_dict.get('data').get('FIELDS').get('ID')
             print(contactID)
             await workPostgres.delete_record('contact_fields', contactID)
 
-        case 'ONCRMDELETELEAD':
+        case 'ONCRMLEADDELETE':
             leadID=body_dict.get('data').get('FIELDS').get('ID')
             print(leadID)
             await workPostgres.delete_record('lead_fields', leadID)
 
-        case 'ONCRMDELETEDYNAMICITEM':
+        case 'ONCRMDYNAMICITEMDELETE':
             dynamicItemID=body_dict.get('data').get('FIELDS').get('ID')
             print(dynamicItemID)
             await workPostgres.delete_record('dynamic_item_fields', dynamicItemID)

@@ -47,7 +47,7 @@ def parse_nested_query(query_string):
             
     return result
 
-@app.get("/")
+@app.get("/fist_start_1234radsf")
 async def read_root():
     await firstStart.main()
     return {"message": "Hello, World!"}

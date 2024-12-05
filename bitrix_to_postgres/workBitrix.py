@@ -87,12 +87,14 @@ def prepare_fields_deal_to_postgres(fields:list)->list:
 
 async def get_all_deal()->list:
     items={
-        'filter':{
+        'FILTER':{
             '>ID':0,
-        }
+        },
+        'SELECT':['*', 'UF_*'],
     }
-    deals=await bit.call('crm.deal.list',items=items,raw=True)
-    deals=deals['result']
+    deals=await bit.get_all('crm.deal.list',params=items)
+    # deals=await bit.call('crm.deal.list',items=items)
+    deals=deals
     return deals
 
 
@@ -159,10 +161,11 @@ async def get_all_company()->list:
     items={
         'filter':{
             '>ID':0,
-        }
+        },
+        'select':['*', 'UF_*'],
     }
-    companies=await bit.call('crm.company.list',items=items,raw=True)
-    companies=companies['result']
+    companies=await bit.get_all('crm.company.list',params=items)
+    companies=companies
     return companies
 
 
@@ -171,9 +174,9 @@ async def get_all_company()->list:
 async def get_lead(leadID):
     items={
         'ID':leadID,
-        'select':['*', 'UF_'],
+        'select':['*', 'UF_*'],
     }
-    lead=await bit.call('crm.lead.get',items=items,raw=True)
+    lead=await bit.call('crm.lead.get',items=items)
     lead=lead['result']
     return lead 
 
@@ -222,10 +225,11 @@ async def get_all_lead()->list:
     items={
         'filter':{
             '>ID':0,
-        }
+        },
+        'select':['*', 'UF_*'],
     }
-    leads=await bit.call('crm.lead.list',items=items,raw=True)
-    leads=leads['result']
+    leads=await bit.get_all('crm.lead.list',params=items)
+    leads=leads
     return leads
 
 
@@ -284,12 +288,15 @@ def prepare_fields_contact_to_postgres(fields:list)->list:
 
 async def get_all_contact()->list:
     items={
+        
         'filter':{
             '>ID':0,
-        }
+            
+        },
+        'select':['*', 'UF_*'],
     }
-    contacts=await bit.call('crm.contact.list',items=items,raw=True)
-    contacts=contacts['result']
+    contacts=await bit.get_all('crm.contact.list',params=items)
+    contacts=contacts
     return contacts
 
 
@@ -331,10 +338,11 @@ async def get_all_task()->list:
     items={
         'filter':{
             '>taskId':0,
-        }
+        },
+        'select':['*', 'UF_*'],
     }
-    tasks=await bit.call('tasks.task.list',items=items,raw=True)
-    tasks=tasks['result']['tasks']
+    tasks=await bit.get_all('tasks.task.list',params=items)
+    tasks=tasks
     return tasks
 
 
@@ -359,9 +367,10 @@ async def get_all_user()->list:
             '>ID':0,
         },
         'ADMIN_MODE':True,
+        # 'select':['*', 'UF_*'],
     }
-    users=await bit.call('user.get',items=items,raw=True)
-    users=users['result']
+    users=await bit.get_all('user.get',params=items)
+    users=users
     return users
 
 async def get_all_user_fields()->list:
@@ -411,7 +420,7 @@ def prepare_user_fields_to_postgres(fields:dict)->list:
 async def get_all_dynamic_item()->list:
     items={
         # 'ID':dynamicItemID,
-        'select':['*', 'UF_'],
+        'select':['*', 'UF_*'],
     }
     dynamicItem=await bit.call('crm.type.list',items=items,raw=True)
     dynamicItem=dynamicItem['result']['types']
@@ -420,6 +429,7 @@ async def get_all_dynamic_item()->list:
 async def get_dynamic_item_all_entity(dynamicItemID)->list:
     items={
         'entityTypeId':dynamicItemID,
+        'select':['*', 'UF_*'],
     }
     dynamicItem=await bit.call('crm.item.list',items=items,raw=True)
     dynamicItem=dynamicItem['result']['items']
@@ -437,7 +447,7 @@ async def get_dynamic_item_entity(dynamicItemID, entityID)->dict:
 async def get_dynamic_item_field(dynamicItemID)->dict:
     items={
         'entityTypeId':dynamicItemID,
-        'select':['*', 'UF_'],
+        'select':['*', 'UF_*'],
     }
     dynamicItem=await bit.call('crm.item.fields',items=items,raw=True)
     dynamicItem=dynamicItem['result']['fields']
@@ -466,15 +476,17 @@ async def main():
     # fields= await get_all_userfields_deal()
     # prepareFields=prepare_userfields_deal_to_postgres(fields)
     # pprint(prepareFields)
-    types=await get_all_dynamic_item()
-    pprint(types)
-    for type in types:
-        entityTypeId=type.get('entityTypeId')
-        fields=await get_dynamic_item_field(entityTypeId)
-        pprint(fields)
+    user=await get_user(61)
+    pprint(user)
+    # types=await get_all_user_fields()
+    # pprint(types)
+    # for type in types:
+    #     entityTypeId=type.get('entityTypeId')
+    #     fields=await get_dynamic_item_field(entityTypeId)
+    #     pprint(fields)
 
-        prepareFields=prepare_dynamic_item_field_to_postgres(fields,entityTypeId)
-        pprint(prepareFields)
+    #     prepareFields=prepare_dynamic_item_field_to_postgres(fields,entityTypeId)
+    #     pprint(prepareFields)
     
     # users= await get_dynamic_item_field(1036)
     # pprint(users)

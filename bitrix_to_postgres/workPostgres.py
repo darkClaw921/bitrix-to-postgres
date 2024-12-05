@@ -26,7 +26,11 @@ url = os.environ.get('POSTGRES_URL')
 # )
 engine = create_async_engine(
     f'postgresql+asyncpg://{userName}:{password}@{url}:5432/{db}',
-    echo=True,
+    pool_size=5,  # Максимальное количество постоянных подключений
+    max_overflow=10,  # Максимальное количество временных подключений
+    pool_timeout=30,  # Таймаут ожидания доступного подключения
+    pool_recycle=1800,  # Время жизни подключения (в секундах)
+    echo=False,
 )
 
 # Создаем асинхронную фабрику сессий
@@ -365,7 +369,7 @@ async def insert_record(table_name: str, data: dict):
             result = await conn.execute(insert_query, converted_data)
             await conn.commit()
             inserted_id = result.scalar()
-            print(f"Запись успешно добавлена в таблицу {table_name} с id={inserted_id}")
+            # print(f"Запись успешно добавлена в таблицу {table_name} с id={inserted_id}")
             return inserted_id
     except Exception as e:
         print(f"Ошибка при добавлении записи: {e}")
@@ -388,7 +392,7 @@ async def update_record(table_name: str, data: dict):
     # Преобразуем имена колонок в нижний регистр в column_types
     column_types = {k.lower(): v for k, v in column_types.items()}
     
-    # Преоб��азуем данные в соответствии с типами столбцов
+    # Преобазуем данные в соответствии с типами столбцов
     converted_data = {}
     for key, value in prepared_data.items():
         if key in column_types:

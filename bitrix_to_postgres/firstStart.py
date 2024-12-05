@@ -2,7 +2,9 @@ import workBitrix
 import workPostgres
 from pprint import pprint
 import asyncio
-from tqdm import tqdm
+# from tqdm import tqdm
+from tqdm.asyncio import tqdm
+
 async def main():
     #Deal
     fields=await workBitrix.get_all_fields_deal()
@@ -84,63 +86,108 @@ async def main():
 
 
 async def insert_records():
+    # Создаем семафор для ограничения количества одновременных подключений
+    semaphore = asyncio.Semaphore(5)  # Ограничиваем до 5 одновременных подключений
+    
+    # Обработка сделок
     deals = await workBitrix.get_all_deal()
     print(f'Всего записей Deal: {len(deals)}')
-    for deal in tqdm(deals):
-        try:
-            await workPostgres.insert_record('deal_fields', deal)
-        except Exception as e:
-            print(f"Ошибка при добавлении записи: {str(e)}")
-
-    companies = await workBitrix.get_all_company()
-    print(f'Всего записей Company: {len(companies)}')
-    for company in tqdm(companies):
-        try:
-            await workPostgres.insert_record('company_fields', company)
-        except Exception as e:
-            print(f"Ошибка при добавлении записи: {str(e)}")
-
-    leads = await workBitrix.get_all_lead()
-    print(f'Всего записей Lead: {len(leads)}')
-    for lead in tqdm(leads):
-        try:
-            await workPostgres.insert_record('lead_fields', lead)
-        except Exception as e:
-            print(f"Ошибка при добавлении записи: {str(e)}")
-
-    contacts = await workBitrix.get_all_contact()
-    print(f'Всего записей Contact: {len(contacts)}')
-    for contact in tqdm(contacts):
-        try:
-            await workPostgres.insert_record('contact_fields', contact)
-        except Exception as e:
-            print(f"Ошибка при добавлении записи: {str(e)}")
-
-    tasks = await workBitrix.get_all_task()
-    print(f'Всего записей Task: {len(tasks)}')
-    for task in tqdm(tasks):
-        try:
-            await workPostgres.insert_record('task_fields', task)
-        except Exception as e:
-            print(f"Ошибка при добавлении записи: {str(e)}")
-
-    users = await workBitrix.get_all_user()
-    print(f'Всего записей User: {len(users)}')
-    for user in tqdm(users):
-        try:
-            await workPostgres.insert_record('user_fields', user)
-        except Exception as e:
-            print(f"Ошибка при добавлении записи: {str(e)}")
-
-    items=await workBitrix.get_all_dynamic_item()
-    for item in items:
-        entityTypeId=item.get('entityTypeId')
-        fields=await workBitrix.get_dynamic_item_all_entity(entityTypeId)
-        for field in fields:
+    
+    async def process_deal(deal):
+        async with semaphore:
             try:
-                await workPostgres.insert_record(f'dynamic_item_fields_{entityTypeId}', field)
+                await workPostgres.insert_record('deal_fields', deal)
             except Exception as e:
                 print(f"Ошибка при добавлении записи: {str(e)}")
+    
+    tasks = [process_deal(deal) for deal in deals]
+    await tqdm.gather(*tasks, desc="Обработка сделок")
+
+    # Обработка компаний
+    companies = await workBitrix.get_all_company()
+    print(f'Всего записей Company: {len(companies)}')
+    
+    async def process_company(company):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('company_fields', company)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+    
+    tasks = [process_company(company) for company in companies]
+    await tqdm.gather(*tasks, desc="Обработка компаний")
+
+    # Обработка лидов
+    leads = await workBitrix.get_all_lead()
+    print(f'Всего записей Lead: {len(leads)}')
+    
+    async def process_lead(lead):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('lead_fields', lead)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+    
+    tasks = [process_lead(lead) for lead in leads]
+    await tqdm.gather(*tasks, desc="Обработка лидов")
+
+    # Обработка контактов
+    contacts = await workBitrix.get_all_contact()
+    print(f'Всего записей Contact: {len(contacts)}')
+    
+    async def process_contact(contact):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('contact_fields', contact)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+    
+    tasks = [process_contact(contact) for contact in contacts]
+    await tqdm.gather(*tasks, desc="Обработка контактов")
+
+    # Обработка задач
+    tasks_list = await workBitrix.get_all_task()
+    print(f'Всего записей Task: {len(tasks_list)}')
+    
+    async def process_task(task):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('task_fields', task)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+    
+    tasks = [process_task(task) for task in tasks_list]
+    await tqdm.gather(*tasks, desc="Обработка задач")
+
+    # Обработка пользователей
+    users = await workBitrix.get_all_user()
+    print(f'Всего записей User: {len(users)}')
+    
+    async def process_user(user):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('user_fields', user)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+    
+    tasks = [process_user(user) for user in users]
+    await tqdm.gather(*tasks, desc="Обработка пользователей")
+
+    # Обработка динамических элементов
+    items = await workBitrix.get_all_dynamic_item()
+    for item in items:
+        entityTypeId = item.get('entityTypeId')
+        fields = await workBitrix.get_dynamic_item_all_entity(entityTypeId)
+        
+        async def process_dynamic_field(field):
+            async with semaphore:
+                try:
+                    await workPostgres.insert_record(f'dynamic_item_fields_{entityTypeId}', field)
+                except Exception as e:
+                    print(f"Ошибка при добавлении записи: {str(e)}")
+        
+        tasks = [process_dynamic_field(field) for field in fields]
+        await tqdm.gather(*tasks, desc=f"Обработка динамических элементов {entityTypeId}")
 
 async def drop_table():
     await workPostgres.drop_table('deal_fields')
@@ -180,6 +227,7 @@ async def delete_records():
 
 if __name__ == '__main__':
     # asyncio.run(drop_table())
-    asyncio.run(main())
+    # asyncio.run(main())
+    pass
     # asyncio.run(delete_records())
     # asyncio.run(update_records_task())

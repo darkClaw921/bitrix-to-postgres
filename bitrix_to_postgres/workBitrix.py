@@ -1,10 +1,11 @@
+from datetime import datetime, timedelta
 from pprint import pprint
 from fast_bitrix24 import BitrixAsync
 from dotenv import load_dotenv
 
 import asyncio
 
-
+NAME_APP='H_'
 import os
 load_dotenv()
 
@@ -471,12 +472,95 @@ def prepare_dynamic_item_field_to_postgres(fields:dict,entityTypeId:int)->list:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+#TODO перенести обновление полей в отдельный модуль
+
+def get_current_datetime():
+    """
+    Функция для получения текущей даты и времени.
+    
+    :return: Текущая дата и время в формате 'YYYY-MM-DD HH:MM:SS'
+    """
+    # current_datetime = datetime.now()+timedelta(hours=3)  # Получаем текущую дату и время
+    current_datetime = datetime.now() # Получаем текущую дату и время
+    # return current_datetime.strftime('%Y-%m-%dT%H:%M:00+Z')  # Форматируем в строку
+    # return '2024-11-07'
+    # return '2024-11-07T18:48:54+03:00'
+    # return '2024.07.11T00:00:00+03:00'
+    # return '2024-11-01T13:51:08+03:00'
+    # return '11-11-2024 00:00:00 00:2024-07-11 00Ж00Ж00 00Ж0000'
+    # return "'$(date --iso-8601=seconds)'"
+    return current_datetime
+
+def prepare_pole_history(stageID:str):
+    """Возвращает подходящие название поля обрезаное до 20 знаков"""
+    poleHistoryDate=f'UF_CRM_{NAME_APP}'
+    # print(f'вход {stageID=}')
+    fullPole=poleHistoryDate+stageID
+    # print(fullPole)
+    # print(len(fullPole))
+    idPole=stageID
+    if len(fullPole)>20:
+        startIndex=len(fullPole)-20
+
+        # fullPole=poleHistoryDate+stageID[startIndex:]
+        if startIndex > 0:
+            
+            fullPole=poleHistoryDate+stageID[:-startIndex] 
+            idPole=stageID[:-startIndex]
+        else:
+            fullPole=poleHistoryDate+stageID
+            idPole=stageID[:startIndex]
+        # fullPole=fullPole[:20] 
+        # idPole=stageID[startIndex:]
+    return fullPole, idPole
+
+async def update_history_date_for_deal(dealID, stageID:str=None):
+    deal=await get_deal(dealID=dealID)
+    # pprint(deal)
+    deal=deal
+    if stageID is None:
+        stageID=deal['STAGE_ID']
+        
+    
+    poleHistory, idStage= prepare_pole_history(stageID=stageID)
+    poleHistory=poleHistory.replace(':','_')
+    print(f'{poleHistory=}')
+    
+    historyDealPole=deal[poleHistory]
+    print(f'{historyDealPole=} {get_current_datetime()=}')
+    # 1/0
+    items={
+        'id':dealID,
+        'fields':{
+            poleHistory:get_current_datetime()
+        }
+
+    }
+    pprint(items)
+    if deal[poleHistory]=='':
+        await bit.call('crm.deal.update',items=items)
+
+
+
+
+
 async def main():
     #Deal
     # fields= await get_all_userfields_deal()
     # prepareFields=prepare_userfields_deal_to_postgres(fields)
     # pprint(prepareFields)
-    user=await get_user(61)
+    user=await update_history_date_for_deal(15953)
     pprint(user)
     # types=await get_all_user_fields()
     # pprint(types)

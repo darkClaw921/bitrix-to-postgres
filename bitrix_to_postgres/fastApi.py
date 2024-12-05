@@ -65,6 +65,7 @@ async def update_deal(request: Request):
         case 'ONCRMDEALUPDATE':
             dealID=body_dict.get('data').get('FIELDS').get('ID')
             print(dealID)
+            await workBitrix.update_history_date_for_deal(dealID)
             deal=await workBitrix.get_deal(dealID)
             await workPostgres.update_record('deal_fields', deal)
             

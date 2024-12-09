@@ -81,6 +81,41 @@ async def main():
 
 
 
+    #MoveTaskToHistory
+    # fields=await workBitrix.get_all_fields_task()
+    # prepareFields=workBitrix.prepare_fields_task_to_postgres(fields)
+   
+    prepareFields = [
+        {'fieldID':'record_id','fieldType':'integer',},
+        {'fieldID':'id','fieldType':'string',},
+        # {'fieldID':'created_date','fieldType':'datetime',},
+        {'fieldID':'fieldValue','fieldType':'string',},
+        {'fieldID':'fieldDescription','fieldType':'string',},
+        {'fieldID':'bitrix_id','fieldType':'string',},
+        {'fieldID':'uf_crm_task','fieldType':'string',},
+        {'fieldID':'uf_crm_task_history','fieldType':'string',},
+        {'fieldID':'title','fieldType':'string',},
+        {'fieldID':'assigned_by_id','fieldType':'string',},
+        {'fieldID':'responsible_id','fieldType':'string',},
+        {'fieldID':'stage_id','fieldType':'string',},
+        {'fieldID':'group_id','fieldType':'string',},
+        {'fieldID':'parent_id','fieldType':'string',},
+        {'fieldID':'responsible_id','fieldType':'string',},
+        {'fieldID':'date_create','fieldType':'datetime',},
+        {'fieldID':'date_modify','fieldType':'datetime',},
+        {'fieldID':'deadline','fieldType':'datetime',},
+        {'fieldID':'last_activity_time','fieldType':'datetime',},
+        {'fieldID':'changeddate','fieldType':'string',},
+        {'fieldID':'changedby','fieldType':'string',},
+        {'fieldID':'moved_time','fieldType':'datetime',},
+        {'fieldID':'date_start','fieldType':'datetime',},
+        {'fieldID':'date_finish','fieldType':'datetime',},
+        {'fieldID':'close_date','fieldType':'datetime',},
+        {'fieldID':'description','fieldType':'string',},
+    ]
+    await workPostgres.create_table_from_fields('move_task_to_history',prepareFields)
+
+
     # Вставка записей после создания таблиц
     await insert_records()
 

@@ -615,9 +615,9 @@ async def get_database_structure():
         raise e
 
 # Изменяем main для тестирования
-async def main():
+# async def main():
     # await get_database_structure()
-    await create_table_move_task_to_history()
+    # await create_table_move_task_to_history()
 
-if __name__ == '__main__':
-    asyncio.run(main())
+# if __name__ == '__main__':
+    # asyncio.run(main())

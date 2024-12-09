@@ -106,9 +106,10 @@ async def update_deal(request: Request):
 
 
         case 'ONTASKUPDATE':
-            taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
-            print(taskID)
-            if taskID is None:
+            try:
+                taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
+                print(taskID)
+            except:
                 taskID=body_dict.get('data').get('FIELDS_AFTER').get('ID')
                 print(taskID)
             task=await workBitrix.get_task(taskID)
@@ -180,9 +181,10 @@ async def create_deal(request: Request):
 
 
         case 'ONTASKADD':
-            taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
-            print(taskID)
-            if taskID is None:
+            try:
+                taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
+                print(taskID)
+            except:
                 taskID=body_dict.get('data').get('FIELDS_AFTER').get('ID')
                 print(taskID)
 
@@ -235,9 +237,10 @@ async def delete_deal(request: Request):
             await workPostgres.delete_record(f'dynamic_item_fields_{entityTypeId}', dynamicItemID)
 
         case 'ONTASKDELETE':
-            taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
-            print(taskID)
-            if taskID is None:
+            try:
+                taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
+                print(taskID)
+            except:
                 taskID=body_dict.get('data').get('FIELDS_AFTER').get('ID')
                 print(taskID)
             await workPostgres.delete_record('task_fields', taskID)

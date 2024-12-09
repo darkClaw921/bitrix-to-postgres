@@ -108,6 +108,9 @@ async def update_deal(request: Request):
         case 'ONTASKUPDATE':
             taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
             print(taskID)
+            if taskID is None:
+                taskID=body_dict.get('data').get('FIELDS_AFTER').get('ID')
+                print(taskID)
             task=await workBitrix.get_task(taskID)
             # pprint(task)
             record=await workPostgres.get_record('task_fields', taskID)
@@ -179,6 +182,10 @@ async def create_deal(request: Request):
         case 'ONTASKADD':
             taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
             print(taskID)
+            if taskID is None:
+                taskID=body_dict.get('data').get('FIELDS_AFTER').get('ID')
+                print(taskID)
+
             task=await workBitrix.get_task(taskID)
             await workPostgres.insert_record('task_fields', task)
         case _:
@@ -230,6 +237,9 @@ async def delete_deal(request: Request):
         case 'ONTASKDELETE':
             taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
             print(taskID)
+            if taskID is None:
+                taskID=body_dict.get('data').get('FIELDS_AFTER').get('ID')
+                print(taskID)
             await workPostgres.delete_record('task_fields', taskID)
 
         case _:

@@ -178,7 +178,7 @@ async def get_lead(leadID):
         'select':['*', 'UF_*'],
     }
     lead=await bit.call('crm.lead.get',items=items)
-    lead=lead['result']
+    lead=lead['order0000000000']
     return lead 
 
 async def get_all_fields_lead()->list:
@@ -560,7 +560,7 @@ async def main():
     # fields= await get_all_userfields_deal()
     # prepareFields=prepare_userfields_deal_to_postgres(fields)
     # pprint(prepareFields)
-    user=await update_history_date_for_deal(15953)
+    user=await get_lead(10865)
     pprint(user)
     # types=await get_all_user_fields()
     # pprint(types)

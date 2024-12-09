@@ -46,6 +46,46 @@ async def init_models():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+
+
+async def create_table_move_task_to_history():
+    table_name = 'move_task_to_history'
+    attrs = {
+        '__tablename__': table_name,
+        'record_id': Column(BigInteger, primary_key=True, autoincrement=True),
+        'created_date': Column(DateTime, default=datetime.now()),
+        'bitrix_id': Column(String),
+        'uf_crm_task': Column(String),
+        'uf_crm_task_history': Column(String),
+        'title': Column(String),
+        'assigned_by_id': Column(String),
+        'responsible_id': Column(String),
+        'stage_id': Column(String),
+        'group_id': Column(String),
+        'parent_id': Column(String),
+        'responsible_id': Column(String),
+        'date_create': Column(DateTime),
+        'date_modify': Column(DateTime),
+        'deadline': Column(DateTime),
+        'last_activity_time': Column(DateTime),
+        'changeddate': Column(String),#Дата изменения
+        'changedby': Column(String),#Кто изменил
+        'moved_time': Column(DateTime),
+        'date_start': Column(DateTime),
+        'date_finish': Column(DateTime),
+        'close_date': Column(DateTime),
+        'description': Column(String),
+    }
+
+    # Создаем класс таблицы динамически
+    DynamicTable = type(table_name, (Base,), attrs)
+    
+    # Создаем таблицу в БД асинхронно
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    return DynamicTable
+
 async def create_table_from_fields(table_name, fields_list):
     # Базовые атрибуты таблицы
     attrs = {
@@ -53,7 +93,9 @@ async def create_table_from_fields(table_name, fields_list):
         'record_id': Column(BigInteger, primary_key=True, autoincrement=True),
         'created_date': Column(DateTime, default=datetime.now)
     }
+
     
+     
     # Добавляем поля из списка
     for field in fields_list:
         field_name = field['fieldID'].lower()
@@ -331,6 +373,7 @@ async def insert_record(table_name: str, data: dict):
         table_name (str): Имя таблицы
         data (dict): Словарь с данными для вставки
     """
+    data['created_date']=datetime.now()
     # Подготавливаем данные
     prepared_data = await prepare_record_for_insert(data)
     
@@ -439,6 +482,17 @@ async def update_record(table_name: str, data: dict):
     except Exception as e:
         print(f"Ошибка при обновлении записи: {e}")
         raise e
+
+async def get_record(table_name: str, bitrix_id: str):
+    """
+    Получает запись из указанной таблицы по bitrix_id
+    """
+    query = text(f'SELECT * FROM "{table_name}" WHERE bitrix_id = :bitrix_id')
+    async with engine.begin() as conn:
+        result = await conn.execute(query, {"bitrix_id": bitrix_id})
+        return result.fetchone()
+
+
 
 async def delete_record(table_name: str, bitrix_id: str):
     """
@@ -562,7 +616,8 @@ async def get_database_structure():
 
 # Изменяем main для тестирования
 async def main():
-    await get_database_structure()
+    # await get_database_structure()
+    await create_table_move_task_to_history()
 
 if __name__ == '__main__':
     asyncio.run(main())

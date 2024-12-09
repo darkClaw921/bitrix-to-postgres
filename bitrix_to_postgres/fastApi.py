@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+import asyncio
 from pprint import pprint
 # from workPostgres import save_to_postgres
 import workPostgres
@@ -103,6 +104,18 @@ async def update_deal(request: Request):
             userField=await workBitrix.get_userfield(userFieldID)
             await workPostgres.add_column_to_table('requisite_userfield_fields', userField)
 
+
+        case 'ONTASKUPDATE':
+            taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
+            print(taskID)
+            task=await workBitrix.get_task(taskID)
+            # pprint(task)
+            record=await workPostgres.get_record('task_fields', taskID)
+            # pprint(record)
+            if task.get('deadline') != record.get('deadline'):
+                await workPostgres.insert_record('move_task_to_history', task)
+            await workPostgres.update_record('task_fields', task)
+
         case _:
             print('unknown event')
     # Сохранение данных в Postgres
@@ -162,6 +175,12 @@ async def create_deal(request: Request):
             userField=await workBitrix.get_userfield(userFieldID)
             await workPostgres.add_column_to_table('requisite_userfield_fields', userField)
 
+
+        case 'ONTASKADD':
+            taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
+            print(taskID)
+            task=await workBitrix.get_task(taskID)
+            await workPostgres.insert_record('task_fields', task)
         case _:
             print('unknown event')
     
@@ -208,12 +227,24 @@ async def delete_deal(request: Request):
             print(dynamicItemID, entityTypeId)
             await workPostgres.delete_record(f'dynamic_item_fields_{entityTypeId}', dynamicItemID)
 
+        case 'ONTASKDELETE':
+            taskID=body_dict.get('data').get('FIELDS_BEFORE').get('ID')
+            print(taskID)
+            await workPostgres.delete_record('task_fields', taskID)
+
         case _:
             print('unknown event')
     
     # Сохранение данных в Postgres
     # save_to_postgres('deal_deleted', body_dict['deal'])
     
+    return {"status": "ok"}
+
+
+
+@app.post('/create_table_history')
+async def create_table_history(request: Request):
+    await workPostgres.create_table_move_task_to_history()
     return {"status": "ok"}
 
 @app.post('/add_field')
@@ -224,6 +255,16 @@ async def add_field(request: Request):
     pprint(body_dict) 
     return {"status": "ok"}
 
+
+async def test():
+    taskID=28885
+    task=await workBitrix.get_task(taskID)
+    # pprint(task)
+    # record=await workPostgres.get_record('task_fields', taskID)
+    # pprint(record)
+    await workPostgres.insert_record('move_task_to_history', task)
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host='0.0.0.0', port=8000)
+    # asyncio.run(test())

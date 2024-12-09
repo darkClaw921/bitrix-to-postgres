@@ -86,7 +86,7 @@ async def main():
     # prepareFields=workBitrix.prepare_fields_task_to_postgres(fields)
    
     prepareFields = [
-        {'fieldID':'record_id','fieldType':'integer',},
+        # {'fieldID':'record_id','fieldType':'integer',},
         {'fieldID':'id','fieldType':'string',},
         # {'fieldID':'created_date','fieldType':'datetime',},
         {'fieldID':'fieldValue','fieldType':'string',},
@@ -262,7 +262,7 @@ async def delete_records():
 
 if __name__ == '__main__':
     # asyncio.run(drop_table())
-    # asyncio.run(main())
+    asyncio.run(main())
     pass
     # asyncio.run(delete_records())
     # asyncio.run(update_records_task())

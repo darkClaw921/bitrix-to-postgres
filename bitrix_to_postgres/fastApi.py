@@ -115,8 +115,8 @@ async def update_deal(request: Request):
             task=await workBitrix.get_task(taskID)
             # pprint(task)
             record=await workPostgres.get_record('task_fields', taskID)
-            # pprint(record)
-            if task.get('deadline') != record.get('deadline'):
+            pprint(record)
+            if task.get('deadline') != record.deadline:
                 await workPostgres.insert_record('move_task_to_history', task)
             await workPostgres.update_record('task_fields', task)
 

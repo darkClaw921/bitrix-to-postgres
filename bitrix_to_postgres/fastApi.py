@@ -120,6 +120,13 @@ async def update_deal(request: Request):
                 await workPostgres.insert_record('move_task_to_history', task)
             await workPostgres.update_record('task_fields', task)
 
+
+        case 'ONCALENDARENTRYUPDATE':
+            eventID=body_dict.get('data').get('id')
+            print(eventID)
+            event=await workBitrix.get_event(eventID)
+            await workPostgres.update_record('event_fields', event)
+
         case _:
             print('unknown event')
     # Сохранение данных в Postgres
@@ -190,6 +197,12 @@ async def create_deal(request: Request):
 
             task=await workBitrix.get_task(taskID)
             await workPostgres.insert_record('task_fields', task)
+
+        case 'ONCALENDARENTRYADD':
+            eventID=body_dict.get('data').get('id')
+            print(eventID)
+            event=await workBitrix.get_event(eventID)
+            await workPostgres.insert_record('event_fields', event)
         case _:
             print('unknown event')
     
@@ -245,9 +258,15 @@ async def delete_deal(request: Request):
                 print(taskID)
             await workPostgres.delete_record('task_fields', taskID)
 
+        case 'ONCALENDARENTRYDELETE':
+            eventID=body_dict.get('data').get('id')
+            print(eventID)
+            await workPostgres.delete_record('event_fields', eventID)
+
+
         case _:
             print('unknown event')
-    
+
     # Сохранение данных в Postgres
     # save_to_postgres('deal_deleted', body_dict['deal'])
     
@@ -268,6 +287,39 @@ async def add_field(request: Request):
     pprint(body_dict) 
     return {"status": "ok"}
 
+@app.post('/call')
+async def handle_call_event(request: Request):
+    body = await request.body()
+    body_str = body.decode('utf-8')
+    body_dict = parse_nested_query(body_str)
+    pprint(body_dict)
+
+    domain = body_dict.get('auth').get('domain')
+    print(domain)
+
+    event = body_dict.get('event')
+    match event:
+        case 'ONCRMCALLADD':
+            callID = body_dict.get('data').get('FIELDS').get('ID')
+            print(callID)
+            call = await workBitrix.get_call(callID)
+            await workPostgres.insert_record('call_fields', call)
+
+        case 'ONCRMCALLUPDATE':
+            callID = body_dict.get('data').get('FIELDS').get('ID')
+            print(callID)
+            call = await workBitrix.get_call(callID)
+            await workPostgres.update_record('call_fields', call)
+
+        case 'ONCRMCALLDELETE':
+            callID = body_dict.get('data').get('FIELDS').get('ID')
+            print(callID)
+            await workPostgres.delete_record('call_fields', callID)
+
+        case _:
+            print('unknown call event')
+
+    return {"status": "ok"}
 
 async def test():
     taskID=28885

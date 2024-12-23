@@ -100,7 +100,7 @@ async def get_all_deal()->list:
     deals=deals
     return deals
 
-async def get_history_move_deal()->list[dict]:
+async def get_history_move_deal():
     #https://apidocs.bitrix24.ru/api-reference/crm/crm-stage-history-list.html
     """
     entityTypeId - ID типа сущности
@@ -557,11 +557,9 @@ async def get_event(eventID:str)->list:
     items={
         'id':eventID,
     }
-    
-    event=await bit.call('calendar.event.getbyid',items=items)
-    print(event)
+    event=await bit.call('calendar.event.getbyid',params=items)
     # event=event['result']
-    return event['order0000000000']
+    return event
 
 async def get_all_event_by_user(userID:str=None)->list:
     if userID is None:

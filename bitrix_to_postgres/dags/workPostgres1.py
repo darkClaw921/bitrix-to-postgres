@@ -1,16 +1,14 @@
 import asyncio
 import json
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 from sqlalchemy import (Column, Integer, Float, String,
                         DateTime, JSON, ARRAY, 
                         BigInteger, func, text, 
-                        BOOLEAN)
-from sqlalchemy.orm import relationship, declarative_base
+                        BOOLEAN, ForeignKey)
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pprint import pprint
 
 load_dotenv()
 
@@ -20,10 +18,6 @@ db = os.environ.get('POSTGRES_DB')
 url = os.environ.get('POSTGRES_URL')
 
 # Создаем асинхронное подключение к базе данных
-# engine = create_async_engine(
-#     f'postgresql+asyncpg://postgres:postgres@localhost:5432/postgres',
-#     echo=True,
-# )
 engine = create_async_engine(
     f'postgresql+asyncpg://{userName}:{password}@{url}:5432/{db}',
     pool_size=5,  # Максимальное количество постоянных подключений
@@ -31,23 +25,24 @@ engine = create_async_engine(
     pool_timeout=30,  # Таймаут ожидания доступного подключения
     pool_recycle=1800,  # Время жизни подключения (в секундах)
     echo=False,
-
 )
 
-# Создаем асинхронную фабрику сессий
-async_session = async_sessionmaker(
-    engine,
+# Создаем сессию
+Session = sessionmaker(
+    bind=engine,
     class_=AsyncSession,
     expire_on_commit=False
 )
 
 Base = declarative_base()
 
+async def get_session():
+    async with Session() as session:
+        return session
+
 async def init_models():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-
 
 async def create_table_move_task_to_history():
     table_name = 'move_task_to_history'
@@ -109,7 +104,7 @@ async def create_table_from_fields(table_name, fields_list):
             descriptionsNames.append(description)
 
         # Особая обработка для поля ID из Bitrix
-        if field_name.lower() == 'id' or field_name.lower() == 'call_id'  :
+        if field_name.lower() == 'id' or field_name.lower() == 'call_id':
             attrs['bitrix_id'] = Column(String)
             continue
             
@@ -448,7 +443,7 @@ async def insert_record(table_name: str, data: dict):
             result = await conn.execute(insert_query, converted_data)
             await conn.commit()
             inserted_id = result.scalar()
-            # print(f"Запись успешно добавлена в таблицу {table_name} с id={inserted_id}")
+            print(f"Запись успешно добавлена в таблицу {table_name} с id={inserted_id}")
             return inserted_id
     except Exception as e:
         print(f"Ошибка при добавлении записи: {e}")
@@ -460,7 +455,7 @@ async def update_record(table_name: str, data: dict):
 
     Args:
         table_name (str): Имя таблицы
-        data (dict): Словарь с данными для об��овления
+        data (dict): Словарь с данными для обновления
     """
     # Подготавливаем данные
     prepared_data = await prepare_record_for_insert(data)

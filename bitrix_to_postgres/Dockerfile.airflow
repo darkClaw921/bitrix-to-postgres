@@ -1,0 +1,33 @@
+FROM apache/airflow:2.10.4
+
+USER root
+
+# Установка дополнительных системных зависимостей
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        curl \
+        python3-pip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Создаем необходимые директории
+RUN mkdir -p /opt/airflow/dags \
+    && mkdir -p /opt/airflow/logs \
+    && mkdir -p /opt/airflow/plugins \
+    && chown -R airflow:root /opt/airflow
+
+# Переключаемся на пользователя airflow для установки Python пакетов
+USER airflow
+WORKDIR /opt/airflow
+
+# Копируем requirements.txt и устанавливаем зависимости
+COPY --chown=airflow:root requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем файлы проекта
+COPY --chown=airflow:root . .
+
+# Установка переменных окружения
+ENV AIRFLOW_HOME=/opt/airflow
+ENV PYTHONPATH="/opt/airflow"

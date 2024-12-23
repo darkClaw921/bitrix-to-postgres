@@ -9,7 +9,7 @@ async def main():
     #Deal
     fields=await workBitrix.get_all_fields_deal()
     userFields=await workBitrix.get_all_userfields_deal()
-    
+    # pprint(fields)
     prepareUserFields=workBitrix.prepare_userfields_deal_to_postgres(userFields)
     prepareFields= workBitrix.prepare_fields_deal_to_postgres(fields)
     
@@ -17,7 +17,11 @@ async def main():
     # pprint(allFields)
     # 1/0
     await workPostgres.create_table_from_fields('deal_fields',allFields)
+
+   
     
+    
+    # 1/0
 
     #Company
     fields=await workBitrix.get_all_fields_company()
@@ -115,6 +119,198 @@ async def main():
     ]
     await workPostgres.create_table_from_fields('move_task_to_history',prepareFields)
 
+
+    #Call
+    prepareFields=[
+        {'fieldID':'call_category','fieldType':'string',},
+        {'fieldID':'call_duration','fieldType':'string',},
+        {'fieldID':'call_failed_code','fieldType':'string',},
+        {'fieldID':'call_failed_reason','fieldType':'string',},
+        {'fieldID':'call_id','fieldType':'string',},
+        {'fieldID':'call_record_url','fieldType':'string',},
+        {'fieldID':'call_start_date','fieldType':'datetime',},
+        {'fieldID':'call_type','fieldType':'string',},
+        {'fieldID':'call_vote','fieldType':'string',},
+        {'fieldID':'comment','fieldType':'string',},
+        {'fieldID':'cost','fieldType':'string',},
+        {'fieldID':'cost_currency','fieldType':'string',},
+        {'fieldID':'crm_activity_id','fieldType':'string',},
+        {'fieldID':'crm_entity_id','fieldType':'string',},
+        {'fieldID':'crm_entity_type','fieldType':'string',},
+        {'fieldID':'external_call_id','fieldType':'string',},
+        {'fieldID':'phone_number','fieldType':'string',},
+        {'fieldID':'portal_number','fieldType':'string',},
+        {'fieldID':'portal_user_id','fieldType':'string',},
+        {'fieldID':'record_duration','fieldType':'string',},
+        {'fieldID':'record_file_id','fieldType':'string',},
+        {'fieldID':'redial_attempt','fieldType':'string',},
+        {'fieldID':'rest_app_id','fieldType':'string',},
+        {'fieldID':'rest_app_name','fieldType':'string',},
+        {'fieldID':'session_id','fieldType':'string',},
+        {'fieldID':'transcript_id','fieldType':'string',},
+        {'fieldID':'transcript_pending','fieldType':'string',},
+    ]
+    await workPostgres.create_table_from_fields('call_fields',prepareFields)
+    
+
+    #HistoryMoveDeal
+    prepareFieldsHistoryMoveDeal=[
+        {'fieldID':'category_id','fieldType':'string',},
+        {'fieldID':'created_time','fieldType':'datetime',},
+        {'fieldID':'id','fieldType':'string',},
+        {'fieldID':'owner_id','fieldType':'string',},
+        {'fieldID':'stage_id','fieldType':'string',},
+        {'fieldID':'stage_semantic_id','fieldType':'string',},
+        {'fieldID':'type_id','fieldType':'string',},
+    ]
+    await workPostgres.create_table_from_fields('history_move_deal',prepareFieldsHistoryMoveDeal)
+
+    #HistoryMoveLead
+    prepareFieldsHistoryMoveLead=[
+        # {'fieldID':'category_id','fieldType':'string',},
+        {'fieldID':'created_time','fieldType':'datetime',},
+        {'fieldID':'id','fieldType':'string',},
+        {'fieldID':'owner_id','fieldType':'string',},
+        {'fieldID':'status_id','fieldType':'string',},
+        {'fieldID':'status_semantic_id','fieldType':'string',},
+        {'fieldID':'type_id','fieldType':'string',},
+    ]
+    await workPostgres.create_table_from_fields('history_move_lead',prepareFieldsHistoryMoveLead)
+
+
+    #Event
+    prepareFieldsEvent=[
+        
+        {'fieldID':'accessibility','fieldType':'string',},
+        {'fieldID':'active','fieldType':'string',},
+        {'fieldID':'attendees_codes','fieldType':'array',},
+        {'fieldID':'attendee_list','fieldType':'array',},
+        {'fieldID':'cal_dav_label','fieldType':'string',},
+        {'fieldID':'cal_type','fieldType':'string',},
+        {'fieldID':'collab_id','fieldType':'string',},
+        {'fieldID':'color','fieldType':'string',},
+        {'fieldID':'created_by','fieldType':'string',},
+        {'fieldID':'date_create','fieldType':'datetime',},
+        {'fieldID':'date_from','fieldType':'datetime',},
+        {'fieldID':'date_from_formatted','fieldType':'datetime',},
+        {'fieldID':'date_from_ts_utc','fieldType':'datetime',},
+        {'fieldID':'date_to','fieldType':'datetime',},
+        {'fieldID':'date_to_formatted','fieldType':'datetime',},
+        {'fieldID':'date_to_ts_utc','fieldType':'datetime',},
+        {'fieldID':'date_to_formatted','fieldType':'datetime',},
+        {'fieldID':'dav_exch_label','fieldType':'string',},
+        {'fieldID':'dav_xml_id','fieldType':'string',},
+        {'fieldID':'deleted','fieldType':'string',},
+        {'fieldID':'dav_xml_id','fieldType':'string',},
+        {'fieldID':'dt_from','fieldType':'datetime',},
+        {'fieldID':'dt_length','fieldType':'string',},
+        {'fieldID':'dt_skip_time','fieldType':'string',},
+        {'fieldID':'dt_to','fieldType':'datetime',},
+        {'fieldID':'event_type','fieldType':'string',},
+        {'fieldID':'exdate','fieldType':'string',},
+        {'fieldID':'g_event_id','fieldType':'string',},
+        {'fieldID':'id','fieldType':'string',},
+        {'fieldID':'importance','fieldType':'string',},
+        {'fieldID':'is_meeting','fieldType':'string',},
+        {'fieldID':'location','fieldType':'string',},
+        {'fieldID':'meeting','fieldType':'string',},
+        {'fieldID':'allow_invite','fieldType':'string',},
+        {'fieldID':'chat_id','fieldType':'string',},
+        {'fieldID':'hide_guests','fieldType':'string',},
+        {'fieldID':'host_name','fieldType':'string',},
+        {'fieldID':'language_id','fieldType':'string',},
+        {'fieldID':'mail_from','fieldType':'string',},
+        {'fieldID':'meeting_creator','fieldType':'string',},
+        {'fieldID':'notify','fieldType':'string',},
+        {'fieldID':'reinvite','fieldType':'string',},
+        {'fieldID':'meeting_host','fieldType':'string',},
+        {'fieldID':'meeting_status','fieldType':'string',},
+        {'fieldID':'name','fieldType':'string',},
+        {'fieldID':'options','fieldType':'string',},
+        {'fieldID':'original_date_from','fieldType':'datetime',},
+        {'fieldID':'owner_id','fieldType':'string',},
+        {'fieldID':'parent_id','fieldType':'string',},
+        {'fieldID':'private_event','fieldType':'string',},
+        {'fieldID':'recurrence_id','fieldType':'string',},
+        {'fieldID':'relations','fieldType':'string',},
+        {'fieldID':'remind','fieldType':'string',},
+        {'fieldID':'rrule','fieldType':'string',},
+        {'fieldID':'section_dav_xml_id','fieldType':'string',},
+        {'fieldID':'section_id','fieldType':'string',},
+        {'fieldID':'sect_id','fieldType':'string',},
+        {'fieldID':'sync_status','fieldType':'string',},
+        {'fieldID':'text_color','fieldType':'string',},
+        {'fieldID':'timestamp_x','fieldType':'datetime',},
+        {'fieldID':'tz_from','fieldType':'string',},
+        {'fieldID':'tz_offset_from','fieldType':'string',},
+        {'fieldID':'tz_offset_to','fieldType':'string',},
+        {'fieldID':'tz_to','fieldType':'string',},
+        {'fieldID':'uf_crm_cal_event','fieldType':'string',},
+        {'fieldID':'uf_webdav_cal_event','fieldType':'string',},
+        {'fieldID':'version','fieldType':'string',},
+        {'fieldID':'attendees_entity_list','fieldType':'array',},
+        {'fieldID':'user_offset_from','fieldType':'string',},
+        {'fieldID':'user_offset_to','fieldType':'string',},
+    ]
+    await workPostgres.create_table_from_fields('event_fields',prepareFieldsEvent)
+
+
+
+    # ДатаОбновления – Техническая таблица, фиксирующая даты последнего обновления каждой из таблиц 
+    prepareFields=[
+       {'fieldID':'id','fieldType':'string',},
+       {'fieldID':'date_update','fieldType':'datetime',},
+       {'fieldID':'table_name','fieldType':'string',},
+    
+    ]
+    await workPostgres.create_table_from_fields('date_update',prepareFields)
+
+
+    #Подразделения
+    prepareFieldsDepartment=[
+        {'fieldID':'id','fieldType':'string',},
+        {'fieldID':'name','fieldType':'string',},
+        {'fieldID':'parent','fieldType':'string',},
+        {'fieldID':'sort','fieldType':'string',},
+     
+    ]
+    await workPostgres.create_table_from_fields('department',prepareFieldsDepartment)
+
+
+    #Воронки
+    prepareFieldsCategory=[
+        {'fieldID':'id','fieldType':'string',},
+        {'fieldID':'name','fieldType':'string',},
+        {'fieldID':'entitytypeid','fieldType':'string',},
+        {'fieldID':'isdefault','fieldType':'string',},
+        {'fieldID':'sort','fieldType':'string',},
+        {'fieldID':'originatorid','fieldType':'string',},
+        {'fieldID':'originid','fieldType':'string',},
+    ]
+    await workPostgres.create_table_from_fields('category',prepareFieldsCategory)
+
+
+    #Статусы воронок
+    prepareFieldsStatus=[
+        {'fieldID':'category_id','fieldType':'string',},
+        {'fieldID':'color','fieldType':'string',},
+        {'fieldID':'entity_id','fieldType':'string',},
+        {'fieldID':'extra','fieldType':'string',},
+        {'fieldID':'id','fieldType':'string',},
+        {'fieldID':'name','fieldType':'string',},
+        {'fieldID':'name_init','fieldType':'string',},
+        {'fieldID':'semantics','fieldType':'string',},
+        {'fieldID':'sort','fieldType':'string',},
+        {'fieldID':'status_id','fieldType':'string',},
+        {'fieldID':'system','fieldType':'string',},
+    ]
+    await workPostgres.create_table_from_fields('status',prepareFieldsStatus)
+
+    prepareFieldsToken=[
+        {'fieldID':'id','fieldType':'string',},
+        {'fieldID':'token','fieldType':'string',},
+    ]
+    await workPostgres.create_table_from_fields('token',prepareFieldsToken)
 
     # Вставка записей после создания таблиц
     await insert_records()
@@ -223,6 +419,119 @@ async def insert_records():
         
         tasks = [process_dynamic_field(field) for field in fields]
         await tqdm.gather(*tasks, desc=f"Обработка динамических элементов {entityTypeId}")
+
+    #Обработка звонков
+    calls=await workBitrix.get_all_call()
+    print(f'Всего записей Call: {len(calls)}')
+    async def process_call(call):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('call_fields', call)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_call(call) for call in calls]
+    await tqdm.gather(*tasks, desc="Обработка звонков")
+
+    #Обработака истории перемещения сделок
+    history_move_deal=await workBitrix.get_history_move_deal()
+    print(f'Всего записей HistoryMoveDeal: {len(history_move_deal)}')
+    async def process_history_move_deal(history_move_deal):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('history_move_deal', history_move_deal)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+    
+    tasks = [process_history_move_deal(history_move_deal) for history_move_deal in history_move_deal]
+    await tqdm.gather(*tasks, desc="Обработка истории перемещения сделок")
+
+    #Обработка истории перемещения лидов
+    history_move_lead=await workBitrix.get_history_move_lead()
+    print(f'Всего записей HistoryMoveLead: {len(history_move_lead)}')
+    async def process_history_move_lead(history_move_lead):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('history_move_lead', history_move_lead)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_history_move_lead(history_move_lead) for history_move_lead in history_move_lead]
+    await tqdm.gather(*tasks, desc="Обработка истории перемещения лидов")
+
+
+    #Обработка событий
+    events=await workBitrix.get_all_event()
+    print(f'Всего записей Event: {len(events)}')
+    async def process_event(event):
+        async with semaphore:
+            try:
+                eventID=await workPostgres.get_record('event_fields', event.get('id'))
+                if eventID:
+                    await workPostgres.update_record('event_fields', event)
+                else:   
+                    await workPostgres.insert_record('event_fields', event)
+                    
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+    
+    tasks = [process_event(event) for event in events]
+    await tqdm.gather(*tasks, desc="Обработка событий")
+
+
+    #Обработка подразделений
+    departments=await workBitrix.get_all_department()
+    print(f'Всего записей Department: {len(departments)}')
+    async def process_department(department):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('department', department)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_department(department) for department in departments]
+    await tqdm.gather(*tasks, desc="Обработка подразделений")
+
+    #Обработка воронок
+    categories=await workBitrix.get_all_category()
+    print(f'Всего записей Category: {len(categories)}')
+    async def process_category(category):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('category', category)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_category(category) for category in categories]
+    await tqdm.gather(*tasks, desc="Обработка воронок")
+
+    #Обработка статусов воронок
+    status=await workBitrix.get_all_status()
+    print(f'Всего записей Status: {len(status)}')
+    async def process_status(status):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('status', status)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_status(status) for status in status]
+    await tqdm.gather(*tasks, desc="Обработка статусов воронок")
+
+    #Обработка токенов
+    token=[workBitrix.WEBHOOK]
+    print(f'Всего записей Token: {len(token)}')
+    async def process_token(token):
+        async with semaphore:
+            try:
+                await workPostgres.insert_record('token', {'id':1,'token':token})
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_token(token) for token in token]
+    await tqdm.gather(*tasks, desc="Обработка токенов")
+
+
 
 async def drop_table():
     await workPostgres.drop_table('deal_fields')

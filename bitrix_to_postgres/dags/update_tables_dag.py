@@ -116,6 +116,107 @@ async def update_call_fields():
         else:
             await insert_record('call_fields', call)
 
+async def update_user():
+    """Обновление таблицы user"""
+    users = await bit.get_all_user()
+    # users=users['order0000000000']
+    for user in users:
+        existing_record = await get_record('user_fields', str(user['ID']))
+        if existing_record:
+            await update_record('user_fields', user)
+        else:
+            await insert_record('user_fields', user)
+
+async def get_last_update_date(table_name: str) -> datetime:
+    """Получение даты последнего обновления таблицы"""
+    record = await get_record('date_update', f"{table_name}_latest")
+    if record and hasattr(record, 'last_update'):
+        return record.last_update
+    return datetime(2023, 1, 1)  # Если нет записи, возвращаем начальную дату
+
+async def update_deals():
+    """Инкрементное обновление таблицы deal_fields"""
+    last_update = await get_last_update_date('deal_fields')
+    
+    
+    deals = await bit.get_all_deal(last_update=last_update)
+    for deal in deals:
+        existing_record = await get_record('deal_fields', str(deal['ID']))
+        if existing_record:
+            await update_record('deal_fields', deal)
+        else:
+            await insert_record('deal_fields', deal)
+
+async def update_companies():
+    """Инкрементное обновление таблицы company_fields"""
+    last_update = await get_last_update_date('company_fields')
+
+    companies = await bit.get_all_company(last_update=last_update)
+    for company in companies:
+        existing_record = await get_record('company_fields', str(company['ID']))
+        if existing_record:
+            await update_record('company_fields', company)
+        else:
+            await insert_record('company_fields', company)
+
+async def update_contacts():
+    """Инкрементное обновление таблицы contact_fields"""
+    last_update = await get_last_update_date('contact_fields')
+    contacts = await bit.get_all_contact(last_update=last_update)
+    for contact in contacts:
+        existing_record = await get_record('contact_fields', str(contact['ID']))
+        if existing_record:
+            await update_record('contact_fields', contact)
+        else:
+            await insert_record('contact_fields', contact)
+
+async def update_leads():
+    """Инкрементное обновление таблицы lead_fields"""
+    last_update = await get_last_update_date('lead_fields')
+    leads = await bit.get_all_lead(last_update=last_update)
+    for lead in leads:
+        existing_record = await get_record('lead_fields', str(lead['ID']))
+        if existing_record:
+            await update_record('lead_fields', lead)
+        else:
+            await insert_record('lead_fields', lead)
+
+async def update_tasks():
+    """Инкрементное обновление таблицы task_fields"""
+    last_update = await get_last_update_date('task_fields')
+    tasks = await bit.get_all_task(last_update=last_update)
+    for task in tasks:
+        existing_record = await get_record('task_fields', str(task['id']))
+        if existing_record:
+            await update_record('task_fields', task)
+        else:
+            await insert_record('task_fields', task)
+
+async def update_events():
+    """Инкрементное обновление таблицы event_fields"""
+    last_update = await get_last_update_date('event_fields')
+    events = await bit.get_all_event(last_update=last_update)
+    for event in events:
+        existing_record = await get_record('event_fields', str(event['ID']))
+        if existing_record:
+            await update_record('event_fields', event)
+        else:
+            await insert_record('event_fields', event)
+
+async def update_dynamic_items():
+    """Инкрементное обновление таблиц dynamic_item_fields"""
+    dynamic_types = await bit.get_all_dynamic_item()
+    for dynamic_type in dynamic_types:
+        entityTypeId = dynamic_type['entityTypeId']
+        last_update = await get_last_update_date(f'dynamic_item_fields_{entityTypeId}')
+        dynamic_items = await bit.get_dynamic_item_all_entity(entityTypeId,last_update=last_update)
+        for item in dynamic_items:
+            existing_record = await get_record(f'dynamic_item_fields_{entityTypeId}', str(item['id']))
+            if existing_record:
+                await update_record(f'dynamic_item_fields_{entityTypeId}', item)
+            else:
+                await insert_record(f'dynamic_item_fields_{entityTypeId}', item)
+
 async def update_date_update():
     """Обновление таблицы date_update"""
     tables = [
@@ -125,17 +226,45 @@ async def update_date_update():
         'category',
         'status',
         'token',
-        'call_fields'
+        'call_fields',
+        'user_fields',
+        'deal_fields',
+        'company_fields',
+        'contact_fields',
+        'lead_fields',
+        'task_fields',
+        'event_fields'
     ]
     
     for table in tables:
         update_info = {
-            'ID': f"{table}_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            'ID': f"{table}_latest",
             'table_name': table,
             'last_update': datetime.now(),
             'status': 'success'
         }
-        await insert_record('date_update', update_info)
+        existing_record = await get_record('date_update', f"{table}_latest")
+        if existing_record:
+            await update_record('date_update', update_info)
+        else:
+            await insert_record('date_update', update_info)
+
+    # Добавляем записи для dynamic_item_fields
+    # dynamic_types = await bit.get_all_dynamic_item()
+    # for dynamic_type in dynamic_types:
+    #     entityTypeId = dynamic_type['id']
+    #     table_name = f'dynamic_item_fields_{entityTypeId}'
+    #     update_info = {
+    #         'ID': f"{table_name}_latest",
+    #         'table_name': table_name,
+    #         'last_update': datetime.now(),
+    #         'status': 'success'
+    #     }
+    #     existing_record = await get_record('date_update', f"{table_name}_latest")
+    #     if existing_record:
+    #         await update_record('date_update', update_info)
+    #     else:
+    #         await insert_record('date_update', update_info)
 
 def run_async(func):
     """Обертка для запуска асинхронных функций"""
@@ -151,6 +280,14 @@ for task_func, task_id in [
     (update_status, 'update_status'),
     (update_token, 'update_token'),
     (update_call_fields, 'update_call_fields'),
+    (update_user, 'update_user'),
+    (update_deals, 'update_deals'),
+    (update_companies, 'update_companies'),
+    (update_contacts, 'update_contacts'),
+    (update_leads, 'update_leads'),
+    (update_tasks, 'update_tasks'),
+    (update_events, 'update_events'),
+    # (update_dynamic_items, 'update_dynamic_items'),
 ]:
     task = PythonOperator(
         task_id=task_id,

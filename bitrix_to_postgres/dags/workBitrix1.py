@@ -88,19 +88,21 @@ def prepare_fields_deal_to_postgres(fields:list)->list:
         })
     return fieldsToPostgres
 
-async def get_all_deal()->list:
+async def get_all_deal(last_update=None)->list:
     items={
         'FILTER':{
             '>ID':0,
         },
         'SELECT':['*', 'UF_*'],
     }
-    deals=await bit.get_all('crm.deal.list',params=items)
+    if last_update:
+        items['FILTER']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+    deals = await bit.get_all('crm.deal.list', params=items)
     # deals=await bit.call('crm.deal.list',items=items)
     deals=deals
     return deals
 
-async def get_history_move_deal():
+async def get_history_move_deal(last_update=None):
     #https://apidocs.bitrix24.ru/api-reference/crm/crm-stage-history-list.html
     """
     entityTypeId - ID типа сущности
@@ -112,6 +114,8 @@ async def get_history_move_deal():
         'entityTypeId':'2',
         # 'select':['*', 'UF_*'],
     }
+    if last_update:
+        items['filter']['>TIMESTAMP_X'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
     history=await bit.get_all('crm.stagehistory.list',params=items)
     # history=history
     return history
@@ -177,15 +181,18 @@ def prepare_fields_company_to_postgres(fields:list)->list:
         })
     return fieldsToPostgres
 
-async def get_all_company()->list:
-    items={
-        'filter':{
-            '>ID':0,
+async def get_all_company(last_update=None):
+    """Получение всех компаний с фильтрацией по дате обновления"""
+    items = {
+        'filter': {
+            '>ID': 0,
         },
-        'select':['*', 'UF_*'],
+        'select': ['*', 'UF_*'],
     }
-    companies=await bit.get_all('crm.company.list',params=items)
-    companies=companies
+    if last_update:
+        items['filter']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+    companies = await bit.get_all('crm.company.list', params=items)
+    companies = companies
     return companies
 
 
@@ -243,14 +250,17 @@ def prepare_fields_lead_to_postgres(fields:list)->list:
         })
     return fieldsToPostgres
 
-async def get_all_lead()->list:
-    items={
-        'filter':{
-            '>ID':0,
+async def get_all_lead(last_update=None):
+    """Получение всех лидов с фильтрацией по дате обновления"""
+    items = {
+        'filter': {
+            '>ID': 0,
         },
-        'select':['*', 'UF_*'],
+        'select': ['*', 'UF_*'],
     }
-    leads=await bit.get_all('crm.lead.list',params=items)
+    if last_update:
+        items['filter']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+    leads = await bit.get_all('crm.lead.list', params=items)
     leads=leads
     return leads
 
@@ -325,17 +335,18 @@ def prepare_fields_contact_to_postgres(fields:list)->list:
         })
     return fieldsToPostgres
 
-async def get_all_contact()->list:
-    items={
-        
-        'filter':{
+async def get_all_contact(last_update=None):
+    """Получение всех контактов с фильтрацией по дате обновления"""
+    items = {
+        'filter': {
             '>ID':0,
             
         },
         'select':['*', 'UF_*'],
     }
-    contacts=await bit.get_all('crm.contact.list',params=items)
-    contacts=contacts
+    if last_update:
+        items['filter']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+    contacts = await bit.get_all('crm.contact.list', params=items)
     return contacts
 
 
@@ -375,15 +386,17 @@ def prepare_fields_task_to_postgres(fields:list)->list:
     })
     return fieldsToPostgres
 
-async def get_all_task()->list:
-    items={
-        'filter':{
-            '>taskId':0,
+async def get_all_task(last_update=None):
+    """Получение всех задач с фильтрацией по дате обновления"""
+    items = {
+        'filter': {
+            '>taskId': 0,
         },
-        'select':['*', 'UF_*'],
+        'select': ['*', 'UF_*'],
     }
-    tasks=await bit.get_all('tasks.task.list',params=items)
-    tasks=tasks
+    if last_update:
+        items['filter']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+    tasks = await bit.get_all('tasks.task.list', params=items)
     return tasks
 
 
@@ -461,20 +474,27 @@ def prepare_user_fields_to_postgres(fields:dict)->list:
 
 
 #DynamicItem
-async def get_all_dynamic_item()->list:
-    items={
-        # 'ID':dynamicItemID,
-        'select':['*', 'UF_*'],
+async def get_all_dynamic_item(last_update=None):
+    """Получение всех динамических элементов с фильтрацией по дате обновления"""
+    items = {
+        'filter': {
+            '>ID': 0,
+        },
+        'select': ['*', 'UF_*'],
     }
+    if last_update:
+        items['filter']['>date_modify'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
     dynamicItem=await bit.call('crm.type.list',items=items,raw=True)
     dynamicItem=dynamicItem['result']['types']
     return dynamicItem
     
-async def get_dynamic_item_all_entity(dynamicItemID)->list:
+async def get_dynamic_item_all_entity(dynamicItemID,last_update=None)->list:
     items={
         'entityTypeId':dynamicItemID,
         'select':['*', 'UF_*'],
     }
+    if last_update:
+        items['filter']['>date_modify'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
     dynamicItem=await bit.call('crm.item.list',items=items,raw=True)
     dynamicItem=dynamicItem['result']['items']
     return dynamicItem
@@ -561,7 +581,7 @@ async def get_event(eventID:str)->list:
     # event=event['result']
     return event
 
-async def get_all_event_by_user(userID:str=None)->list:
+async def get_all_event_by_user(userID:str=None,last_update=None)->list:
     if userID is None:
         items={
             'type': 'company_calendar',
@@ -571,24 +591,28 @@ async def get_all_event_by_user(userID:str=None)->list:
     else:
         items={
             'type': 'user',
-            'ownerId': userID,   
+            'ownerId': userID,  
+            'from': last_update.strftime('%Y-%m-%dT%H:%M:%S'),
+            # 'to': last_update.strftime('%Y-%m-%dT%H:%M:%S'),
         }
-    
+    if last_update:
+        # items['filter']['>TIMESTAMP_X'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+        items['from'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
 
     event=await bit.get_all('calendar.event.get',params=items)
     # event=event['result']
     return event
 
-async def get_all_event()->list:
+async def get_all_event(last_update=None)->list:
     users=await get_all_user()
     events=[]
     for user in users:
         userID=user.get('ID')
-        events=await get_all_event_by_user(userID)
+        events=await get_all_event_by_user(userID,last_update)
         print(f'{userID=} {len(events)=}')
         events.extend(events)
 
-    events.extend(await get_all_event_by_user())
+    events.extend(await get_all_event_by_user(last_update=last_update))
     return events
 
 

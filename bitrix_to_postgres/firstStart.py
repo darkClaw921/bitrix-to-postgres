@@ -44,7 +44,7 @@ async def main():
     allFields=prepareFields+prepareUserFields
     await workPostgres.create_table_from_fields('lead_fields',allFields)
 
-    
+    # 1/0
     #Contact
     fields=await workBitrix.get_all_fields_contact()
     userFields=await workBitrix.get_all_userfields_contact()
@@ -361,6 +361,7 @@ async def insert_records():
     
     tasks = [process_lead(lead) for lead in leads]
     await tqdm.gather(*tasks, desc="Обработка лидов")
+
 
     # Обработка контактов
     contacts = await workBitrix.get_all_contact()

@@ -66,7 +66,9 @@ async def update_deal(request: Request):
         case 'ONCRMDEALUPDATE':
             dealID=body_dict.get('data').get('FIELDS').get('ID')
             print(dealID)
-            await workBitrix.update_history_date_for_deal(dealID)
+# 
+            # await workBitrix.update_history_date_for_deal(dealID)
+            #test cpmment
             deal=await workBitrix.get_deal(dealID)
             await workPostgres.update_record('deal_fields', deal)
             
@@ -331,5 +333,5 @@ async def test():
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host='0.0.0.0', port=8000)
+    uvicorn.run(app, host='0.0.0.0', port=8009)
     # asyncio.run(test())

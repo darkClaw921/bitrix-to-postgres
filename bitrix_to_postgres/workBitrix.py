@@ -730,7 +730,7 @@ async def main():
     # pprint(prepareFields)
     # user=await get_lead(10865)
     # pprint(user)
-    status=await get_history_move_lead()
+    status=await get_all_user()
     pprint(status)
     # types=await get_all_user_fields()
     # pprint(types)

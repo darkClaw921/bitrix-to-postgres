@@ -40,6 +40,8 @@ x-airflow-common:
 services:
   init-airflow-dirs:
     image: busybox
+    networks:
+      - airflow-network
     user: "0:0"
     command: >
       sh -c "
@@ -63,6 +65,8 @@ services:
   postgres-2:
     container_name: postgres-2
     image: postgres:16
+    networks:
+      - airflow-network
     command: postgres -c maintenance_work_mem=64MB -c max_wal_size=1GB -c shared_buffers=256MB -c effective_cache_size=768MB -c work_mem=16MB
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -131,6 +135,8 @@ services:
 
   bitrix_to_postgres:
     # image: bitrix_to_postgres
+    networks:
+      - airflow-network
     volumes:
       - ./bitrix_to_postgres:/app
 
@@ -153,6 +159,8 @@ services:
 
   airflow-webserver:
     <<: *airflow-common
+    networks:
+      - airflow-network
     command: airflow webserver
     ports:
       - "8080:8080"
@@ -179,6 +187,8 @@ services:
       timeout: 10s
       retries: 5
     restart: always
+    networks:
+      - airflow-network
     deploy:
       resources:
         limits:
@@ -190,6 +200,8 @@ services:
   airflow-init:
     <<: *airflow-common
     entrypoint: /bin/bash
+    networks:
+      - airflow-network
     command:
       - -c
       - |
@@ -211,3 +223,7 @@ volumes:
   habrdb-data:
   # pgadmin-data:
   portainer_data:
+
+networks:
+  airflow-network:
+    driver: bridge

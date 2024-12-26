@@ -207,19 +207,19 @@ async def update_events():
         else:
             await insert_record('event_fields', event)
 
-async def update_dynamic_items():
-    """Инкрементное обновление таблиц dynamic_item_fields"""
-    dynamic_types = await bit.get_all_dynamic_item()
-    for dynamic_type in dynamic_types:
-        entityTypeId = dynamic_type['entityTypeId']
-        last_update = await get_last_update_date(f'dynamic_item_fields_{entityTypeId}')
-        dynamic_items = await bit.get_dynamic_item_all_entity(entityTypeId,last_update=last_update)
-        for item in dynamic_items:
-            existing_record = await get_record(f'dynamic_item_fields_{entityTypeId}', str(item['id']))
-            if existing_record:
-                await update_record(f'dynamic_item_fields_{entityTypeId}', item)
-            else:
-                await insert_record(f'dynamic_item_fields_{entityTypeId}', item)
+# async def update_dynamic_items():
+#     """Инкрементное обновление таблиц dynamic_item_fields"""
+#     dynamic_types = await bit.get_all_dynamic_item()
+#     for dynamic_type in dynamic_types:
+#         entityTypeId = dynamic_type['entityTypeId']
+#         last_update = await get_last_update_date(f'dynamic_item_fields_{entityTypeId}')
+#         dynamic_items = await bit.get_dynamic_item_all_entity(entityTypeId,last_update=last_update)
+#         for item in dynamic_items:
+#             existing_record = await get_record(f'dynamic_item_fields_{entityTypeId}', str(item['id']))
+#             if existing_record:
+#                 await update_record(f'dynamic_item_fields_{entityTypeId}', item)
+#             else:
+#                 await insert_record(f'dynamic_item_fields_{entityTypeId}', item)
 
 async def update_date_update():
     """Обновление таблицы date_update"""
@@ -303,7 +303,7 @@ tasks = {
     'update_leads': update_leads,
     'update_tasks': update_tasks,
     'update_events': update_events,
-    'update_dynamic_items': update_dynamic_items,
+    # 'update_dynamic_items': update_dynamic_items,
     'update_date_update': update_date_update
 }
 

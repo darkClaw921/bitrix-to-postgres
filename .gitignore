@@ -21,7 +21,7 @@ cache/
 *.sqlite3
 latest/
 *.env*
-*.sh
+# *.sh
 *.db
 testDocker/
 # *.txt
@@ -30,6 +30,9 @@ session_name.session-journal
 session_name2.session
 session_name*
 # Distribution / packaging
+logs/
+# dags/
+plugins/
 bin/
 kgtaprojects-8706cc47a185.json
 .Python

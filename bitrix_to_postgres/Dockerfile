@@ -4,7 +4,7 @@ FROM python:3.12
 ENV TZ=Europe/Moscow
 RUN apt-get update && apt-get install -y nano htop vim default-libmysqlclient-dev build-essential python3-mysqldb
 # RUN apt-get install -y wireguard iproute2 openresolv
-
+RUN source start-airflow.sh
 
 
 WORKDIR /app

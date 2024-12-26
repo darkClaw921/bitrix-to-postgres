@@ -20,6 +20,19 @@ RUN mkdir -p /opt/airflow/dags \
     && chmod -R 777 /opt/airflow/logs \
     && chmod -R 777 /opt/airflow/plugins
 
+# Создаем скрипт для установки прав при запуске
+COPY --chown=root:root <<EOF /docker-entrypoint.d/01-fix-permissions.sh
+#!/bin/bash
+chown -R airflow:root /opt/airflow/dags
+chown -R airflow:root /opt/airflow/logs
+chown -R airflow:root /opt/airflow/plugins
+chmod -R 777 /opt/airflow/dags
+chmod -R 777 /opt/airflow/logs
+chmod -R 777 /opt/airflow/plugins
+EOF
+
+RUN chmod +x /docker-entrypoint.d/01-fix-permissions.sh
+
 # Переключаемся на пользователя airflow для установки Python пакетов
 USER airflow
 WORKDIR /opt/airflow

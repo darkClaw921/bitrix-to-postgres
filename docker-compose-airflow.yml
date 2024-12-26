@@ -20,10 +20,26 @@ x-airflow-common:
     AIRFLOW_HOME: "/opt/airflow"
     WEBHOOK: ${WEBHOOK}
   volumes:
-    - ./bitrix_to_postgres/dags:/opt/airflow/dags
-    - ./bitrix_to_postgres/logs:/opt/airflow/logs
-    - ./bitrix_to_postgres/plugins:/opt/airflow/plugins
-    - ./bitrix_to_postgres:/opt/airflow/bitrix_to_postgres
+    - type: bind
+      source: ./bitrix_to_postgres/dags
+      target: /opt/airflow/dags
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./bitrix_to_postgres/logs
+      target: /opt/airflow/logs
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./bitrix_to_postgres/plugins
+      target: /opt/airflow/plugins
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./bitrix_to_postgres
+      target: /opt/airflow/bitrix_to_postgres
+      bind:
+        create_host_path: true
   depends_on:
     postgres-2:
       condition: service_healthy

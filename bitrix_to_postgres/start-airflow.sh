@@ -7,10 +7,6 @@ mkdir -p ./dags ./logs ./plugins
 export AIRFLOW_UID=$(id -u)
 export AIRFLOW_GID=0
 
-# Устанавливаем правильные права доступа
-chmod -R 777 ./dags ./logs ./plugins
-chown -R ${AIRFLOW_UID}:${AIRFLOW_GID} ./dags ./logs ./plugins
-
 # Проверяем права доступа
 echo "Проверка прав доступа:"
 ls -la ./dags

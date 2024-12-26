@@ -55,6 +55,8 @@ services:
 
   portainer-2:
     image: portainer/portainer-ce
+    networks:
+      - airflow-network
     ports:
       - 9000:9000
     volumes:
@@ -93,6 +95,8 @@ services:
   pgadmin-2:
     container_name: pgadmin_container-2
     image: dpage/pgadmin4:latest
+    networks:
+      - airflow-network
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL} 
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
@@ -112,8 +116,10 @@ services:
   postgres_exporter-2:
     container_name: exporter_container-2
     image: prometheuscommunity/postgres-exporter:latest
+    networks:
+      - airflow-network
     environment:
-      DATA_SOURCE_URI: "postgres:5432/habrdb?sslmode=disable"
+      DATA_SOURCE_URI: "postgres-2:5432/habrdb?sslmode=disable"
       DATA_SOURCE_USER: ${DATA_SOURCE_USER}
       DATA_SOURCE_PASS: ${DATA_SOURCE_PASS}
       PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres_exporter/queries.yaml"

@@ -171,6 +171,7 @@ services:
     command:
       - -c
       - |
+        /opt/airflow/bitrix_to_postgres/start-airflow.sh
         airflow db init
         airflow users create \
           --username ${AIRFLOW_USERNAME} \

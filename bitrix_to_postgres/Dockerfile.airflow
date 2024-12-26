@@ -11,11 +11,14 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Создаем необходимые директории
+# Создаем необходимые директории и устанавливаем права
 RUN mkdir -p /opt/airflow/dags \
     && mkdir -p /opt/airflow/logs \
     && mkdir -p /opt/airflow/plugins \
-    && chown -R airflow:root /opt/airflow
+    && chown -R airflow:root /opt/airflow \
+    && chmod -R 777 /opt/airflow/dags \
+    && chmod -R 777 /opt/airflow/logs \
+    && chmod -R 777 /opt/airflow/plugins
 
 # Переключаемся на пользователя airflow для установки Python пакетов
 USER airflow
@@ -31,3 +34,11 @@ COPY --chown=airflow:root . .
 # Установка переменных окружения
 ENV AIRFLOW_HOME=/opt/airflow
 ENV PYTHONPATH="/opt/airflow"
+
+# Финальная проверка прав доступа
+USER root
+RUN chown -R airflow:root /opt/airflow \
+    && chmod -R 777 /opt/airflow/dags \
+    && chmod -R 777 /opt/airflow/logs \
+    && chmod -R 777 /opt/airflow/plugins
+USER airflow

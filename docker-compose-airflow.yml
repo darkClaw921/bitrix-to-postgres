@@ -24,7 +24,7 @@ x-airflow-common:
     - ./bitrix_to_postgres/logs:/opt/airflow/logs
     - ./bitrix_to_postgres/plugins:/opt/airflow/plugins
     - ./bitrix_to_postgres:/opt/airflow/bitrix_to_postgres
-  user: "${AIRFLOW_UID:-50000}:0"
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_UID:-50000}"
   depends_on:
     postgres-2:
       condition: service_healthy

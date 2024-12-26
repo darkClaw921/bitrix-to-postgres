@@ -19,9 +19,8 @@ RUN mkdir -p /opt/airflow/dags \
     && mkdir -p /opt/airflow/logs/worker \
     && mkdir -p /opt/airflow/plugins \
     && mkdir -p /docker-entrypoint.d \
-    && chown -R airflow:root /opt/airflow \
-    && chmod -R 775 /opt/airflow \
-    && usermod -a -G root airflow
+    && chown -R airflow:airflow /opt/airflow \
+    && chmod -R u+rwx /opt/airflow
 
 # Создаем скрипт для установки прав при запуске
 RUN echo '#!/bin/bash' > /docker-entrypoint.d/01-fix-permissions.sh && \
@@ -35,9 +34,8 @@ RUN echo '#!/bin/bash' > /docker-entrypoint.d/01-fix-permissions.sh && \
     echo 'mkdir -p /opt/airflow/logs/webserver' >> /docker-entrypoint.d/01-fix-permissions.sh && \
     echo 'mkdir -p /opt/airflow/logs/worker' >> /docker-entrypoint.d/01-fix-permissions.sh && \
     echo 'echo "=== Установка прав доступа ===" ' >> /docker-entrypoint.d/01-fix-permissions.sh && \
-    echo 'chown -R airflow:root /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh && \
-    echo 'chmod -R g+rwx /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh && \
-    echo 'find /opt/airflow -type d -exec chmod g+s {} \;' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'chown -R airflow:airflow /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'chmod -R u+rwx /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh && \
     echo 'echo "=== Проверка прав доступа ===" ' >> /docker-entrypoint.d/01-fix-permissions.sh && \
     echo 'ls -la /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh && \
     echo 'ls -la /opt/airflow/logs' >> /docker-entrypoint.d/01-fix-permissions.sh && \
@@ -48,11 +46,11 @@ USER airflow
 WORKDIR /opt/airflow
 
 # Копируем requirements.txt и устанавливаем зависимости
-COPY --chown=airflow:root requirements.txt .
+COPY --chown=airflow:airflow requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем файлы проекта
-COPY --chown=airflow:root . .
+COPY --chown=airflow:airflow . .
 
 # Установка переменных окружения
 ENV AIRFLOW_HOME=/opt/airflow
@@ -60,9 +58,8 @@ ENV PYTHONPATH="/opt/airflow"
 
 # Финальная проверка и установка прав
 USER root
-RUN chown -R airflow:root /opt/airflow \
-    && chmod -R g+rwx /opt/airflow \
-    && find /opt/airflow -type d -exec chmod g+s {} \; \
+RUN chown -R airflow:airflow /opt/airflow \
+    && chmod -R u+rwx /opt/airflow \
     && echo "=== Финальная проверка прав ===" \
     && ls -la /opt/airflow \
     && ls -la /opt/airflow/logs

@@ -26,10 +26,25 @@ x-airflow-common:
     - ./bitrix_to_postgres:/opt/airflow/bitrix_to_postgres
   user: "${AIRFLOW_UID:-50000}:${AIRFLOW_UID:-50000}"
   depends_on:
+    init-airflow-dirs:
+      condition: service_completed_successfully
     postgres-2:
       condition: service_healthy
 
 services:
+  init-airflow-dirs:
+    image: busybox
+    user: "0:0"
+    command: >
+      sh -c "
+        mkdir -p ./bitrix_to_postgres/dags ./bitrix_to_postgres/logs ./bitrix_to_postgres/plugins &&
+        chown -R ${AIRFLOW_UID:-50000}:${AIRFLOW_UID:-50000} ./bitrix_to_postgres/dags ./bitrix_to_postgres/logs ./bitrix_to_postgres/plugins &&
+        chmod -R 777 ./bitrix_to_postgres/dags ./bitrix_to_postgres/logs ./bitrix_to_postgres/plugins
+      "
+    volumes:
+      - ./:/workspace
+    working_dir: /workspace
+
   portainer-2:
     image: portainer/portainer-ce
     ports:

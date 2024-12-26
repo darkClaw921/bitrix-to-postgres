@@ -12,13 +12,19 @@ x-airflow-common:
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-your-secret-key-here}
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: 'Europe/Moscow'
+    AIRFLOW__LOGGING__LOGGING_LEVEL: 'INFO'
+    AIRFLOW__SCHEDULER__MAX_TIS_PER_QUERY: '100'
+    AIRFLOW__CORE__DAG_FILE_PROCESSOR_TIMEOUT: '600'
+    PYTHONOPTIMIZE: '1'
+    PYTHONPATH: "/opt/airflow"
+    AIRFLOW_HOME: "/opt/airflow"
+    WEBHOOK: ${WEBHOOK}
+    TZ: 'Europe/Moscow'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     POSTGRES_USER: ${POSTGRES_USER}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     POSTGRES_DB: ${POSTGRES_DB}
-    PYTHONPATH: "/opt/airflow"
-    AIRFLOW_HOME: "/opt/airflow"
-    WEBHOOK: ${WEBHOOK}
   volumes:
     - ./bitrix_to_postgres/dags:/opt/airflow/dags
     - ./bitrix_to_postgres/logs:/opt/airflow/logs

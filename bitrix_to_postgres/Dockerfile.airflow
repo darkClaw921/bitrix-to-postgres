@@ -19,18 +19,32 @@ RUN mkdir -p /opt/airflow/dags \
     && mkdir -p /opt/airflow/logs/worker \
     && mkdir -p /opt/airflow/plugins \
     && mkdir -p /docker-entrypoint.d \
-    && chmod -R 777 /opt/airflow
+    && chown -R airflow:root /opt/airflow \
+    && chmod -R 775 /opt/airflow \
+    && chmod g+s /opt/airflow/logs
+
+# Создаем скрипт для проверки и исправления прав при запуске
+RUN echo '#!/bin/bash' > /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'set -e' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'mkdir -p /opt/airflow/logs/scheduler' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'mkdir -p /opt/airflow/logs/dag_processor' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'mkdir -p /opt/airflow/logs/webserver' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'mkdir -p /opt/airflow/logs/worker' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'chown -R airflow:root /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'chmod -R 775 /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    echo 'chmod g+s /opt/airflow/logs' >> /docker-entrypoint.d/01-fix-permissions.sh && \
+    chmod +x /docker-entrypoint.d/01-fix-permissions.sh
 
 # Переключаемся на пользователя airflow для установки Python пакетов
 USER airflow
 WORKDIR /opt/airflow
 
 # Копируем requirements.txt и устанавливаем зависимости
-COPY --chown=airflow:airflow requirements.txt .
+COPY --chown=airflow:root requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем файлы проекта
-COPY --chown=airflow:airflow . .
+COPY --chown=airflow:root . .
 
 # Установка переменных окружения
 ENV AIRFLOW_HOME=/opt/airflow

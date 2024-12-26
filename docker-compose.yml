@@ -24,7 +24,7 @@ x-airflow-common:
     - ./bitrix_to_postgres/logs:/opt/airflow/logs
     - ./bitrix_to_postgres/plugins:/opt/airflow/plugins
     - ./bitrix_to_postgres:/opt/airflow/bitrix_to_postgres
-  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_UID:-50000}"
+  user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     init-airflow-dirs:
       condition: service_completed_successfully
@@ -124,7 +124,7 @@ services:
   
 
   bitrix_to_postgres:
-    image: bitrix_to_postgres
+    # image: bitrix_to_postgres
     volumes:
       - ./bitrix_to_postgres:/app
 

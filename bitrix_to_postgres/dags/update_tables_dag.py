@@ -21,8 +21,10 @@ default_args = {
     'depends_on_past': False,
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5),
+    'retries': 3,
+    'retry_delay': timedelta(minutes=1),
+    'retry_exponential_backoff': True,
+    'max_retry_delay': timedelta(minutes=5),
 }
 
 # Создаем DAG
@@ -34,6 +36,8 @@ dag = DAG(
     start_date=datetime(2023, 12, 1),
     catchup=False,
     tags=['bitrix'],
+    max_active_runs=1,
+    concurrency=8
 )
 
 async def update_history_move_deal():
@@ -267,41 +271,54 @@ async def update_date_update():
     #         await insert_record('date_update', update_info)
 
 def run_async(func):
-    """Обертка для запуска асинхронных функций"""
-    asyncio.run(func())
+    """Запускает асинхронную функцию"""
+    try:
+        return asyncio.run(func())
+    except Exception as e:
+        print(f"Ошибка при выполнении {func.__name__}: {str(e)}")
+        raise e
 
-# Создаем операторы для каждой задачи
-tasks = []
-for task_func, task_id in [
-    (update_history_move_deal, 'update_history_move_deal'),
-    (update_history_move_lead, 'update_history_move_lead'),
-    (update_department, 'update_department'),
-    (update_category, 'update_category'),
-    (update_status, 'update_status'),
-    (update_token, 'update_token'),
-    (update_call_fields, 'update_call_fields'),
-    (update_user, 'update_user'),
-    (update_deals, 'update_deals'),
-    (update_companies, 'update_companies'),
-    (update_contacts, 'update_contacts'),
-    (update_leads, 'update_leads'),
-    (update_tasks, 'update_tasks'),
-    (update_events, 'update_events'),
-    # (update_dynamic_items, 'update_dynamic_items'),
-]:
-    task = PythonOperator(
-        task_id=task_id,
-        python_callable=lambda f=task_func: run_async(f),
-        dag=dag,
-    )
-    tasks.append(task)
-
-# Создаем задачу обновления дат
-update_date_update_task = PythonOperator(
-    task_id='update_date_update',
-    python_callable=lambda: run_async(update_date_update),
+# Создаем задачи
+update_history_move_deal_task = PythonOperator(
+    task_id='update_history_move_deal',
+    python_callable=lambda f=update_history_move_deal: run_async(f),
+    retries=3,
+    retry_delay=timedelta(minutes=1),
+    execution_timeout=timedelta(minutes=10),
     dag=dag,
 )
 
-# Определяем порядок выполнения задач
-tasks >> update_date_update_task
+# Создаем операторы для каждой задачи
+tasks = {
+    'update_history_move_lead': update_history_move_lead,
+    'update_department': update_department,
+    'update_category': update_category,
+    'update_status': update_status,
+    'update_token': update_token,
+    'update_call_fields': update_call_fields,
+    'update_user': update_user,
+    'update_deals': update_deals,
+    'update_companies': update_companies,
+    'update_contacts': update_contacts,
+    'update_leads': update_leads,
+    'update_tasks': update_tasks,
+    'update_events': update_events,
+    'update_dynamic_items': update_dynamic_items,
+    'update_date_update': update_date_update
+}
+
+operators = {}
+for task_id, task_func in tasks.items():
+    operators[task_id] = PythonOperator(
+        task_id=task_id,
+        python_callable=lambda f=task_func: run_async(f),
+        retries=3,
+        retry_delay=timedelta(minutes=1),
+        execution_timeout=timedelta(minutes=10),
+        dag=dag,
+    )
+
+# Устанавливаем зависимости
+for task_id in operators:
+    if task_id != 'update_date_update':
+        operators[task_id] >> operators['update_date_update']

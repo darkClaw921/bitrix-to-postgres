@@ -13,25 +13,32 @@ RUN apt-get update \
 
 # Создаем необходимые директории и устанавливаем права
 RUN mkdir -p /opt/airflow/dags \
-    && mkdir -p /opt/airflow/logs \
+    && mkdir -p /opt/airflow/logs/scheduler \
+    && mkdir -p /opt/airflow/logs/dag_processor \
+    && mkdir -p /opt/airflow/logs/webserver \
+    && mkdir -p /opt/airflow/logs/worker \
     && mkdir -p /opt/airflow/plugins \
     && chown -R airflow:root /opt/airflow \
-    && chmod -R 777 /opt/airflow/dags \
-    && chmod -R 777 /opt/airflow/logs \
-    && chmod -R 777 /opt/airflow/plugins
+    && chmod -R 777 /opt/airflow
 
 # Создаем скрипт для установки прав при запуске
-COPY --chown=root:root <<EOF /docker-entrypoint.d/01-fix-permissions.sh
-#!/bin/bash
-chown -R airflow:root /opt/airflow/dags
-chown -R airflow:root /opt/airflow/logs
-chown -R airflow:root /opt/airflow/plugins
-chmod -R 777 /opt/airflow/dags
-chmod -R 777 /opt/airflow/logs
-chmod -R 777 /opt/airflow/plugins
-EOF
-
-RUN chmod +x /docker-entrypoint.d/01-fix-permissions.sh
+RUN echo '#!/bin/bash' > /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'set -x' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'echo "=== Текущий пользователь при запуске ===" ' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'id' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'whoami' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'echo "=== Создание директорий ===" ' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'mkdir -p /opt/airflow/logs/scheduler' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'mkdir -p /opt/airflow/logs/dag_processor' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'mkdir -p /opt/airflow/logs/webserver' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'mkdir -p /opt/airflow/logs/worker' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'echo "=== Установка прав доступа ===" ' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'chown -R airflow:root /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'chmod -R 777 /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'echo "=== Проверка прав доступа ===" ' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'ls -la /opt/airflow' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && echo 'ls -la /opt/airflow/logs' >> /docker-entrypoint.d/01-fix-permissions.sh \
+    && chmod +x /docker-entrypoint.d/01-fix-permissions.sh
 
 # Переключаемся на пользователя airflow для установки Python пакетов
 USER airflow
@@ -48,10 +55,11 @@ COPY --chown=airflow:root . .
 ENV AIRFLOW_HOME=/opt/airflow
 ENV PYTHONPATH="/opt/airflow"
 
-# Финальная проверка прав доступа
+# Финальная проверка и установка прав
 USER root
 RUN chown -R airflow:root /opt/airflow \
-    && chmod -R 777 /opt/airflow/dags \
-    && chmod -R 777 /opt/airflow/logs \
-    && chmod -R 777 /opt/airflow/plugins
+    && chmod -R 777 /opt/airflow \
+    && echo "=== Финальная проверка прав ===" \
+    && ls -la /opt/airflow \
+    && ls -la /opt/airflow/logs
 USER airflow

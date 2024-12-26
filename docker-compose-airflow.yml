@@ -19,6 +19,7 @@ x-airflow-common:
     PYTHONPATH: "/opt/airflow"
     AIRFLOW_HOME: "/opt/airflow"
     WEBHOOK: ${WEBHOOK}
+    
   volumes:
     - type: bind
       source: ./bitrix_to_postgres/dags
@@ -40,6 +41,7 @@ x-airflow-common:
       target: /opt/airflow/bitrix_to_postgres
       bind:
         create_host_path: true
+  user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     postgres-2:
       condition: service_healthy

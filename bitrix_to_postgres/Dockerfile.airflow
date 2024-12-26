@@ -23,10 +23,8 @@ RUN mkdir -p /opt/airflow/dags \
     && chmod -R 777 /opt/airflow
 
 # Создаем скрипт для установки прав при запуске
-RUN mkdir -p /docker-entrypoint.d && \
-    cat > /docker-entrypoint.d/01-fix-permissions.sh << 'EOF'
+COPY <<-"EOF" /docker-entrypoint.d/01-fix-permissions.sh
 #!/bin/bash
-set -x
 echo "=== Текущий пользователь при запуске ==="
 id
 whoami

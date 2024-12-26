@@ -1,5 +1,13 @@
-docker exec -u root -it airflow@9efd71ca9624 /bin/bash
-chmod -R 777 /opt/airflow/logs
-chmod -R 777 /opt/airflow/dags
-chmod -R 777 /opt/airflow/plugins
-chmod -R 777 /opt/airflow/bitrix_to_postgres
+# Bitrix to Postgres Connector
+
+Сервис для синхронизации данных между Bitrix24 и PostgreSQL.
+
+## Компоненты
+- FastAPI сервис
+- Airflow для управления задачами
+- PostgreSQL для хранения данных
+
+## Установка и запуск
+1. Убедитесь, что у вас установлен Docker и Docker Compose
+2. Создайте файл .env с необходимыми переменными окружения
+3. Запустите сервисы командой: `docker-compose -f docker-compose-airflow.yml up -d`

@@ -638,8 +638,13 @@ async def get_all_status_pipeline(ENTITY_ID:str='DEAL_STAGE')->list[dict]:
     #     json.dump(status, file)
     prepareStatus=[]
     for element in status:
-        if ENTITY_ID.startswith(element.get('ENTITY_ID')):
-            prepareStatus.append(element)
+        
+        # if ENTITY_ID.startswith(element.get('ENTITY_ID')):
+        try:
+            if element.get('ENTITY_ID').startswith(ENTITY_ID):
+                prepareStatus.append(element)
+        except:
+            print(f'{element.get('ENTITY_ID')=} {ENTITY_ID=}')
     return prepareStatus
 
 async def get_all_status()->list:

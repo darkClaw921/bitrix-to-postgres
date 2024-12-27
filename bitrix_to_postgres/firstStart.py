@@ -571,8 +571,9 @@ async def delete_records():
         print(f"Ошибка при удалении записи: {str(e)}")
 
 if __name__ == '__main__':
-    # asyncio.run(drop_table())
+    # status= asyncio.run(workBitrix.get_all_status())
+    # pprint(status)
     asyncio.run(main())
-    pass
+    # pass
     # asyncio.run(delete_records())
     # asyncio.run(update_records_task())

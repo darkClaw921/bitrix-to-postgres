@@ -7,7 +7,7 @@ x-airflow-common:
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-2/${POSTGRES_DB}
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-2/airflow
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
@@ -20,11 +20,13 @@ x-airflow-common:
     PYTHONPATH: "/opt/airflow"
     AIRFLOW_HOME: "/opt/airflow"
     WEBHOOK: ${WEBHOOK}
+    WEBHOOK-test: ${WEBHOOK-test}
     TZ: 'Europe/Moscow'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     POSTGRES_USER: ${POSTGRES_USER}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     POSTGRES_DB: ${POSTGRES_DB}
+
   volumes:
     - ./bitrix_to_postgres/dags:/opt/airflow/dags
     - ./bitrix_to_postgres/logs:/opt/airflow/logs

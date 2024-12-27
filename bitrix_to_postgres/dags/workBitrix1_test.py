@@ -9,7 +9,7 @@ NAME_APP='H_'
 import os
 load_dotenv()
 
-WEBHOOK=os.getenv('WEBHOOK')
+WEBHOOK=os.getenv('WEBHOOK-test')
 bit = BitrixAsync(WEBHOOK, ssl=False)
 print(f'{WEBHOOK=}')
 
@@ -660,6 +660,7 @@ async def get_all_status_pipeline(ENTITY_ID:str='DEAL_STAGE')->list[dict]:
     #     json.dump(status, file)
     prepareStatus=[]
     for element in status:
+        # if ENTITY_ID.startswith(element.get('ENTITY_ID')):
         try:
             if element.get('ENTITY_ID').startswith(ENTITY_ID):
                 prepareStatus.append(element)

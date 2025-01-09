@@ -31,8 +31,8 @@ default_args = {
 dag = DAG(
     'update_bitrix_tables',
     default_args=default_args,
-    description='Обновление таблиц Bitrix каждые 15 минут',
-    schedule_interval='*/15 * * * *',
+    description='Обновление таблиц Bitrix каждые 30 минут',
+    schedule_interval='*/30 * * * *',
     start_date=datetime(2023, 12, 1),
     catchup=False,
     tags=['bitrix'],
@@ -318,7 +318,7 @@ for task_id, task_func in tasks.items():
         python_callable=lambda f=task_func: run_async(f),
         retries=3,
         retry_delay=timedelta(minutes=1),
-        execution_timeout=timedelta(minutes=14),
+        execution_timeout=timedelta(minutes=25),
         dag=dag,
     )
 

@@ -606,6 +606,7 @@ async def get_all_event_by_user(userID:str=None,last_update=None)->list:
 async def get_all_event(last_update=None)->list:
     users=await get_all_user()
     events=[]
+    print(f'{len(users)=}')
     for user in users:
         userID=user.get('ID')
         events=await get_all_event_by_user(userID,last_update)
@@ -743,7 +744,6 @@ async def update_history_date_for_deal(dealID, stageID:str=None):
     pprint(items)
     if deal[poleHistory]=='':
         await bit.call('crm.deal.update',items=items)
-
 
 
 

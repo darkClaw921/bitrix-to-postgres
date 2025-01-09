@@ -198,8 +198,11 @@ async def update_tasks():
 
 async def update_events():
     """Инкрементное обновление таблицы event_fields"""
+    print('начали update_events')
     last_update = await get_last_update_date('event_fields')
+    print(f'{last_update=}')
     events = await bit.get_all_event(last_update=last_update)
+    print(f'{len(events)=}')
     for event in events:
         print(f'{event["ID"]=} обработан')
         existing_record = await get_record('event_fields', str(event['ID']))
@@ -323,3 +326,5 @@ for task_id, task_func in tasks.items():
 for task_id in operators:
     if task_id != 'update_date_update':
         operators[task_id] >> operators['update_date_update']
+        
+# update_events()

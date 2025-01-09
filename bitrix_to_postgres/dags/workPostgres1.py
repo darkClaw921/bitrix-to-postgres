@@ -19,8 +19,8 @@ url = os.environ.get('POSTGRES_URL')
 
 # Создаем асинхронное подключение к базе данных
 engine = create_async_engine(
-    f'postgresql+asyncpg://{userName}:{password}@{url}:5432/{db}',
-    # f'postgresql+asyncpg://{userName}:{password}@postgres-2:5432/{db}',
+    # f'postgresql+asyncpg://{userName}:{password}@{url}:5432/{db}',
+    f'postgresql+asyncpg://{userName}:{password}@postgres-2:5432/{db}',
     pool_size=5,  # Максимальное количество постоянных подключений
     max_overflow=10,  # Максимальное количество временных подключений
     pool_timeout=30,  # Таймаут ожидания доступного подключения

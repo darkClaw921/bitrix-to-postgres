@@ -607,10 +607,10 @@ async def get_all_event(last_update=None)->list:
     users=await get_all_user()
     events=[]
     print(f'{len(users)=}')
-    for user in users:
+    for i, user in enumerate(users):
         userID=user.get('ID')
         events=await get_all_event_by_user(userID,last_update)
-        print(f'{userID=} {len(events)=}')
+        print(f'{userID=} {len(events)=} {i=}')
         events.extend(events)
     print(f'{len(events)=}')
     # events.extend(await get_all_event_by_user(last_update=last_update))

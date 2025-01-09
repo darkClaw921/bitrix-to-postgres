@@ -201,6 +201,7 @@ async def update_events():
     last_update = await get_last_update_date('event_fields')
     events = await bit.get_all_event(last_update=last_update)
     for event in events:
+        print(f'{event["ID"]=} обработан')
         existing_record = await get_record('event_fields', str(event['ID']))
         if existing_record:
             await update_record('event_fields', event)

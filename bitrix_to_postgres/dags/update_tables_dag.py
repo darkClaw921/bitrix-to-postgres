@@ -318,7 +318,7 @@ for task_id, task_func in tasks.items():
         python_callable=lambda f=task_func: run_async(f),
         retries=3,
         retry_delay=timedelta(minutes=1),
-        execution_timeout=timedelta(minutes=10),
+        execution_timeout=timedelta(minutes=14),
         dag=dag,
     )
 

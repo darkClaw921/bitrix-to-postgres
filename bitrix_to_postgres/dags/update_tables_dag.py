@@ -24,7 +24,7 @@ default_args = {
     'retries': 3,
     'retry_delay': timedelta(minutes=1),
     'retry_exponential_backoff': True,
-    'max_retry_delay': timedelta(minutes=5),
+    'max_retry_delay': timedelta(minutes=13),
 }
 
 # Создаем DAG

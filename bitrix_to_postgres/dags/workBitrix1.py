@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pprint import pprint
 from fast_bitrix24 import BitrixAsync
 from dotenv import load_dotenv
@@ -611,6 +611,7 @@ async def get_all_event(last_update=None)->list:
         userID=user.get('ID')
         events=await get_all_event_by_user(userID,last_update)
         print(f'{userID=} {len(events)=} {i=}')
+        time.sleep(1)
         events.extend(events)
     print(f'{len(events)=}')
     # events.extend(await get_all_event_by_user(last_update=last_update))

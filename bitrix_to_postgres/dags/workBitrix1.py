@@ -587,7 +587,7 @@ async def get_all_event_by_user(userID:str=None,last_update=None)->list:
             'type': 'company_calendar',
             'ownerId': '',   
         }
-        
+        print(items)
     else:
         items={
             'type': 'user',
@@ -598,7 +598,7 @@ async def get_all_event_by_user(userID:str=None,last_update=None)->list:
     if last_update:
         # items['filter']['>TIMESTAMP_X'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
         items['from'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
-
+    # print(items)
     event=await bit.get_all('calendar.event.get',params=items)
     # event=event['result']
     return event
@@ -612,7 +612,7 @@ async def get_all_event(last_update=None)->list:
         print(f'{userID=} {len(events)=}')
         events.extend(events)
 
-    events.extend(await get_all_event_by_user(last_update=last_update))
+    # events.extend(await get_all_event_by_user(last_update=last_update))
     return events
 
 
@@ -773,6 +773,7 @@ async def main():
     # pprint(prepareFields)
 
 if __name__ == '__main__':
-    # asyncio.run(get_all_fields_deal())
+    # a=asyncio.run(get_all_event_by_user(userID='138',last_update=datetime.now()-timedelta(days=20)))
+    # pprint(a)
     asyncio.run(main())
     # asyncio.run(get_userfields(234))

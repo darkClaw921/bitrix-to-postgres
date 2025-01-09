@@ -1,8 +1,8 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from pprint import pprint
 from fast_bitrix24 import BitrixAsync
 from dotenv import load_dotenv
-
+import time
 import asyncio
 
 NAME_APP='H_'

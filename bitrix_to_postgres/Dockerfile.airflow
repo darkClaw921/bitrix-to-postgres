@@ -52,7 +52,7 @@ ENV PYTHONPATH="/opt/airflow"
 
 # Копируем скрипт очистки логов
 COPY cleanup_logs.sh /cleanup_logs.sh
-RUN chmod +x /cleanup_logs.sh
+# RUN chmod +x /cleanup_logs.sh
 
 # Добавляем задачу в crontab
-RUN echo "0 * * * * /cleanup_logs.sh" >> /etc/crontab
+# RUN echo "0 * * * * /cleanup_logs.sh" >> /etc/crontab

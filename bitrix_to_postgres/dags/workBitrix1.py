@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import time
 import asyncio
 
+from tqdm import tqdm
+
 NAME_APP='H_'
 import os
 load_dotenv()
@@ -356,7 +358,7 @@ async def get_all_contact(last_update=None):
 async def get_task(taskID):
     items={
         'taskId':taskID,
-        'select':['*', 'UF_'],
+        'select':['*', 'UF_', 'TAGS'],
     }
     task=await bit.call('tasks.task.get',items=items,raw=True)
     task=task['result']['task']
@@ -605,17 +607,22 @@ async def get_all_event_by_user(userID:str=None,last_update=None)->list:
 
 async def get_all_event(last_update=None)->list:
     users=await get_all_user()
-    events=[]
+    eventsAll=[]
     print(f'{len(users)=}')
     for i, user in enumerate(users):
         userID=user.get('ID')
         events=await get_all_event_by_user(userID,last_update)
         print(f'{userID=} {len(events)=} {i=}')
+        for event in events:
+            event.setdefault('bitrix_id',event['ID'])
+        
         time.sleep(1.6)
-        events.extend(events)
-    print(f'{len(events)=}')
+        print(f'добавили {len(events)=} событий')
+        eventsAll.extend(events)
+        print(f'всего событий {len(eventsAll)=}')
+    # print(f'{len(events)=}')
     # events.extend(await get_all_event_by_user(last_update=last_update))
-    return events
+    return eventsAll
 
 
 
@@ -746,6 +753,15 @@ async def update_history_date_for_deal(dealID, stageID:str=None):
     if deal[poleHistory]=='':
         await bit.call('crm.deal.update',items=items)
 
+async def get_tags_task(taskID:int):
+    items={
+        'taskId':taskID,
+        'select':['TAGS'],
+    }
+    
+    tags=await bit.call('tasks.task.get',items=items)
+    tags=tags['tags']
+    return tags
 
 
 
@@ -756,8 +772,18 @@ async def main():
     # pprint(prepareFields)
     # user=await get_lead(10865)
     # pprint(user)
-    status=await get_history_move_lead()
-    pprint(status)
+    # status=await get_history_move_lead()
+    # events=await get_all_event_by_user('1',datetime.now()-timedelta(days=400))
+    
+    # pprint(events)
+    # print(f'{len(events)=}')
+    # for event in events:
+    #     event.setdefault('bitrix_id',event['ID']) 
+    tags=await get_task(30651)
+    pprint(tags)
+    # a=['1']
+    # a.extend(events)
+    # print(f'{len(a)=}')
     # types=await get_all_user_fields()
     # pprint(types)
     # for type in types:

@@ -725,8 +725,30 @@ async def update_history_date_for_deal(dealID, stageID:str=None):
         await bit.call('crm.deal.update',items=items)
 
 
+async def update_events():
+    """Инкрементное обновление таблицы event_fields"""
+    print('начали update_events')
+    # last_update = await get_last_update_date('event_fields')
+    # print(f'{last_update=}')
+    events = get_all_event(last_update=datetime.now())
+    print(f'{len(events)=}')
+    # for event in events:
+    #     print(f'{event["ID"]=} обработан')
+    #     existing_record = await get_record('event_fields', str(event['ID']))
+    #     if existing_record:
+    #         await update_record('event_fields', event)
+    #     else:
+    #         await insert_record('event_fields', event)
 
-
+async def get_tags_task(taskID:int):
+    items={
+        'taskId':taskID,
+        'select':['TAGS'],
+    }
+    
+    tags=await bit.call('tasks.task.get',items=items)
+    tags=tags['tags']
+    return tags
 
 async def main():
     #Deal
@@ -735,8 +757,11 @@ async def main():
     # pprint(prepareFields)
     # user=await get_lead(10865)
     # pprint(user)
-    status=await get_all_user()
-    pprint(status)
+    # status=await get_all_user()
+    # pprint(status)
+    # print(len(status))
+    tags=await get_tags_task(30651)
+    pprint(tags)
     # types=await get_all_user_fields()
     # pprint(types)
     # for type in types:

@@ -200,11 +200,17 @@ async def update_events():
     """Инкрементное обновление таблицы event_fields"""
     print('начали update_events')
     last_update = await get_last_update_date('event_fields')
+    # last_update=datetime.now()-timedelta(days=400)
     print(f'{last_update=}')
     events = await bit.get_all_event(last_update=last_update)
     print(f'{len(events)=}')
+    last_event_id=0
     for event in events:
         print(f'{event["ID"]=} обработан')
+        if last_event_id!=event['ID']:
+            last_event_id=event['ID']
+        else:
+            continue
         existing_record = await get_record('event_fields', str(event['ID']))
         if existing_record:
             await update_record('event_fields', event)

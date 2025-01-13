@@ -6,6 +6,7 @@ import asyncio
 from tqdm.asyncio import tqdm
 
 async def main():
+    
     #Deal
     fields=await workBitrix.get_all_fields_deal()
     userFields=await workBitrix.get_all_userfields_deal()
@@ -61,9 +62,11 @@ async def main():
     prepareFields=workBitrix.prepare_fields_task_to_postgres(fields)
     
     allFields=prepareFields
+    # type{'443': {'id': 443, 'title': 'Оплата'}}
+    allFields.append({'fieldID':'tags','fieldType':'json'})
     await workPostgres.create_table_from_fields('task_fields',allFields)
 
-
+    
     #User
     fields=await workBitrix.get_all_user_fields()
     userFields=await workBitrix.get_all_user_userfield()

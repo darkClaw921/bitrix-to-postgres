@@ -21,6 +21,7 @@ url = os.environ.get('POSTGRES_URL')
 # db='bitrix-test'
 db='bitrix'
 url='postgres-2'
+# url='192.168.1.73'
 
 # Создаем асинхронное подключение к базе данных
 # engine = create_async_engine(

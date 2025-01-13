@@ -134,8 +134,8 @@ async def update_user():
 async def get_last_update_date(table_name: str) -> datetime:
     """Получение даты последнего обновления таблицы"""
     record = await get_record('date_update', f"{table_name}_latest")
-    if record and hasattr(record, 'last_update'):
-        return record.last_update
+    if record: 
+        return record.created_date
     return datetime(2023, 1, 1)  # Если нет записи, возвращаем начальную дату
 
 async def update_deals():
@@ -334,3 +334,5 @@ for task_id in operators:
         operators[task_id] >> operators['update_date_update']
         
 # update_events()
+# last_update = asyncio.run(get_last_update_date('event_fields'))
+# print(f'{last_update=}')

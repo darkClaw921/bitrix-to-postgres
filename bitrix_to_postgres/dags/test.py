@@ -32,4 +32,13 @@ async def update_events():
         else:
             await insert_record('event_fields', event)
 
-asyncio.run(update_events())
+async def get_last_update_date(table_name: str) -> datetime:
+    """Получение даты последнего обновления таблицы"""
+    record = await get_record('date_update', f"{table_name}_latest")
+    print(f'{record=}')
+    if record :
+        return record.created_date
+    return datetime(2023, 1, 1)  # Если нет записи, возвращаем начальную дату
+
+a=asyncio.run(get_last_update_date('event_fields'))
+print(a)

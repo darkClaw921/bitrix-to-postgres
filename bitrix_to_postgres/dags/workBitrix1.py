@@ -584,6 +584,7 @@ async def get_event(eventID:str)->list:
     return event
 
 async def get_all_event_by_user(userID:str=None,last_update=None)->list:
+    now=datetime.now()
     if userID is None:
         items={
             'type': 'company_calendar',
@@ -595,7 +596,7 @@ async def get_all_event_by_user(userID:str=None,last_update=None)->list:
             'type': 'user',
             'ownerId': userID,  
             'from': last_update.strftime('%Y-%m-%d'),
-            # 'to': last_update.strftime('%Y-%m-%dT%H:%M:%S'),
+            'to': now.strftime('%Y-%m-%d'),
         }
     if last_update:
         # items['filter']['>TIMESTAMP_X'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')

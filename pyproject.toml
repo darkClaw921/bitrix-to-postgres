@@ -4,6 +4,7 @@ version = "0.1.0"
 description = ""
 authors = ["Igor Gerasimov <gerasimov.igor.98@icloud.com>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -13,7 +14,6 @@ asyncpg = "^0.30.0"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.36"}
 fastapi = "^0.115.5"
 uvicorn = "^0.32.1"
-
 
 [build-system]
 requires = ["poetry-core"]

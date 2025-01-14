@@ -53,8 +53,8 @@ async def read_root():
     await firstStart.main()
     return {"message": "Hello, World!"}
 
-@app.get("/fist_start_1234radsf2")
-async def read_root():
+@app.get("/fist_start_1234rads2")
+async def read_root2():
     await firstStart.main2()
     return {"message": "Hello, World!"}
 

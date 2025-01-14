@@ -53,6 +53,11 @@ async def read_root():
     await firstStart.main()
     return {"message": "Hello, World!"}
 
+@app.get("/fist_start_1234radsf2")
+async def read_root():
+    await firstStart.main2()
+    return {"message": "Hello, World!"}
+
 @app.post('/update')
 async def update_deal(request: Request):
     body = await request.body()

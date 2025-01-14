@@ -1,3 +1,4 @@
+import time
 import workBitrix
 import workPostgres
 from pprint import pprint
@@ -64,9 +65,45 @@ async def main():
     allFields=prepareFields
     # type{'443': {'id': 443, 'title': 'Оплата'}}
     allFields.append({'fieldID':'tags','fieldType':'json'})
+    allFields.append({'fieldID':'group','fieldType':'json'})
     await workPostgres.create_table_from_fields('task_fields',allFields)
 
+
+    #TaskComment
+    prepareFields=[
+        # {'fieldID':'id','fieldType':'string',},
+        {'fieldID':'bitrix_id','fieldType':'string',},
+        {'fieldID':'task_id','fieldType':'string',},
+        {'fieldID':'author_id','fieldType':'string',},
+        {'fieldID':'author_name','fieldType':'string',},
+        {'fieldID':'post_message','fieldType':'string',},
+        {'fieldID':'post_date','fieldType':'datetime',},
+        {'fieldID':'attached_objects','fieldType':'json',},
+        # {'fieldID':'attached_files','fieldType':'json',},
+    ]
+    await workPostgres.create_table_from_fields('task_comment_fields',prepareFields)
+
+
+
+    #TaskResult
+    prepareFields=[
+        {'fieldID':'bitrix_id','fieldType':'string',},
+        {'fieldID':'task_id','fieldType':'string',},
+        {'fieldID':'text','fieldType':'string',},
+        {'fieldID':'createdat','fieldType':'datetime',},
+        {'fieldID':'updatedat','fieldType':'datetime',},
+        {'fieldID':'createdby','fieldType':'string',},
+        {'fieldID':'files','fieldType':'array',},
+        {'fieldID':'status','fieldType':'string',},
+        {'fieldID':'commentid','fieldType':'string',},
+
+
+        
+    ]
+    await workPostgres.create_table_from_fields('task_result_fields',prepareFields)
     
+
+
     #User
     fields=await workBitrix.get_all_user_fields()
     userFields=await workBitrix.get_all_user_userfield()
@@ -536,6 +573,80 @@ async def insert_records():
     await tqdm.gather(*tasks, desc="Обработка токенов")
 
 
+    #Обработка комментариев задач
+    tasksBitrix=await workBitrix.get_all_task()
+    task_and_comments=await workBitrix.get_task_comments_batc(tasks=tasksBitrix)
+    #dict['taskID':['coment1','coment2']]
+    print('Всего записей Комментарии к задачам ',len(task_and_comments))
+
+    async def process_task_comments(task_id,task_comments):
+        async with semaphore:
+            try:
+                for comment in task_comments:
+                    commenta={
+                        'task_id':task_id,
+                        'bitrix_id':comment.get('ID'),
+                        'author_id':comment.get('AUTHOR_ID'),
+                        'author_name':comment.get('AUTHOR_NAME'),
+                        'post_message':comment.get('POST_MESSAGE'),
+                        'post_date':comment.get('POST_DATE'),
+                        'attached_objects':comment.get('ATTACHED_OBJECTS'),
+                    }
+                    await workPostgres.insert_record('task_comment_fields', commenta)
+
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_task_comments(task_id,task_comments) for task_id,task_comments in task_and_comments.items()]
+    await tqdm.gather(*tasks, desc="Обработка комментариев задач")
+            
+
+    #Обработка результатов задач
+    results=await workBitrix.get_result_task_comments(tasks=tasksBitrix)
+    print(f'Всего записей ResultTask: {len(results)}')
+    async def process_result_task(taskID,results):
+        async with semaphore:
+            try:
+                for result in results:
+                    result={
+                        'bitrix_id':result.get('id'),
+                        'task_id':taskID,
+                        'text':result.get('text'),
+                        'createdat':result.get('createdAt'),
+                        'updatedat':result.get('updatedAt'),
+                        'createdby':result.get('createdBy'),
+                        'files':result.get('files'),
+                        'status':result.get('status'),
+                        'commentid':result.get('commentId'),
+                    }
+                    await workPostgres.insert_record('result_task', result)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_result_task(taskID,results) for taskID,results in results.items()]
+    await tqdm.gather(*tasks, desc="Обработка результатов задач")
+
+
+    # for task_id, task_comments in task_and_comments.items():
+    #     for task_comment in task_comments:
+    #         task_comment={
+    #             # 'id':task.get('id'),
+    #             'task_id':task_id,
+    #             'bitrix_id':task_comment.get('ID'),
+    #             'author_id':task_comment.get('AUTHOR_ID'),
+    #             'author_name':task_comment.get('AUTHOR_NAME'),
+    #             'post_message':task_comment.get('POST_MESSAGE'),
+    #             'post_date':task_comment.get('POST_DATE'),
+    #             'attached_objects':task_comment.get('ATTACHED_OBJECTS'),
+    #         }
+           
+    #         await workPostgres.insert_record('task_comment_fields', task_comment)
+
+
+
+
+
+
 
 async def drop_table():
     await workPostgres.drop_table('deal_fields')
@@ -573,10 +684,66 @@ async def delete_records():
     except Exception as e:
         print(f"Ошибка при удалении записи: {str(e)}")
 
+
+
+async def main2():
+    #Обработка комментариев задач
+    semaphore = asyncio.Semaphore(5)  # Ограничиваем до 5 одновременных подключений
+    tasksBitrix= await workBitrix.get_all_task()
+    task_and_comments=await workBitrix.get_task_comments_batc(tasks=tasksBitrix)
+    #dict['taskID':['coment1','coment2']]
+    print('Всего записей Комментарии к задачам ',len(task_and_comments))
+
+    async def process_task_comments(task_id,task_comments):
+        async with semaphore:
+            try:
+                for comment in task_comments:
+                    commenta={
+                        'task_id':task_id,
+                        'bitrix_id':comment.get('ID'),
+                        'author_id':comment.get('AUTHOR_ID'),
+                        'author_name':comment.get('AUTHOR_NAME'),
+                        'post_message':comment.get('POST_MESSAGE'),
+                        'post_date':comment.get('POST_DATE'),
+                        'attached_objects':comment.get('ATTACHED_OBJECTS'),
+                    }
+                    await workPostgres.insert_record('task_comment_fields', commenta)
+
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_task_comments(task_id,task_comments) for task_id,task_comments in task_and_comments.items()]
+    await tqdm.gather(*tasks, desc="Обработка комментариев задач")
+
+    #Обработка результатов задач
+    results=await workBitrix.get_result_task_comments(tasks=tasksBitrix)
+    print(f'Всего записей ResultTask: {len(results)}')
+    async def process_result_task(taskID,results):
+        async with semaphore:
+            try:
+                for result in results:
+                    taskResult={
+                        'bitrix_id':result.get('id'),
+                        'task_id':taskID,
+                        'text':result.get('text'),
+                        'createdat':result.get('createdAt'),
+                        'updatedat':result.get('updatedAt'),
+                        'createdby':result.get('createdBy'),
+                        'files':result.get('files'),
+                        'status':result.get('status'),
+                        'commentid':result.get('commentId'),
+                    }
+                    await workPostgres.insert_record('task_result_fields', taskResult)
+            except Exception as e:
+                print(f"Ошибка при добавлении записи: {str(e)}")
+
+    tasks = [process_result_task(taskID,results) for taskID,results in results.items()]
+    await tqdm.gather(*tasks, desc="Обработка результатов задач")
+
 if __name__ == '__main__':
     # status= asyncio.run(workBitrix.get_all_status())
     # pprint(status)
-    asyncio.run(main())
+    asyncio.run(main2())
     # pass
     # asyncio.run(delete_records())
     # asyncio.run(update_records_task())

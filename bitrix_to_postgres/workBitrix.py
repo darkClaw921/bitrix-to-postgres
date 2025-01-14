@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 
 import asyncio
 
+from tqdm import tqdm
+
 NAME_APP='H_'
 import os
 load_dotenv()
@@ -380,7 +382,7 @@ async def get_all_task()->list:
         'filter':{
             '>taskId':0,
         },
-        'select':['*', 'UF_*'],
+        'select':['*', 'UF_*', 'TAGS'],
     }
     tasks=await bit.get_all('tasks.task.list',params=items)
     tasks=tasks
@@ -750,6 +752,78 @@ async def get_tags_task(taskID:int):
     tags=tags['tags']
     return tags
 
+
+async def get_history_task(taskID:int):
+    items={
+        'taskId':taskID,
+    }
+    history=await bit.get_all('tasks.task.history.list',params=items)
+    history=history
+    return history
+
+async def get_result_task(taskID:int):
+    items={
+        'taskId':taskID,
+    }
+    result=await bit.get_all('tasks.task.result.list',params=items)
+    result=result
+    return result
+
+
+async def get_comment_task(taskID:int):
+    items={
+        'taskId':taskID,
+    }
+    comment=await bit.get_all('task.commentitem.getlist',params=items)
+    comment=comment
+    return comment
+
+
+async def get_task_comments_batc(tasks:list):
+    """Получение комментариев к задачам"""
+    # пакетно получаем комментарии к задачам по 50 задач
+    # tasks=await get_all_task()
+    
+    i=0
+    commands={}
+    results={}
+    for task in tqdm(tasks,desc='Получение комментариев к задачам'):
+        i+=1
+        if i>48:
+            results.update(await bit.call_batch ({
+                'halt': 0,
+                'cmd': commands
+            }))
+
+            commands={}
+            i=0
+        commands[f'{task["id"]}']=f'task.commentitem.getlist?taskId={task["id"]}'
+    return results
+
+async def get_result_task_comments(tasks:list):
+    """Получение результатов задач"""
+    i=0
+    commands={}
+    results={}
+    for task in tqdm(tasks, 'Получение результатов задач'):
+        i+=1
+        if i>48:
+            results.update(await bit.call_batch ({
+                'halt': 0,
+                'cmd': commands
+            }))
+
+            commands={}
+            i=0
+
+        commands[f'{task["id"]}']=f'tasks.task.result.list?taskId={task["id"]}'
+    
+    # pprint(results)
+    return results
+
+
+
+
 async def main():
     #Deal
     # fields= await get_all_userfields_deal()
@@ -760,8 +834,9 @@ async def main():
     # status=await get_all_user()
     # pprint(status)
     # print(len(status))
-    tags=await get_tags_task(30651)
-    pprint(tags)
+    # history=await get_result_task(30255)
+    history=await get_comment_task(30253)
+    pprint(history)
     # types=await get_all_user_fields()
     # pprint(types)
     # for type in types:

@@ -217,6 +217,61 @@ async def update_events():
         else:
             await insert_record('event_fields', event)
 
+
+async def update_task_comments():
+    """Инкрементное обновление таблицы task_comment_fields"""
+    last_update = await get_last_update_date('task_fields')
+    tasks = await bit.get_all_task(last_update=last_update)
+    task_comments=await bit.get_task_comments_batc(tasks=tasks)
+    for taskID, task_comments in task_comments.items():
+        for task_comment in task_comments:
+            task_comment={
+                'bitrix_id':task_comment.get('id'),
+                'task_id':taskID,
+                'author_id':task_comment.get('authorId'),
+                'author_name':task_comment.get('authorName'),
+                'post_message':task_comment.get('postMessage'),
+                'post_date':task_comment.get('postDate'),
+                'attached_objects':task_comment.get('attachedObjects'),
+            }
+            existing_record = await get_record('task_comment_fields', str(task_comment['bitrix_id']))
+            if existing_record:
+                await update_record('task_comment_fields', task_comment)
+            else:
+                await insert_record('task_comment_fields', task_comment)
+
+
+async def update_task_results():
+    """Инкрементное обновление таблицы task_result_fields"""
+    last_update = await get_last_update_date('task_fields')
+    tasks = await bit.get_all_task(last_update=last_update)
+    task_results=await bit.get_result_task_comments(tasks=tasks)
+
+    for taskID, task_results in task_results.items():
+        for task_result in task_results:
+            task_result={
+                'bitrix_id':task_result.get('id'),
+                'task_id':taskID,
+                'text':task_result.get('text'),
+                'createdat':task_result.get('createdAt'),
+                'updatedat':task_result.get('updatedAt'),
+                'createdby':task_result.get('createdBy'),
+                'files':task_result.get('files'),
+                'status':task_result.get('status'),
+                'commentid':task_result.get('commentId'),
+            }
+            existing_record = await get_record('task_result_fields', str(task_result['bitrix_id']))
+            if existing_record:
+                await update_record('task_result_fields', task_result)
+            else:
+                await insert_record('task_result_fields', task_result)
+
+
+
+
+
+
+
 # async def update_dynamic_items():
 #     """Инкрементное обновление таблиц dynamic_item_fields"""
 #     dynamic_types = await bit.get_all_dynamic_item()
@@ -247,7 +302,9 @@ async def update_date_update():
         'contact_fields',
         'lead_fields',
         'task_fields',
-        'event_fields'
+        'event_fields',
+        'task_comment_fields',
+        'task_result_fields'
     ]
     
     for table in tables:
@@ -314,7 +371,9 @@ tasks = {
     'update_tasks': update_tasks,
     'update_events': update_events,
     # 'update_dynamic_items': update_dynamic_items,
-    'update_date_update': update_date_update
+    'update_date_update': update_date_update,
+    'update_task_comments': update_task_comments,
+    'update_task_results': update_task_results
 }
 
 operators = {}

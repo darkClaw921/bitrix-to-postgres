@@ -392,15 +392,23 @@ async def get_all_task(last_update=None):
     """Получение всех задач с фильтрацией по дате обновления"""
     items = {
         'filter': {
-            '>taskId': 0,
+            # '>taskId': 0,
         },
-        'select': ['*', 'UF_*'],
+        'select': ['*', 'UF_*','TAGS'],
     }
     if last_update:
-        items['filter']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+        items['filter']['>CHANGED_DATE'] = last_update.strftime('%Y-%m-%d')
+    
+    print(items)
+    
     tasks = await bit.get_all('tasks.task.list', params=items)
+    # tasksFilter=[]
+    # for task in tasks:
+    #     dateModify=task.get('changedDate')
+    #     dateModify=datetime.strptime(dateModify, '%Y-%m-%d %H:%M:%S')
+    #     if dateModify>last_update:
+    #         tasksFilter.append(task)
     return tasks
-
 
 
 
@@ -532,7 +540,47 @@ def prepare_dynamic_item_field_to_postgres(fields:dict,entityTypeId:int)->list:
         })
     return fieldsToPostgres
 
+async def get_task_comments_batc(tasks:list):
+    """Получение комментариев к задачам"""
+    # пакетно получаем комментарии к задачам по 50 задач
+    # tasks=await get_all_task()
+    
+    i=0
+    commands={}
+    results={}
+    for task in tqdm(tasks,desc='Получение комментариев к задачам'):
+        i+=1
+        if i>48:
+            results.update(await bit.call_batch ({
+                'halt': 0,
+                'cmd': commands
+            }))
 
+            commands={}
+            i=0
+        commands[f'{task["id"]}']=f'task.commentitem.getlist?taskId={task["id"]}'
+    return results
+
+async def get_result_task_comments(tasks:list):
+    """Получение результатов задач"""
+    i=0
+    commands={}
+    results={}
+    for task in tqdm(tasks, 'Получение результатов задач'):
+        i+=1
+        if i>48:
+            results.update(await bit.call_batch ({
+                'halt': 0,
+                'cmd': commands
+            }))
+
+            commands={}
+            i=0
+
+        commands[f'{task["id"]}']=f'tasks.task.result.list?taskId={task["id"]}'
+    
+    # pprint(results)
+    return results
 
 
 #call
@@ -765,6 +813,22 @@ async def get_tags_task(taskID:int):
     return tags
 
 
+async def get_result_task(taskID:int):
+    items={
+        'taskId':taskID,
+    }
+    result=await bit.get_all('tasks.task.result.list',params=items)
+    result=result
+    return result
+
+
+async def get_comment_task(taskID:int):
+    items={
+        'taskId':taskID,
+    }
+    comment=await bit.get_all('task.commentitem.getlist',params=items)
+    comment=comment
+    return comment
 
 async def main():
     #Deal

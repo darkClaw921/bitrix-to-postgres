@@ -226,13 +226,13 @@ async def update_task_comments():
     for taskID, task_comments in task_comments.items():
         for task_comment in task_comments:
             task_comment={
-                'bitrix_id':task_comment.get('id'),
+                'bitrix_id':task_comment.get('ID'),
                 'task_id':taskID,
-                'author_id':task_comment.get('authorId'),
-                'author_name':task_comment.get('authorName'),
-                'post_message':task_comment.get('postMessage'),
-                'post_date':task_comment.get('postDate'),
-                'attached_objects':task_comment.get('attachedObjects'),
+                'author_id':task_comment.get('AUTHOR_ID'),
+                'author_name':task_comment.get('AUTHOR_NAME'),
+                'post_message':task_comment.get('POST_MESSAGE'),
+                'post_date':task_comment.get('POST_DATE'),
+                'attached_objects':task_comment.get('ATTACHED_OBJECTS'),
             }
             existing_record = await get_record('task_comment_fields', str(task_comment['bitrix_id']))
             if existing_record:

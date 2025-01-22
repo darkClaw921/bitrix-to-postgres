@@ -1,25 +1,30 @@
-#!/bin/bash
-
-# Максимальный размер всех логов (200MB в байтах)
-MAX_SIZE=209715200
-
-# Путь к директории с логами
-LOG_DIR="/opt/airflow/logs"
-
-# Получаем текущий размер логов
-CURRENT_SIZE=$(du -sb "$LOG_DIR" | cut -f1)
-
-# Если текущий размер превышает максимальный
-if [ "$CURRENT_SIZE" -gt "$MAX_SIZE" ]; then
-    # Удаляем старые файлы логов, оставляя самые новые
-    find "$LOG_DIR" -type f -name "*.log" -o -name "*.log.*" | \
-    sort -r | \
-    while read file; do
-        CURRENT_SIZE=$(du -sb "$LOG_DIR" | cut -f1)
-        if [ "$CURRENT_SIZE" -gt "$MAX_SIZE" ]; then
-            rm "$file"
-        else
-            break
-        fi
-    done
-fi 
+DO $$
+DECLARE
+    v_table_name text;
+    v_deleted_count int;
+BEGIN
+    FOR v_table_name IN 
+        SELECT t.table_name 
+        FROM information_schema.tables t
+        WHERE t.table_schema = 'public' 
+        AND t.table_name LIKE '%_fields'
+    LOOP
+        EXECUTE format('
+            WITH DuplicatesToDelete AS (
+                SELECT record_id,
+                       ROW_NUMBER() OVER (PARTITION BY bitrix_id ORDER BY record_id) as row_num
+                FROM public.%I
+                WHERE bitrix_id IS NOT NULL
+            )
+            DELETE FROM public.%I
+            WHERE record_id IN (
+                SELECT record_id 
+                FROM DuplicatesToDelete 
+                WHERE row_num > 1
+            )', v_table_name, v_table_name);
+            
+        GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+        
+        RAISE NOTICE 'Удалены дубликаты из таблицы: %. Удалено записей: %', v_table_name, v_deleted_count;
+    END LOOP;
+END $$;

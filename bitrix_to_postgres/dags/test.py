@@ -8,8 +8,9 @@ from tqdm import tqdm
 async def get_last_update_date(table_name: str) -> datetime:
     """Получение даты последнего обновления таблицы"""
     record = await get_record('date_update', f"{table_name}_latest")
-    if record and hasattr(record, 'last_update'):
-        return record.last_update
+    if record and hasattr(record, 'date_update'):
+        #преобразуем строку в datetime
+        return datetime.strptime(record.date_update, '%Y-%m-%d %H:%M:%S.%f')
     return datetime(2023, 1, 1)  # Если нет записи, возвращаем начальную дату
 
 async def update_events():
@@ -33,13 +34,13 @@ async def update_events():
         else:
             await insert_record('event_fields', event)
 
-async def get_last_update_date(table_name: str) -> datetime:
-    """Получение даты последнего обновления таблицы"""
-    record = await get_record('date_update', f"{table_name}_latest")
-    print(f'{record=}')
-    if record :
-        return record.created_date
-    return datetime(2023, 1, 1)  # Если нет записи, возвращаем начальную дату
+# async def get_last_update_date(table_name: str) -> datetime:
+#     """Получение даты последнего обновления таблицы"""
+#     record = await get_record('date_update', f"{table_name}_latest")
+#     print(f'{record=}')
+#     if record :
+#         return record.date_update
+#     return datetime(2023, 1, 1)  # Если нет записи, возвращаем начальную дату
 
 
 async def update_tasks():
@@ -152,5 +153,39 @@ async def update_task_results():
             else:
                 await insert_record('task_result_fields', task_result)
 
-
-asyncio.run(update_task_comments())
+async def update_date_update():
+    """Обновление таблицы date_update"""
+    tables = [
+        'history_move_deal',
+        'history_move_lead',
+        'department',
+        'category',
+        'status',
+        'token',
+        'call_fields',
+        'user_fields',
+        'deal_fields',
+        'company_fields',
+        'contact_fields',
+        'lead_fields',
+        'task_fields',
+        'event_fields',
+        'task_comment_fields',
+        'task_result_fields'
+    ]
+    
+    for table in tables:
+        update_info = {
+            'ID': f"{table}_latest",
+            'table_name': table,
+            'date_update': datetime.now(),
+            'status': 'success'
+        }
+        existing_record = await get_record('date_update', f"{table}_latest")
+        if existing_record:
+            await update_record('date_update', update_info)
+        else:
+            await insert_record('date_update', update_info)
+last_update = asyncio.run(get_last_update_date('task_fields'))
+print(f'{last_update=}')
+# asyncio.run(update_date_update())

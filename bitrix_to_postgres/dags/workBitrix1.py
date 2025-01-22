@@ -644,7 +644,7 @@ async def get_all_event_by_user(userID:str=None,last_update=None)->list:
             'type': 'user',
             'ownerId': userID,  
             'from': last_update.strftime('%Y-%m-%d'),
-            'to': now.strftime('%Y-%m-%d'),
+            # 'to': now.strftime('%Y-%m-%d'),
         }
     if last_update:
         # items['filter']['>TIMESTAMP_X'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')

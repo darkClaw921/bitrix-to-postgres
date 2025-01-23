@@ -11,5 +11,5 @@ sqlalchemy[asyncio]
 requests
 python-dotenv
 
-fast-bitrix24
+fast-bitrix24==1.8.3
 fastapi

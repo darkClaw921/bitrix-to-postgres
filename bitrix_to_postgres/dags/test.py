@@ -1,6 +1,6 @@
 from datetime import datetime,timedelta
 from pprint import pprint
-from workBitrix1 import get_all_event, get_all_task, get_comment_task, bit
+from workBitrix1 import get_all_event, get_all_task, get_comment_task, get_all_call
 from workPostgres1 import get_record, update_record, insert_record
 import asyncio
 from tqdm import tqdm
@@ -186,6 +186,21 @@ async def update_date_update():
             await update_record('date_update', update_info)
         else:
             await insert_record('date_update', update_info)
-last_update = asyncio.run(get_last_update_date('task_fields'))
-print(f'{last_update=}')
-# asyncio.run(update_date_update())
+
+async def update_call_fields():
+    """Обновление таблицы call_fields"""
+    calls = await get_all_call()
+    for call in calls:
+        existing_record = await get_record('call_fields', call['ID'])
+        if existing_record:
+            await update_record('call_fields', call)
+        else:
+            await insert_record('call_fields', call)
+
+async def main():
+    last_update = await update_call_fields()
+    print(f'{last_update=}')
+    # asyncio.run(update_date_update())
+
+if __name__ == '__main__':
+    asyncio.run(main())

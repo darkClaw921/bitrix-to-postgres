@@ -9,7 +9,7 @@ package-mode = false
 [tool.poetry.dependencies]
 python = "^3.12"
 python-dotenv = "^1.0.1"
-fast-bitrix24 = "^1.8.2"
+fast-bitrix24 = "^1.8.3"
 asyncpg = "^0.30.0"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.36"}
 fastapi = "^0.115.5"

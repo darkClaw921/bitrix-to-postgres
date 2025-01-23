@@ -617,7 +617,17 @@ async def get_all_call()->list[dict]:
 #   'SESSION_ID': '3351901428',
 #   'TRANSCRIPT_ID': None,
 #   'TRANSCRIPT_PENDING': 'N'}
-    call=await bit.get_all('voximplant.statistic.get')
+    params={
+        'FILTER':{
+            '>CALL_START_DATE':'2024-12-12',
+        },
+    }
+    # call=await bit.get_all('voximplant.statistic.get',params=params)
+    # call=await bit.call('voximplant.statistic.get',items=params)
+    call=await bit.get_all('voximplant.statistic.get',params=params)
+
+    # call=await bit.call('voximplant.statistic.get',raw=True)
+    # pprint(call)
     # call=call['result']
     return call
 

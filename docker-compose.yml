@@ -27,7 +27,7 @@ x-airflow-common:
     PYTHONPATH: "/opt/airflow"
     AIRFLOW_HOME: "/opt/airflow"
     WEBHOOK: ${WEBHOOK}
-    WEBHOOK-2: ${WEBHOOK-2}
+    WEBHOOK2: ${WEBHOOK2}
     TZ: 'Europe/Moscow'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     POSTGRES_USER: ${POSTGRES_USER}

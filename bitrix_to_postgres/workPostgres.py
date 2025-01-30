@@ -19,7 +19,7 @@ password = os.environ.get('POSTGRES_PASSWORD')
 db = os.environ.get('POSTGRES_DB')
 url = os.environ.get('POSTGRES_URL')
 # db='bitrix-test'
-db='bitrix'
+db='bitrix-2'
 url='postgres-2'
 # url='192.168.1.73'
 

@@ -743,7 +743,7 @@ async def main2():
 if __name__ == '__main__':
     # status= asyncio.run(workBitrix.get_all_status())
     # pprint(status)
-    asyncio.run(main2())
+    asyncio.run(main())
     # pass
     # asyncio.run(delete_records())
     # asyncio.run(update_records_task())

@@ -19,7 +19,8 @@ db = 'bitrix-2'
 
 # Создаем асинхронное подключение к базе данных
 engine = create_async_engine(
-    f'postgresql+asyncpg://{userName}:{password}@postgres-2:5432/{db}',
+    # f'postgresql+asyncpg://{userName}:{password}@postgres-2:5432/{db}',
+    # f'postgresql+asyncpg://{userName}:{password}@192.168.1.73:5432/{db}',
     pool_size=5,  # Максимальное количество постоянных подключений
     max_overflow=10,  # Максимальное количество временных подключений
     pool_timeout=30,  # Таймаут ожидания доступного подключения
@@ -646,9 +647,10 @@ async def get_database_structure():
         raise e
 
 # Изменяем main для тестирования
-# async def main():
+async def main():
     # await get_database_structure()
+    await init_models()
     # await create_table_move_task_to_history()
 
-# if __name__ == '__main__':
-    # asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())

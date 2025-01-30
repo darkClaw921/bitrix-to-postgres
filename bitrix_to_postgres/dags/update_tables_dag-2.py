@@ -8,13 +8,13 @@ import os
 import asyncio
 from pathlib import Path
 
-# Добавляем путь к директории scripts в PYTHONPATH
-scripts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scripts'))
-sys.path.append(scripts_dir)
+# # Добавляем путь к директории scripts в PYTHONPATH
+# scripts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scripts'))
+# sys.path.append(scripts_dir)
 
 # Импортируем модули из scripts
-import workBitrix1_2 as bit
-from workPostgres1_2 import (
+import scripts.workBitrix1_2 as bit
+from scripts.workPostgres1_2 import (
     insert_record, update_record, get_record,
     create_table_from_fields
 )

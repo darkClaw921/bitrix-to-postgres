@@ -9,7 +9,7 @@ NAME_APP='H_'
 import os
 load_dotenv()
 
-WEBHOOK=os.getenv('WEBHOOK-2')
+WEBHOOK=os.getenv('WEBHOOK2')
 bit = BitrixAsync(WEBHOOK, ssl=False)
 print(f'{WEBHOOK=}')
 

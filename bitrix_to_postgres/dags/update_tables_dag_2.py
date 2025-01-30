@@ -13,8 +13,8 @@ from pathlib import Path
 # sys.path.append(scripts_dir)
 
 # Импортируем модули из scripts
-import scripts.workBitrix1_2 as bit
-from scripts.workPostgres1_2 import (
+import scripts.workBitrix1 as bit
+from scripts.workPostgres1 import (
     insert_record, update_record, get_record,
     create_table_from_fields
 )
@@ -28,7 +28,7 @@ default_args = {
     'retries': 3,
     'retry_delay': timedelta(minutes=1),
     'retry_exponential_backoff': True,
-    'max_retry_delay': timedelta(minutes=5),
+    'max_retry_delay': timedelta(minutes=13),
 }
 
 # Создаем DAG
@@ -36,12 +36,12 @@ dag = DAG(
     'update_bitrix_tables_2',
     default_args=default_args,
     description='Обновление таблиц Bitrix каждый час в 00 минут',
-    schedule_interval='0 * * * *',
+    schedule='0 * * * *',
     start_date=datetime(2023, 12, 1),
     catchup=False,
     tags=['bitrix'],
     max_active_runs=1,
-    concurrency=8
+    max_active_tasks=8
 )
 
 async def update_history_move_deal():
@@ -138,9 +138,11 @@ async def update_user():
 async def get_last_update_date(table_name: str) -> datetime:
     """Получение даты последнего обновления таблицы"""
     record = await get_record('date_update', f"{table_name}_latest")
-    if record and hasattr(record, 'last_update'):
-        return record.last_update
+    if record and hasattr(record, 'date_update'):
+        #преобразуем строку в datetime
+        return datetime.strptime(record.date_update, '%Y-%m-%d %H:%M:%S.%f')
     return datetime(2023, 1, 1)  # Если нет записи, возвращаем начальную дату
+
 
 async def update_deals():
     """Инкрементное обновление таблицы deal_fields"""
@@ -202,14 +204,79 @@ async def update_tasks():
 
 async def update_events():
     """Инкрементное обновление таблицы event_fields"""
+    print('начали update_events')
     last_update = await get_last_update_date('event_fields')
+    # last_update=datetime.now()-timedelta(days=400)
+    print(f'{last_update=}')
     events = await bit.get_all_event(last_update=last_update)
+    print(f'{len(events)=}')
+    last_event_id=0
     for event in events:
+        print(f'{event["ID"]=} обработан')
+        if last_event_id!=event['ID']:
+            last_event_id=event['ID']
+        else:
+            continue
         existing_record = await get_record('event_fields', str(event['ID']))
         if existing_record:
             await update_record('event_fields', event)
         else:
             await insert_record('event_fields', event)
+
+
+async def update_task_comments():
+    """Инкрементное обновление таблицы task_comment_fields"""
+    last_update = await get_last_update_date('task_fields')
+    tasks = await bit.get_all_task(last_update=last_update)
+    task_comments=await bit.get_task_comments_batc(tasks=tasks)
+    for taskID, task_comments in task_comments.items():
+        for task_comment in task_comments:
+            task_comment={
+                'bitrix_id':task_comment.get('ID'),
+                'task_id':taskID,
+                'author_id':task_comment.get('AUTHOR_ID'),
+                'author_name':task_comment.get('AUTHOR_NAME'),
+                'post_message':task_comment.get('POST_MESSAGE'),
+                'post_date':task_comment.get('POST_DATE'),
+                'attached_objects':task_comment.get('ATTACHED_OBJECTS'),
+            }
+            existing_record = await get_record('task_comment_fields', str(task_comment['bitrix_id']))
+            if existing_record:
+                await update_record('task_comment_fields', task_comment)
+            else:
+                await insert_record('task_comment_fields', task_comment)
+
+
+async def update_task_results():
+    """Инкрементное обновление таблицы task_result_fields"""
+    last_update = await get_last_update_date('task_fields')
+    tasks = await bit.get_all_task(last_update=last_update)
+    task_results=await bit.get_result_task_comments(tasks=tasks)
+
+    for taskID, task_results in task_results.items():
+        for task_result in task_results:
+            task_result={
+                'bitrix_id':task_result.get('id'),
+                'task_id':taskID,
+                'text':task_result.get('text'),
+                'createdat':task_result.get('createdAt'),
+                'updatedat':task_result.get('updatedAt'),
+                'createdby':task_result.get('createdBy'),
+                'files':task_result.get('files'),
+                'status':task_result.get('status'),
+                'commentid':task_result.get('commentId'),
+            }
+            existing_record = await get_record('task_result_fields', str(task_result['bitrix_id']))
+            if existing_record:
+                await update_record('task_result_fields', task_result)
+            else:
+                await insert_record('task_result_fields', task_result)
+
+
+
+
+
+
 
 # async def update_dynamic_items():
 #     """Инкрементное обновление таблиц dynamic_item_fields"""
@@ -241,14 +308,16 @@ async def update_date_update():
         'contact_fields',
         'lead_fields',
         'task_fields',
-        'event_fields'
+        'event_fields',
+        'task_comment_fields',
+        'task_result_fields'
     ]
     
     for table in tables:
         update_info = {
             'ID': f"{table}_latest",
             'table_name': table,
-            'last_update': datetime.now(),
+            'date_update': datetime.now(),
             'status': 'success'
         }
         existing_record = await get_record('date_update', f"{table}_latest")
@@ -308,7 +377,9 @@ tasks = {
     'update_tasks': update_tasks,
     'update_events': update_events,
     # 'update_dynamic_items': update_dynamic_items,
-    'update_date_update': update_date_update
+    'update_date_update': update_date_update,
+    'update_task_comments': update_task_comments,
+    'update_task_results': update_task_results
 }
 
 operators = {}
@@ -318,7 +389,7 @@ for task_id, task_func in tasks.items():
         python_callable=lambda f=task_func: run_async(f),
         retries=3,
         retry_delay=timedelta(minutes=1),
-        execution_timeout=timedelta(minutes=10),
+        execution_timeout=timedelta(minutes=25),
         dag=dag,
     )
 
@@ -326,3 +397,7 @@ for task_id, task_func in tasks.items():
 for task_id in operators:
     if task_id != 'update_date_update':
         operators[task_id] >> operators['update_date_update']
+        
+# update_events()
+# last_update = asyncio.run(update_date_update())
+# print(f'{last_update=}')

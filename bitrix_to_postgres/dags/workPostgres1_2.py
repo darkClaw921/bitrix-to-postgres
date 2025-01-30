@@ -14,7 +14,7 @@ load_dotenv()
 
 userName = os.environ.get('POSTGRES_USER')
 password = os.environ.get('POSTGRES_PASSWORD')
-db = 'bitrix-test'
+db = 'bitrix-2'
 # url = os.environ.get('POSTGRES_URL')
 
 # Создаем асинхронное подключение к базе данных

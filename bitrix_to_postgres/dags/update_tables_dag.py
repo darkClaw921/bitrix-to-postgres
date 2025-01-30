@@ -31,8 +31,8 @@ default_args = {
 dag = DAG(
     'update_bitrix_tables',
     default_args=default_args,
-    description='Обновление таблиц Bitrix каждые 30 минут',
-    schedule='*/30 * * * *',
+    description='Обновление таблиц Bitrix каждый час в 30 минут',
+    schedule='30 * * * *',
     start_date=datetime(2023, 12, 1),
     catchup=False,
     tags=['bitrix'],

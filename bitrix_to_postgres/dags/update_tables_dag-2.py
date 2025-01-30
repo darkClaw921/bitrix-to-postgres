@@ -9,8 +9,8 @@ import asyncio
 from pathlib import Path
 
 # Импортируем локальные модули из той же папки dags
-import workBitrix1_test as bit
-from workPostgres1_test import (
+import workBitrix1_2 as bit
+from workPostgres1_2 import (
     insert_record, update_record, get_record,
     create_table_from_fields
 )
@@ -29,10 +29,10 @@ default_args = {
 
 # Создаем DAG
 dag = DAG(
-    'update_bitrix_tables_test',
+    'update_bitrix_tables_2',
     default_args=default_args,
-    description='Обновление таблиц Bitrix каждые 15 минут',
-    schedule_interval='*/15 * * * *',
+    description='Обновление таблиц Bitrix каждый час в 00 минут',
+    schedule_interval='0 * * * *',
     start_date=datetime(2023, 12, 1),
     catchup=False,
     tags=['bitrix'],

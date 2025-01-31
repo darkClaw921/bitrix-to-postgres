@@ -19,7 +19,7 @@ db = 'bitrix-2'
 
 # Создаем асинхронное подключение к базе данных
 engine = create_async_engine(
-    # f'postgresql+asyncpg://{userName}:{password}@postgres-2:5432/{db}',
+    f'postgresql+asyncpg://{userName}:{password}@postgres-2:5432/{db}',
     # f'postgresql+asyncpg://{userName}:{password}@192.168.1.73:5432/{db}',
     pool_size=5,  # Максимальное количество постоянных подключений
     max_overflow=10,  # Максимальное количество временных подключений

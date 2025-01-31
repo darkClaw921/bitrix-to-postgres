@@ -13,8 +13,8 @@ from pathlib import Path
 # sys.path.append(scripts_dir)
 
 # Импортируем модули из scripts
-import scripts.workBitrix1 as bit
-from scripts.workPostgres1 import (
+import scripts.workBitrix1_2 as bit
+from scripts.workPostgres1_2 import (
     insert_record, update_record, get_record,
     create_table_from_fields
 )

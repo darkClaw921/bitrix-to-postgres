@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from pprint import pprint
 from fast_bitrix24 import BitrixAsync
 from dotenv import load_dotenv
-
+from tqdm import tqdm
 import asyncio
 
 NAME_APP='H_'
@@ -747,6 +747,68 @@ async def update_history_date_for_deal(dealID, stageID:str=None):
 
 
 
+async def get_task_comments_batc(tasks:list):
+    """Получение комментариев к задачам"""
+    # пакетно получаем комментарии к задачам по 50 задач
+    # tasks=await get_all_task()
+    
+    i=0
+    commands={}
+    results={}
+    for task in tqdm(tasks,desc='Получение комментариев к задачам'):
+        i+=1
+        if i>48:
+            results.update(await bit.call_batch ({
+                'halt': 0,
+                'cmd': commands
+            }))
+
+            commands={}
+            i=0
+        commands[f'{task["id"]}']=f'task.commentitem.getlist?taskId={task["id"]}'
+    return results
+
+async def get_result_task_comments(tasks:list):
+    """Получение результатов задач"""
+    i=0
+    commands={}
+    results={}
+    for task in tqdm(tasks, 'Получение результатов задач'):
+        i+=1
+        if i>48:
+            results.update(await bit.call_batch ({
+                'halt': 0,
+                'cmd': commands
+            }))
+
+            commands={}
+            i=0
+
+        commands[f'{task["id"]}']=f'tasks.task.result.list?taskId={task["id"]}'
+    
+    # pprint(results)
+    return results
+
+async def get_activity_company_batc(companyID:list):
+    """Получение комментариев к задачам"""
+    # пакетно получаем комментарии к задачам по 50 задач
+    # tasks=await get_all_task()
+    
+    i=0
+    commands={}
+    results={}
+    for company in tqdm(companyID,desc='Получение комментариев к задачам'):
+        i+=1
+        if i>48:
+            results.update(await bit.call_batch ({
+                'halt': 0,
+                'cmd': commands
+            }))
+
+            commands={}
+            i=0
+        commands[f'{company["ID"]}']=f'crm.activity.list?id={company["ID"]}'
+    return results
 
 
 async def main():

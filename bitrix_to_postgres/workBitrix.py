@@ -823,6 +823,26 @@ async def get_result_task_comments(tasks:list):
 
 
 
+async def get_activity_company_batc(companyID:list):
+    """Получение комментариев к задачам"""
+    # пакетно получаем комментарии к задачам по 50 задач
+    # tasks=await get_all_task()
+    
+    i=0
+    commands={}
+    results={}
+    for company in tqdm(companyID,desc='Получение комментариев к задачам'):
+        i+=1
+        if i>48:
+            results.update(await bit.call_batch ({
+                'halt': 0,
+                'cmd': commands
+            }))
+
+            commands={}
+            i=0
+        commands[f'{company["ID"]}']=f'crm.activity.list?id={company["ID"]}'
+    return results
 
 async def main():
     #Deal

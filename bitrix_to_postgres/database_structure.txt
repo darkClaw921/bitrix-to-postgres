@@ -1,0 +1,419 @@
+
+Таблица: wb_card
+--------------------------------------------------
+
+Структура:
+id: integer
+imt_id: bigint
+subject_name: character varying
+subject_id: bigint
+nm_id: bigint
+vendor_code: character varying
+title: character varying
+brand: character varying
+created_at: timestamp without time zone
+updated_at: timestamp without time zone
+
+Пример данных:
+id: 1
+imt_id: 150442343
+subject_name: БАДы
+subject_id: 1524
+nm_id: 164092932
+vendor_code: 105040413
+title: БАД для мозга и энергии с янтарной кислотой и коэнзимом Q10
+brand: Цитофлавин PRO
+created_at: 2025-02-17 13:08:31.800540
+updated_at: 2025-02-17 13:08:31.800540
+
+================================================================================
+
+Таблица: wb_stat
+--------------------------------------------------
+
+Структура:
+id: integer
+realizationreport_id: character varying
+date_from: timestamp without time zone
+date_to: timestamp without time zone
+create_dt: timestamp without time zone
+currency_name: character varying
+suppliercontract_code: character varying
+rrd_id: bigint
+gi_id: character varying
+dlv_prc: double precision
+fix_tariff_date_from: timestamp without time zone
+fix_tariff_date_to: timestamp without time zone
+subject_name: character varying
+nm_id: bigint
+brand_name: character varying
+sa_name: character varying
+ts_name: character varying
+barcode: character varying
+doc_type_name: character varying
+quantity: integer
+retail_price: double precision
+retail_amount: double precision
+sale_percent: double precision
+commission_percent: double precision
+office_name: character varying
+supplier_oper_name: character varying
+order_dt: timestamp without time zone
+sale_dt: timestamp without time zone
+rr_dt: timestamp without time zone
+shk_id: character varying
+retail_price_withdisc_rub: double precision
+delivery_amount: integer
+return_amount: integer
+delivery_rub: double precision
+gi_box_type_name: character varying
+product_discount_for_report: double precision
+supplier_promo: character varying
+rid: character varying
+ppvz_spp_prc: double precision
+ppvz_kvw_prc_base: double precision
+ppvz_kvw_prc: double precision
+sup_rating_prc_up: double precision
+is_kgvp_v2: double precision
+ppvz_sales_commission: double precision
+ppvz_for_pay: double precision
+ppvz_reward: double precision
+acquiring_fee: double precision
+acquiring_percent: double precision
+payment_processing: character varying
+acquiring_bank: character varying
+ppvz_vw: double precision
+ppvz_vw_nds: double precision
+ppvz_office_id: bigint
+ppvz_supplier_id: bigint
+ppvz_supplier_name: character varying
+ppvz_inn: character varying
+declaration_number: character varying
+sticker_id: character varying
+site_country: character varying
+penalty: double precision
+additional_payment: double precision
+srid: character varying
+bonus_type_name: character varying
+ppvz_office_name: character varying
+kiz: character varying
+rebill_logistic_cost: double precision
+rebill_logistic_org: character varying
+acceptance: double precision
+storage_fee: double precision
+deduction: double precision
+srv_dbs: boolean
+assembly_id: bigint
+report_type: integer
+is_legal_entity: boolean
+trbx_id: character varying
+
+Пример данных:
+id: 1
+realizationreport_id: 296766056
+date_from: 2025-02-03 00:00:00
+date_to: 2025-02-09 00:00:00
+create_dt: 2025-02-10 00:00:00
+currency_name: RUB
+suppliercontract_code: 
+rrd_id: 2894200329839
+gi_id: 26686470
+dlv_prc: 1.45
+fix_tariff_date_from: 2025-01-29 21:00:00
+fix_tariff_date_to: 2025-03-30 21:00:00
+subject_name: Презервативы
+nm_id: 189249260
+brand_name: VIVA
+sa_name: 122012351
+ts_name: 0
+barcode: 4601834008499
+doc_type_name: 
+quantity: 0
+retail_price: 0.0
+retail_amount: 0.0
+sale_percent: 0.0
+commission_percent: 0.0
+office_name: Тула
+supplier_oper_name: Логистика
+order_dt: 2025-02-04 03:59:07
+sale_dt: 2025-02-07 13:31:59
+rr_dt: 2025-02-08 00:00:00
+shk_id: 28391606644
+retail_price_withdisc_rub: 0.0
+delivery_amount: 1
+return_amount: 0
+delivery_rub: 50.75
+gi_box_type_name: Моно
+product_discount_for_report: 0.0
+supplier_promo: 0
+rid: 0
+ppvz_spp_prc: 0.0
+ppvz_kvw_prc_base: 0.0
+ppvz_kvw_prc: 0.0
+sup_rating_prc_up: 0.0
+is_kgvp_v2: 0.0
+ppvz_sales_commission: 0.0
+ppvz_for_pay: 0.0
+ppvz_reward: 0.0
+acquiring_fee: 0.0
+acquiring_percent: 0.0
+payment_processing: 
+acquiring_bank: 
+ppvz_vw: 0.0
+ppvz_vw_nds: 0.0
+ppvz_office_id: 162894
+ppvz_supplier_id: 0
+ppvz_supplier_name: 
+ppvz_inn: 
+declaration_number: 
+sticker_id: 0
+site_country: Россия
+penalty: 0.0
+additional_payment: 0.0
+srid: dW.45cc2822f0ff4b39960a469fee697103.0.0
+bonus_type_name: К клиенту при продаже
+ppvz_office_name: Воронежская область Воронеж Ольховый переулок 2Д
+kiz: 
+rebill_logistic_cost: 0.0
+rebill_logistic_org: 
+acceptance: 0.0
+storage_fee: 0.0
+deduction: 0.0
+srv_dbs: False
+assembly_id: 0
+report_type: 1
+is_legal_entity: False
+trbx_id: 0
+
+================================================================================
+
+Таблица: wb_analytics
+--------------------------------------------------
+
+Структура:
+id: integer
+begin: timestamp without time zone
+end: timestamp without time zone
+vendor_code: character varying
+nm_id: bigint
+open_card_count: integer
+add_to_cart_count: integer
+add_to_cart_percent: double precision
+orders_count: integer
+orders_sum_rub: double precision
+cart_to_order_percent: double precision
+buyouts_count: integer
+buyouts_sum_rub: double precision
+buyouts_percent: double precision
+avg_orders_count_per_day: double precision
+stocks: integer
+stocks_mp: integer
+stocks_wb: integer
+brand_name: character varying
+object_id: integer
+object_name: character varying
+
+Пример данных:
+id: 1
+begin: 2025-02-08 13:20:06
+end: 2025-02-17 13:20:06
+vendor_code: 95568073161789556807316178
+nm_id: 13594358
+open_card_count: 15128
+add_to_cart_count: 2545
+add_to_cart_percent: 17.0
+orders_count: 1488
+orders_sum_rub: 344299.0
+cart_to_order_percent: 58.0
+buyouts_count: 830
+buyouts_sum_rub: 192566.0
+buyouts_percent: 98.0
+avg_orders_count_per_day: 165.3
+stocks: 11810
+stocks_mp: 0
+stocks_wb: 11810
+brand_name: Viva
+object_id: 2865
+object_name: Презервативы
+
+================================================================================
+
+Таблица: wb_orders
+--------------------------------------------------
+
+Структура:
+id: integer
+date: timestamp without time zone
+last_change_date: timestamp without time zone
+warehouse_name: character varying
+warehouse_type: character varying
+country_name: character varying
+oblast_okrug_name: character varying
+region_name: character varying
+supplier_article: character varying
+nm_id: bigint
+barcode: character varying
+category: character varying
+subject: character varying
+brand: character varying
+tech_size: character varying
+income_id: bigint
+is_supply: boolean
+is_realization: boolean
+total_price: double precision
+discount_percent: double precision
+spp: double precision
+finished_price: double precision
+price_with_disc: double precision
+is_cancel: boolean
+cancel_date: timestamp without time zone
+order_type: character varying
+sticker: character varying
+g_number: character varying
+srid: character varying
+created_at: timestamp without time zone
+updated_at: timestamp without time zone
+
+Пример данных:
+id: 1
+date: 2025-02-08 08:33:02
+last_change_date: 2025-02-08 13:24:58
+warehouse_name: Новосибирск
+warehouse_type: Склад WB
+country_name: Россия
+oblast_okrug_name: Дальневосточный федеральный округ
+region_name: Приморский край
+supplier_article: 4601834005641
+nm_id: 15432068
+barcode: 4601834008680
+category: Здоровье
+subject: Презервативы
+brand: VIZIT
+tech_size: 0
+income_id: 26241120
+is_supply: False
+is_realization: True
+total_price: 2299.0
+discount_percent: 47.0
+spp: 27.0
+finished_price: 889.0
+price_with_disc: 1218.0
+is_cancel: False
+cancel_date: None
+order_type: Клиентский
+sticker: 28406776991
+g_number: 1404976881543692165
+srid: dAA.9358f07ec2a344ec99e0fbbfe38e7ba6.0.0
+created_at: 2025-02-17 13:21:32.778856
+updated_at: 2025-02-17 13:21:32.778856
+
+================================================================================
+
+Таблица: wb_stocks
+--------------------------------------------------
+
+Структура:
+id: integer
+last_change_date: timestamp without time zone
+warehouse_name: character varying
+supplier_article: character varying
+nm_id: bigint
+barcode: character varying
+quantity: integer
+in_way_to_client: integer
+in_way_from_client: integer
+quantity_full: integer
+category: character varying
+subject: character varying
+brand: character varying
+tech_size: character varying
+price: double precision
+discount: double precision
+is_supply: boolean
+is_realization: boolean
+sc_code: character varying
+created_at: timestamp without time zone
+updated_at: timestamp without time zone
+
+Пример данных:
+id: 1
+last_change_date: 2025-01-01 14:01:37
+warehouse_name: Краснодар
+supplier_article: 122011711
+nm_id: 153203220
+barcode: 4601834006754
+quantity: 97
+in_way_to_client: 0
+in_way_from_client: 0
+quantity_full: 97
+category: Здоровье
+subject: Презервативы
+brand: KING
+tech_size: 0
+price: 666.0
+discount: 67.0
+is_supply: True
+is_realization: False
+sc_code: Tech
+created_at: 2025-02-17 13:09:35.773325
+updated_at: 2025-02-17 13:09:35.773325
+
+================================================================================
+
+Таблица: wb_incomes
+--------------------------------------------------
+
+Структура:
+id: integer
+income_id: bigint
+number: character varying
+date: timestamp without time zone
+last_change_date: timestamp without time zone
+supplier_article: character varying
+tech_size: character varying
+barcode: character varying
+quantity: integer
+total_price: double precision
+date_close: timestamp without time zone
+warehouse_name: character varying
+nm_id: bigint
+status: character varying
+created_at: timestamp without time zone
+updated_at: timestamp without time zone
+
+Пример данных:
+id: 1
+income_id: 26083133
+number: 
+date: 2025-01-02 00:00:00
+last_change_date: 2025-01-02 00:15:44
+supplier_article: 95568073161789556807316178
+tech_size: 0
+barcode: 9556807316178
+quantity: 1
+total_price: 0.0
+date_close: 2025-01-02 00:00:00
+warehouse_name: Коледино
+nm_id: 13594358
+status: Принято
+created_at: 2025-02-17 13:24:02.191116
+updated_at: 2025-02-17 13:24:02.191116
+
+================================================================================
+
+Таблица: update
+--------------------------------------------------
+
+Структура:
+table_name: character varying
+date: timestamp without time zone
+created_at: timestamp without time zone
+updated_at: timestamp without time zone
+
+Пример данных:
+table_name: wb_card
+date: 2025-02-17 13:08:32.119659
+created_at: 2025-02-17 13:08:32.119659
+updated_at: 2025-02-17 13:08:32.119659
+
+================================================================================

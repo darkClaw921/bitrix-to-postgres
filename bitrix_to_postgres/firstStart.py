@@ -5,22 +5,23 @@ from pprint import pprint
 import asyncio
 # from tqdm import tqdm
 from tqdm.asyncio import tqdm
-
+# import workClickHouse as workPostgres 
 async def main():
     
     #Deal
     fields=await workBitrix.get_all_fields_deal()
     userFields=await workBitrix.get_all_userfields_deal()
-    # pprint(fields)
+
     prepareUserFields=workBitrix.prepare_userfields_deal_to_postgres(userFields)
     prepareFields= workBitrix.prepare_fields_deal_to_postgres(fields)
     
     allFields=prepareFields+prepareUserFields
-    # pprint(allFields)
-    # 1/0
+    # allFields=prepareUserFields
+
+    
     await workPostgres.create_table_from_fields('deal_fields',allFields)
 
-   
+    1/0
     
     
     # 1/0
@@ -46,8 +47,8 @@ async def main():
     allFields=prepareFields+prepareUserFields
     await workPostgres.create_table_from_fields('lead_fields',allFields)
 
-    # 1/0
-    #Contact
+    # # 1/0
+    # #Contact
     fields=await workBitrix.get_all_fields_contact()
     userFields=await workBitrix.get_all_userfields_contact()
     
@@ -159,7 +160,7 @@ async def main():
     ]
     await workPostgres.create_table_from_fields('move_task_to_history',prepareFields)
 
-
+    # 1/0
     #Call
     prepareFields=[
         {'fieldID':'call_category','fieldType':'string',},

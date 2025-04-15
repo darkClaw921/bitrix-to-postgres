@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pprint import pprint
 from fast_bitrix24 import BitrixAsync
@@ -874,8 +875,38 @@ async def main():
     # prepareFields=prepare_fields_company_to_postgres(fields)
     # pprint(prepareFields)
 
+# @dataclass
+# class Test:
+#     test1:str='ufCrm5_1741786512'
+#     test2:str='ufCrm5_1741786862'
+
+
+
+# async def test_create_batch():
+#     bit = BitrixAsync(webhook='https://znayu-mesto.bitrix24.ru/rest/11/ekse8non4c1tza2m/', ssl=False)
+#     commands={}
+#     print(Test.test1)
+#     entityTypeId=1036
+#     #пример запроса
+#     # crm.item.add?entityTypeId={}&fields[TITLE]={}&fields[ASSIGNED_BY_ID]={}&fields[ufCrm17Date]={}&fields[ufCrm17Isbillable]={}&fields[ufCrm17Duration]={}&fields[ufCrm17Durationbillable]={}&fields[ufCrm17Rate]={}&fields[CURRENCY_ID]=RUB&fields[IS_MANUAL_OPPORTUNITY]=Y
+#     for j in tqdm(range(20)):
+#         for i in range(49):
+
+#             commands[f'{i}']=f'crm.item.add?entityTypeId={entityTypeId}&fields[title]={i}&fields[assignedById]=11&fields[{Test.test1}]={i}&fields[{Test.test2}]={i}'
+
+#         # pprint(commands)
+
+#         results=await bit.call_batch({
+#             'halt': 0,
+#             'cmd':commands
+#             }
+#             )
+#         # pprint(results)
+
 if __name__ == '__main__':
     # a=asyncio.run(get_all_event_by_user(userID='138',last_update=datetime.now()-timedelta(days=20)))
     # pprint(a)
-    asyncio.run(main())
+
+    # asyncio.run(test_create_batch())
+    pass
     # asyncio.run(get_userfields(234))

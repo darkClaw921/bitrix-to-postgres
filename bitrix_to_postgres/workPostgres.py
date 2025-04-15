@@ -19,8 +19,8 @@ password = os.environ.get('POSTGRES_PASSWORD')
 db = os.environ.get('POSTGRES_DB')
 url = os.environ.get('POSTGRES_URL')
 # db='bitrix-test'
-db='bitrix-2'
-url='postgres-2'
+# db='bitrix-2'
+# url='postgres-2'
 # url='192.168.1.73'
 
 # Создаем асинхронное подключение к базе данных
@@ -28,6 +28,7 @@ url='postgres-2'
 #     f'postgresql+asyncpg://postgres:postgres@localhost:5432/postgres',
 #     echo=True,
 # )
+
 engine = create_async_engine(
     f'postgresql+asyncpg://{userName}:{password}@{url}:5432/{db}',
     pool_size=5,  # Максимальное количество постоянных подключений
@@ -655,9 +656,9 @@ async def get_database_structure():
         raise e
 
 # Изменяем main для тестирования
-# async def main():
-    # await get_database_structure()
+async def main():
+    await get_database_structure()
     # await create_table_move_task_to_history()
 
-# if __name__ == '__main__':
-    # asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())

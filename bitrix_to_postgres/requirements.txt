@@ -10,6 +10,7 @@ asyncpg
 sqlalchemy[asyncio]
 requests
 python-dotenv
+clickhouse_connect
 
 fast-bitrix24==1.8.3
 fastapi

@@ -33,6 +33,9 @@ x-airflow-common:
     POSTGRES_USER: ${POSTGRES_USER}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     POSTGRES_DB: ${POSTGRES_DB}
+    CLICKHOUSE_HOST: ${CLICKHOUSE_HOST}
+    CLICKHOUSE_USERNAME: ${CLICKHOUSE_USERNAME}
+    CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     AIRFLOW__LOGGING__BASE_LOG_FOLDER: '/opt/airflow/logs'
     AIRFLOW__LOGGING__MAX_BYTES: '5242880'         # 5MB для каждого файла
     AIRFLOW__LOGGING__BACKUP_COUNT: '5'            # Хранить максимум 5 файлов
@@ -227,6 +230,9 @@ services:
       - postgres-2 
     volumes:
       - ./bitrix_to_postgres/logs:/opt/airflow/logs:delegated
+      - ./bitrix_to_postgres/dags:/opt/airflow/dags
+      - ./bitrix_to_postgres/scripts:/opt/airflow/scripts
+      # - ./bitrix_to_postgres:/opt/airflow/bitrix_to_postgres
 
   airflow-init:
     <<: *airflow-common

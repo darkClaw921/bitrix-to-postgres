@@ -1,9 +1,12 @@
 from datetime import datetime,timedelta
+import json
 from pprint import pprint
 from workBitrix1 import get_all_event, get_all_task, get_comment_task, get_all_call
 from workPostgres1 import get_record, update_record, insert_record
 import asyncio
 from tqdm import tqdm
+
+MAPPING_FIELDS_PATH='/opt/airflow/scripts/mapping_fields'
 
 async def get_last_update_date(table_name: str) -> datetime:
     """Получение даты последнего обновления таблицы"""
@@ -198,8 +201,11 @@ async def update_call_fields():
             await insert_record('call_fields', call)
 
 async def main():
-    last_update = await update_call_fields()
-    print(f'{last_update=}')
+    # last_update = await update_call_fields()
+    with open(f'{MAPPING_FIELDS_PATH}/mapping_fields_user_fields.json', 'r', encoding='utf-8') as f:
+        mapping_fields = json.load(f)
+    pprint(mapping_fields)
+    # print(f'{last_update=}')
     # asyncio.run(update_date_update())
 
 if __name__ == '__main__':

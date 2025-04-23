@@ -77,32 +77,61 @@ def prepare_userfields_deal_to_postgres(fields:list)->list:
         
     return fieldsToPostgres
 
-def prepare_fields_deal_to_postgres(fields:list)->list:
+def prepare_fields_deal_to_postgres(fields:list, table_name:str)->list[list,list]:
     entityID='CRM_DEAL'
     fieldsToPostgres=[]
+    enumerateFields=[]
     for fieldID, meta in fields.items():
         fieldType=meta.get('type')
+
+        description=fieldID
+        if meta.get('listLabel'):
+            description=meta['listLabel']
+        elif meta.get('description'):
+            description=meta['description']
+        elif meta.get('title'):
+            description=meta['title']
+        
+        if fieldType=='enumeration':
+            items=meta['items']
+            for item in items:
+                enumerateFields.append({
+                    'field_id':fieldID,
+                    'value':item['VALUE'],
+                    'id_value':item['ID'],
+                    'table_name':table_name,
+                    'description':meta['listLabel'].lower().replace(' ','_'),
+                })
+        
+    
         fieldsToPostgres.append({
             'fieldID':fieldID,
             'fieldType':fieldType,
             'entityID':entityID,
-            'description':meta.get('title'),
+            'description':description,
         })
-    return fieldsToPostgres
 
-async def get_all_deal()->list:
+    
+
+    return fieldsToPostgres, enumerateFields
+
+
+async def get_all_deal(last_update=None)->list:
     items={
         'FILTER':{
             '>ID':0,
         },
         'SELECT':['*', 'UF_*'],
     }
+    if last_update:
+        items['FILTER']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+    print(items)
     deals=await bit.get_all('crm.deal.list',params=items)
     # deals=await bit.call('crm.deal.list',items=items)
     deals=deals
     return deals
-
-async def get_history_move_deal()->list[dict]:
+    
+async def get_history_move_deal(last_update=None):
     #https://apidocs.bitrix24.ru/api-reference/crm/crm-stage-history-list.html
     """
     entityTypeId - ID типа сущности
@@ -114,10 +143,11 @@ async def get_history_move_deal()->list[dict]:
         'entityTypeId':'2',
         # 'select':['*', 'UF_*'],
     }
+    if last_update:
+        items['filter']['>TIMESTAMP_X'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
     history=await bit.get_all('crm.stagehistory.list',params=items)
     # history=history
     return history
-
 
 
 # Работа с Company
@@ -152,42 +182,63 @@ async def get_userfields_company(fieldID)->list:
 
 def prepare_userfields_company_to_postgres(fields:list)->list:
     fieldsToPostgres=[]
+    enumerateFields=[]
     for field in fields:
         fieldName=field.get('FIELD_NAME')
         entityID=field.get('ENTITY_ID')
         userTypeID=field.get('USER_TYPE_ID')
+
+        
         # print(fieldName, entityID, userTypeID)
         fieldToPostgres={
             'fieldID':fieldName,
             'entityID':entityID,
             'fieldType':userTypeID,
             'description':field.get('title'),
-        }
+                }
         fieldsToPostgres.append(fieldToPostgres)
-    return fieldsToPostgres
+        if userTypeID=='enumeration':
+            items=field.get('LIST')
+            for item in items:
+                enumerateFields.append({
+                    'field_id':fieldName,
+                    'value':item['VALUE'],
+                    'id_value':item['ID'],
+                    'table_name':'company_fields',
+                    'description':field.get('FIELD_NAME').lower().replace(' ','_'),
+                })
+    return fieldsToPostgres, enumerateFields
 
 def prepare_fields_company_to_postgres(fields:list)->list:
     entityID='CRM_COMPANY'
     fieldsToPostgres=[]
     for fieldID, meta in fields.items():
         fieldType=meta.get('type')
+        isMultiple=meta.get('isMultiple', False)
+        if isMultiple:
+            fieldType='array'
+
         fieldsToPostgres.append({
             'fieldID':fieldID,
             'fieldType':fieldType,
             'entityID':entityID,
             'description':meta.get('title'),
+            'isMultiple':isMultiple,
         })
     return fieldsToPostgres
 
-async def get_all_company()->list:
-    items={
-        'filter':{
-            '>ID':0,
+async def get_all_company(last_update=None):
+    """Получение всех компаний с фильтрацией по дате обновления"""
+    items = {
+        'filter': {
+            '>ID': 0,
         },
-        'select':['*', 'UF_*'],
+        'select': ['*', 'UF_*'],
     }
-    companies=await bit.get_all('crm.company.list',params=items)
-    companies=companies
+    if last_update:
+        items['filter']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+    companies = await bit.get_all('crm.company.list', params=items)
+    companies = companies
     return companies
 
 
@@ -301,6 +352,7 @@ async def get_all_userfields_contact()->list:
 
 def prepare_userfields_contact_to_postgres(fields:list)->list:
     fieldsToPostgres=[]
+    enumerateFields=[]
     for field in fields:
         fieldName=field.get('FIELD_NAME')
         entityID=field.get('ENTITY_ID')
@@ -312,7 +364,20 @@ def prepare_userfields_contact_to_postgres(fields:list)->list:
             'description':field.get('title'),
         }
         fieldsToPostgres.append(fieldToPostgres)
-    return fieldsToPostgres
+        
+        if userTypeID=='enumeration':
+            # pprint(field)
+            # 1/0
+            items=field.get('LIST')
+            for item in items:
+                enumerateFields.append({
+                    'field_id':fieldName,
+                    'value':item['VALUE'],
+                    'id_value':item['ID'],
+                    'table_name':'contact_fields',
+                    'description':field['FIELD_NAME'],
+                })
+    return fieldsToPostgres, enumerateFields
 
 def prepare_fields_contact_to_postgres(fields:list)->list:
     entityID='CRM_CONTACT'
@@ -327,19 +392,19 @@ def prepare_fields_contact_to_postgres(fields:list)->list:
         })
     return fieldsToPostgres
 
-async def get_all_contact()->list:
-    items={
-        
-        'filter':{
+async def get_all_contact(last_update=None):
+    """Получение всех контактов с фильтрацией по дате обновления"""
+    items = {
+        'filter': {
             '>ID':0,
             
         },
         'select':['*', 'UF_*'],
     }
-    contacts=await bit.get_all('crm.contact.list',params=items)
-    contacts=contacts
+    if last_update:
+        items['filter']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
+    contacts = await bit.get_all('crm.contact.list', params=items)
     return contacts
-
 
 
 
@@ -377,13 +442,15 @@ def prepare_fields_task_to_postgres(fields:list)->list:
     })
     return fieldsToPostgres
 
-async def get_all_task()->list:
+async def get_all_task(last_update=None)->list:
     items={
         'filter':{
             '>taskId':0,
         },
         'select':['*', 'UF_*', 'TAGS'],
     }
+    if last_update:
+        items['filter']['>DATE_MODIFY'] = last_update.strftime('%Y-%m-%dT%H:%M:%S')
     tasks=await bit.get_all('tasks.task.list',params=items)
     tasks=tasks
     return tasks
@@ -499,18 +566,162 @@ async def get_dynamic_item_field(dynamicItemID)->dict:
     dynamicItem=dynamicItem['result']['fields']
     return dynamicItem
 
-def prepare_dynamic_item_field_to_postgres(fields:dict,entityTypeId:int)->list:
+def prepare_record_for_insert(pole:str):
+    """
+    Подготавливает запись для вставки, обрабатывая специальные случаи
+    """
+    normalized_key=pole.lower()
+    # Особая обработка для ID
+    # if normalized_key == 'id':
+    #     normalized_key = 'bitrix_id'
+    if normalized_key == 'responsibleid':
+        normalized_key = 'responsible_id'
+    if normalized_key == 'createdby':
+        normalized_key = 'created_by'
+    
+    # if normalized_key == 'updatedby':
+    #     normalized_key = 'updated_by'
+    # if normalized_key == 'assignedbyid':
+    #     normalized_key = 'assigned_by_id'
+    
+    if normalized_key=='createddate':
+        normalized_key='created_date'
+    if normalized_key == 'stageid':
+        normalized_key = 'stage_id'
+    if normalized_key == 'groupid':
+        normalized_key = 'group_id'
+    if normalized_key == 'parentid':
+        normalized_key = 'parent_id'
+    if normalized_key == 'datecreate':
+        normalized_key = 'date_create'
+    if normalized_key == 'datemodify':
+        normalized_key = 'date_modify'
+    if normalized_key == 'lastactivitytime':
+        normalized_key = 'last_activity_time'
+    if normalized_key == 'movedtime':
+        normalized_key = 'moved_time'
+    if normalized_key == 'datestart':
+        normalized_key = 'date_start'
+    if normalized_key == 'datefinish':
+        normalized_key = 'date_finish'
+    if normalized_key == 'closeddate':
+        normalized_key = 'closed_date'
+    if normalized_key == 'ufcrmtask':
+        normalized_key = 'uf_crm_task'
+    if normalized_key == 'notviewed':
+        normalized_key = 'not_viewed'
+    if normalized_key == 'changedby':
+        normalized_key = 'changed_by'
+    if normalized_key == 'changeddate':
+        normalized_key = 'changed_date'
+    if normalized_key == 'statuschangedby':
+        normalized_key = 'status_changed_by'
+    if normalized_key == 'statuschangeddate':
+        normalized_key = 'status_changed_date'
+    if normalized_key == 'closedby':
+        normalized_key = 'closed_by'
+    if normalized_key == 'closeddate':
+        normalized_key = 'closed_date'
+    if normalized_key == 'activitydate':
+        normalized_key = 'activity_date'
+    if normalized_key == 'datefinish':
+        normalized_key = 'date_finish'
+    if normalized_key == 'xmlid':
+        normalized_key = 'xml_id'
+    if normalized_key == 'commentscount':
+        normalized_key = 'comments_count'
+    if normalized_key == 'servicecommentscount':
+        normalized_key = 'service_comments_count'
+    if normalized_key == 'newcommentscount':
+        normalized_key = 'new_comments_count'
+    if normalized_key == 'enddateplan':
+        normalized_key = 'end_date_plan'
+    if normalized_key == 'durationplan':
+        normalized_key = 'duration_plan'
+    if normalized_key == 'durationfact':
+        normalized_key = 'duration_fact'
+    if normalized_key == 'allowchangedeadline':
+        normalized_key = 'allow_change_deadline'
+    if normalized_key == 'allowtimetracking':
+        normalized_key = 'allow_time_tracking'
+    if normalized_key == 'taskcontrol':
+        normalized_key = 'task_control'
+    if normalized_key == 'addinreport':
+        normalized_key = 'add_in_report'
+    if normalized_key == 'forkedbytemplateid':
+        normalized_key = 'forked_by_template_id'
+    if normalized_key == 'timeestimate':
+        normalized_key = 'time_estimate'
+    if normalized_key == 'timespentinlogs':
+        normalized_key = 'time_spent_in_logs'
+    if normalized_key == 'matchworktime':
+        normalized_key = 'match_work_time'
+    if normalized_key == 'forumtopicid':
+        normalized_key = 'forum_topic_id'
+    if normalized_key == 'forumid':
+        normalized_key = 'forum_id'
+    if normalized_key == 'siteid':
+        normalized_key = 'site_id'
+    if normalized_key == 'outlookversion':
+        normalized_key = 'outlook_version'
+    if normalized_key == 'vieweddate':
+        normalized_key = 'viewed_date'
+    if normalized_key == 'ismuted':
+        normalized_key = 'is_muted'
+    if normalized_key == 'ispinned':
+        normalized_key = 'is_pinned'
+    if normalized_key == 'exchangeid':
+        normalized_key = 'exchange_id'
+    if normalized_key == 'ispinnedingroup':
+        normalized_key = 'is_pinned_in_group'
+    if normalized_key == 'durationtype':
+        normalized_key = 'duration_type'
+    # if normalized_key == 'creator':
+    #     normalized_key = 'created_by'
+
+    
+    
+    return normalized_key
+
+def prepare_dynamic_item_field_to_postgres(fields:dict,entityTypeId:int, table_name:str)->list:
     entityID=f'CRM_DYNAMIC_ITEM_{entityTypeId}'
     fieldsToPostgres=[]
+    enumerateFields=[]
+    
     for fieldID, meta in fields.items():
         fieldType=meta.get('type')
+
+        description=fieldID
+        if meta.get('listLabel'):
+            description=meta['listLabel']
+        elif meta.get('description'):
+            description=meta['description']
+        elif meta.get('title'):
+            description=meta['title']
+
+        fieldID= prepare_record_for_insert(fieldID)
+        # if description in ('id','ID'):
+        #     description='bitrix_id'
         fieldsToPostgres.append({
             'fieldID':fieldID,
             'fieldType':fieldType,
             'entityID':entityID,
-            'description':meta.get('title'),
+            'description':description,
         })
-    return fieldsToPostgres
+
+        if fieldType=='enumeration':
+            items=meta['items']
+            for item in items:
+                enumerateFields.append({
+                    'field_id':fieldID,
+                    'value':item['VALUE'],
+                    'id_value':item['ID'],
+                    'table_name':table_name,
+                    'description':meta['listLabel'],
+                })
+
+    return fieldsToPostgres, enumerateFields
+
 
 
 
@@ -789,7 +1000,9 @@ async def get_task_comments_batc(tasks:list):
     results={}
     for task in tqdm(tasks,desc='Получение комментариев к задачам'):
         i+=1
-        if i>48:
+        if i>20:
+            # pprint(commands)
+            
             results.update(await bit.call_batch ({
                 'halt': 0,
                 'cmd': commands
@@ -797,6 +1010,10 @@ async def get_task_comments_batc(tasks:list):
 
             commands={}
             i=0
+        #TODO почему-то эта сделака не доступна fast_bitrix24.server_response.ErrorInServerResponseException: {'5593': {'error': 'ERROR_CORE', 'error_description': 'TASKS_ERROR_EXCEPTION_#8; Action failed; 8/TE/ACTION_FAILED_TO_BE_PROCESSED<br>'}}    
+        if task['id']=='5593':
+            continue
+        
         commands[f'{task["id"]}']=f'task.commentitem.getlist?taskId={task["id"]}'
     return results
 
@@ -854,6 +1071,8 @@ async def main():
     # status=await get_all_user()
     # pprint(status)
     # print(len(status))
+    await get_all_task(last_update=datetime.now())
+    1/0
     # history=await get_result_task(30255)
     history=await get_event(24453)
     pprint(history)

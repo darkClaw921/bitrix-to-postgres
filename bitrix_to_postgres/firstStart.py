@@ -1,75 +1,163 @@
 import time
+import traceback
 import workBitrix
-import workPostgres
+# import workPostgres
 from pprint import pprint
 import asyncio
 # from tqdm import tqdm
 from tqdm.asyncio import tqdm
-# import workClickHouse as workPostgres 
+import workClickHouse as workPostgres 
+import json
+
+
+def save_mapping_fields(name_table, fields):
+    mapping_fields={}
+    # pprint(fields)
+    for field in fields:
+        if field.get('description') is None:
+            
+            mapping_fields[field['fieldID'].lower()]=None
+        else:
+            # pprint(field)
+            # mapping_fields[field['fieldID'].lower()]=f"`{field['description'].replace(' ','_').lower()}`"
+            mapping_fields[field['fieldID'].lower()]=f"{field['description'].replace(' ','_').lower()}"
+
+    #utf-8
+    with open(f'scripts/mapping_fields/mapping_fields_{name_table}.json', 'w', encoding='utf-8') as f:
+        json.dump(mapping_fields, f, ensure_ascii=False)
+
+
 async def main():
-    
-    #Deal
+
+    # await insert_records()
+    # 1/0
+
+
+
+
+
+
+
+
+
+
+
+    # Deal
+
     fields=await workBitrix.get_all_fields_deal()
-    userFields=await workBitrix.get_all_userfields_deal()
-
-    prepareUserFields=workBitrix.prepare_userfields_deal_to_postgres(userFields)
-    prepareFields= workBitrix.prepare_fields_deal_to_postgres(fields)
     
-    allFields=prepareFields+prepareUserFields
-    # allFields=prepareUserFields
-
+    # pprint(fields)
+    # 1/0
+    # prepareUserFields=workBitrix.prepare_userfields_deal_to_postgres(userFields)
+    prepareFields, enumerateFields= workBitrix.prepare_fields_deal_to_postgres(fields, 'deal_fields')
     
+    # allFields=prepareFields+prepareUserFields
+    allFields=prepareFields
+    # pprint(allFields)
+    save_mapping_fields('deal_fields',allFields)
     await workPostgres.create_table_from_fields('deal_fields',allFields)
+    # 1/0
+   
+    if len(enumerateFields)>0:
+        prepareFields=[
+            {'fieldID':'field_id','fieldType':'string',},
+            {'fieldID':'value','fieldType':'string',},
+            {'fieldID':'id_value','fieldType':'string',},
+            {'fieldID':'table_name','fieldType':'string',},
+            {'fieldID':'description','fieldType':'string',},
+        ]
+        await workPostgres.create_table_from_fields('deal_enumerate_fields',prepareFields)
+        
+        for field in enumerateFields:
+            await workPostgres.insert_record('deal_enumerate_fields', field)
 
-    1/0
-    
+    # 1/0
+
     
     # 1/0
 
     #Company
     fields=await workBitrix.get_all_fields_company()
     userFields=await workBitrix.get_all_userfields_company()
-    
-    prepareUserFields=workBitrix.prepare_userfields_company_to_postgres(userFields)
+    # pprint(userFields)
+    # pprint(fields)
+    # 1/0
+    # 1/0
+    prepareUserFields, enumerateFields=workBitrix.prepare_userfields_company_to_postgres(userFields)
     prepareFields= workBitrix.prepare_fields_company_to_postgres(fields)
     
-    allFields=prepareFields+prepareUserFields
+    # allFields=prepareFields+prepareUserFields
+    allFields=prepareFields
+    # pprint(allFields)
+    save_mapping_fields('company_fields',allFields)
+    if len(enumerateFields)>0:
+        prepareFields=[
+            {'fieldID':'field_id','fieldType':'string',},
+            {'fieldID':'value','fieldType':'string',},
+            {'fieldID':'id_value','fieldType':'string',},
+            {'fieldID':'table_name','fieldType':'string',},
+            {'fieldID':'description','fieldType':'string',},
+        ]
+        await workPostgres.create_table_from_fields('company_enumerate_fields',prepareFields)
+        for field in enumerateFields:
+            await workPostgres.insert_record('company_enumerate_fields', field)
+
     await workPostgres.create_table_from_fields('company_fields',allFields)
 
+    # 1/0
 
     #Lead
-    fields=await workBitrix.get_all_fields_lead()
-    userFields=await workBitrix.get_all_userfields_lead()
+    # fields=await workBitrix.get_all_fields_lead()
+    # userFields=await workBitrix.get_all_userfields_lead()
     
-    prepareUserFields=workBitrix.prepare_userfields_lead_to_postgres(userFields)
-    prepareFields= workBitrix.prepare_fields_lead_to_postgres(fields)
+    # prepareUserFields=workBitrix.prepare_userfields_lead_to_postgres(userFields)
+    # prepareFields= workBitrix.prepare_fields_lead_to_postgres(fields)
     
-    allFields=prepareFields+prepareUserFields
-    await workPostgres.create_table_from_fields('lead_fields',allFields)
+    # allFields=prepareFields+prepareUserFields
+    # await workPostgres.create_table_from_fields('lead_fields',allFields)
 
     # # 1/0
     # #Contact
     fields=await workBitrix.get_all_fields_contact()
     userFields=await workBitrix.get_all_userfields_contact()
-    
-    prepareUserFields=workBitrix.prepare_userfields_contact_to_postgres(userFields)
+    # pprint(userFields)
+    # 1/0
+    prepareUserFields, enumerateFields=workBitrix.prepare_userfields_contact_to_postgres(userFields)
     prepareFields= workBitrix.prepare_fields_contact_to_postgres(fields)
     
-    allFields=prepareFields+prepareUserFields
+    # allFields=prepareFields+prepareUserFields
+    allFields=prepareFields
     await workPostgres.create_table_from_fields('contact_fields',allFields)
     
+    save_mapping_fields('contact_fields',allFields)
+    if len(enumerateFields)>0:
+        prepareFieldsEnum=[
+            {'fieldID':'field_id','fieldType':'string',},
+            {'fieldID':'value','fieldType':'string',},
+            {'fieldID':'id_value','fieldType':'string',},
+            {'fieldID':'table_name','fieldType':'string',},
+            {'fieldID':'description','fieldType':'string',},
+        ]
+        await workPostgres.create_table_from_fields('contact_enumerate_fields',prepareFieldsEnum)
+        for field in enumerateFields:
+            await workPostgres.insert_record('contact_enumerate_fields', field)
 
+    # 1/0
+            
     #Task
     fields= await workBitrix.get_all_fields_task()
+    # pprint(fields)
+    # 1/0
     prepareFields=workBitrix.prepare_fields_task_to_postgres(fields)
     
     allFields=prepareFields
     # type{'443': {'id': 443, 'title': 'Оплата'}}
     allFields.append({'fieldID':'tags','fieldType':'json'})
     allFields.append({'fieldID':'group','fieldType':'json'})
+    # pprint(allFields)
     await workPostgres.create_table_from_fields('task_fields',allFields)
-
-
+    save_mapping_fields('task_fields',allFields)
+    # 1/0
     #TaskComment
     prepareFields=[
         # {'fieldID':'id','fieldType':'string',},
@@ -85,7 +173,7 @@ async def main():
     await workPostgres.create_table_from_fields('task_comment_fields',prepareFields)
 
 
-
+    # 1/0
     #TaskResult
     prepareFields=[
         {'fieldID':'bitrix_id','fieldType':'string',},
@@ -102,7 +190,7 @@ async def main():
         
     ]
     await workPostgres.create_table_from_fields('task_result_fields',prepareFields)
-    
+    save_mapping_fields('task_result_fields',prepareFields)
 
 
     #User
@@ -113,17 +201,32 @@ async def main():
     prepareFields=workBitrix.prepare_user_fields_to_postgres(fields)
     allFields=prepareFields+prepareUserFields
     await workPostgres.create_table_from_fields('user_fields',allFields)
-    
+    save_mapping_fields('user_fields',allFields)
 
 
     #DynamicItem
+    prepareFieldsEnum=[
+        {'fieldID':'field_id','fieldType':'string',},
+        {'fieldID':'value','fieldType':'string',},
+        {'fieldID':'id_value','fieldType':'string',},
+        {'fieldID':'table_name','fieldType':'string',},
+        {'fieldID':'description','fieldType':'string',},
+    ]
+
+    
     items=await workBitrix.get_all_dynamic_item()
     for item in items:
         entityTypeId=item.get('entityTypeId')
         fields=await workBitrix.get_dynamic_item_field(entityTypeId)
-        prepareFields=workBitrix.prepare_dynamic_item_field_to_postgres(fields,entityTypeId)
-        await workPostgres.create_table_from_fields(f'dynamic_item_fields_{entityTypeId}',prepareFields)
+        # pprint(fields)
+        prepareFields, enumerateFields=workBitrix.prepare_dynamic_item_field_to_postgres(fields,entityTypeId, f'dynamic_item_fields_{entityTypeId}')
+        if len(enumerateFields)>0:    
+            await workPostgres.create_table_from_fields(f'dynamic_item_enumerate_fields_{entityTypeId}',prepareFieldsEnum)
+            for field in enumerateFields:
+                await workPostgres.insert_record(f'dynamic_item_enumerate_fields_{entityTypeId}',field)
 
+        await workPostgres.create_table_from_fields(f'dynamic_item_fields_{entityTypeId}',prepareFields)
+        save_mapping_fields(f'dynamic_item_fields_{entityTypeId}',prepareFields)
 
 
     #MoveTaskToHistory
@@ -162,36 +265,36 @@ async def main():
 
     # 1/0
     #Call
-    prepareFields=[
-        {'fieldID':'call_category','fieldType':'string',},
-        {'fieldID':'call_duration','fieldType':'string',},
-        {'fieldID':'call_failed_code','fieldType':'string',},
-        {'fieldID':'call_failed_reason','fieldType':'string',},
-        {'fieldID':'call_id','fieldType':'string',},
-        {'fieldID':'call_record_url','fieldType':'string',},
-        {'fieldID':'call_start_date','fieldType':'datetime',},
-        {'fieldID':'call_type','fieldType':'string',},
-        {'fieldID':'call_vote','fieldType':'string',},
-        {'fieldID':'comment','fieldType':'string',},
-        {'fieldID':'cost','fieldType':'string',},
-        {'fieldID':'cost_currency','fieldType':'string',},
-        {'fieldID':'crm_activity_id','fieldType':'string',},
-        {'fieldID':'crm_entity_id','fieldType':'string',},
-        {'fieldID':'crm_entity_type','fieldType':'string',},
-        {'fieldID':'external_call_id','fieldType':'string',},
-        {'fieldID':'phone_number','fieldType':'string',},
-        {'fieldID':'portal_number','fieldType':'string',},
-        {'fieldID':'portal_user_id','fieldType':'string',},
-        {'fieldID':'record_duration','fieldType':'string',},
-        {'fieldID':'record_file_id','fieldType':'string',},
-        {'fieldID':'redial_attempt','fieldType':'string',},
-        {'fieldID':'rest_app_id','fieldType':'string',},
-        {'fieldID':'rest_app_name','fieldType':'string',},
-        {'fieldID':'session_id','fieldType':'string',},
-        {'fieldID':'transcript_id','fieldType':'string',},
-        {'fieldID':'transcript_pending','fieldType':'string',},
-    ]
-    await workPostgres.create_table_from_fields('call_fields',prepareFields)
+    # prepareFields=[
+    #     {'fieldID':'call_category','fieldType':'string',},
+    #     {'fieldID':'call_duration','fieldType':'string',},
+    #     {'fieldID':'call_failed_code','fieldType':'string',},
+    #     {'fieldID':'call_failed_reason','fieldType':'string',},
+    #     {'fieldID':'call_id','fieldType':'string',},
+    #     {'fieldID':'call_record_url','fieldType':'string',},
+    #     {'fieldID':'call_start_date','fieldType':'datetime',},
+    #     {'fieldID':'call_type','fieldType':'string',},
+    #     {'fieldID':'call_vote','fieldType':'string',},
+    #     {'fieldID':'comment','fieldType':'string',},
+    #     {'fieldID':'cost','fieldType':'string',},
+    #     {'fieldID':'cost_currency','fieldType':'string',},
+    #     {'fieldID':'crm_activity_id','fieldType':'string',},
+    #     {'fieldID':'crm_entity_id','fieldType':'string',},
+    #     {'fieldID':'crm_entity_type','fieldType':'string',},
+    #     {'fieldID':'external_call_id','fieldType':'string',},
+    #     {'fieldID':'phone_number','fieldType':'string',},
+    #     {'fieldID':'portal_number','fieldType':'string',},
+    #     {'fieldID':'portal_user_id','fieldType':'string',},
+    #     {'fieldID':'record_duration','fieldType':'string',},
+    #     {'fieldID':'record_file_id','fieldType':'string',},
+    #     {'fieldID':'redial_attempt','fieldType':'string',},
+    #     {'fieldID':'rest_app_id','fieldType':'string',},
+    #     {'fieldID':'rest_app_name','fieldType':'string',},
+    #     {'fieldID':'session_id','fieldType':'string',},
+    #     {'fieldID':'transcript_id','fieldType':'string',},
+    #     {'fieldID':'transcript_pending','fieldType':'string',},
+    # ]
+    # await workPostgres.create_table_from_fields('call_fields',prepareFields)
     
 
     #HistoryMoveDeal
@@ -207,93 +310,93 @@ async def main():
     await workPostgres.create_table_from_fields('history_move_deal',prepareFieldsHistoryMoveDeal)
 
     #HistoryMoveLead
-    prepareFieldsHistoryMoveLead=[
-        # {'fieldID':'category_id','fieldType':'string',},
-        {'fieldID':'created_time','fieldType':'datetime',},
-        {'fieldID':'id','fieldType':'string',},
-        {'fieldID':'owner_id','fieldType':'string',},
-        {'fieldID':'status_id','fieldType':'string',},
-        {'fieldID':'status_semantic_id','fieldType':'string',},
-        {'fieldID':'type_id','fieldType':'string',},
-    ]
-    await workPostgres.create_table_from_fields('history_move_lead',prepareFieldsHistoryMoveLead)
+    # prepareFieldsHistoryMoveLead=[
+    #     # {'fieldID':'category_id','fieldType':'string',},
+    #     {'fieldID':'created_time','fieldType':'datetime',},
+    #     {'fieldID':'id','fieldType':'string',},
+    #     {'fieldID':'owner_id','fieldType':'string',},
+    #     {'fieldID':'status_id','fieldType':'string',},
+    #     {'fieldID':'status_semantic_id','fieldType':'string',},
+    #     {'fieldID':'type_id','fieldType':'string',},
+    # ]
+    # await workPostgres.create_table_from_fields('history_move_lead',prepareFieldsHistoryMoveLead)
 
 
     #Event
-    prepareFieldsEvent=[
+    # prepareFieldsEvent=[
         
-        {'fieldID':'accessibility','fieldType':'string',},
-        {'fieldID':'active','fieldType':'string',},
-        {'fieldID':'attendees_codes','fieldType':'array',},
-        {'fieldID':'attendee_list','fieldType':'array',},
-        {'fieldID':'cal_dav_label','fieldType':'string',},
-        {'fieldID':'cal_type','fieldType':'string',},
-        {'fieldID':'collab_id','fieldType':'string',},
-        {'fieldID':'color','fieldType':'string',},
-        {'fieldID':'created_by','fieldType':'string',},
-        {'fieldID':'date_create','fieldType':'datetime',},
-        {'fieldID':'date_from','fieldType':'datetime',},
-        {'fieldID':'date_from_formatted','fieldType':'datetime',},
-        {'fieldID':'date_from_ts_utc','fieldType':'datetime',},
-        {'fieldID':'date_to','fieldType':'datetime',},
-        {'fieldID':'date_to_formatted','fieldType':'datetime',},
-        {'fieldID':'date_to_ts_utc','fieldType':'datetime',},
-        {'fieldID':'date_to_formatted','fieldType':'datetime',},
-        {'fieldID':'dav_exch_label','fieldType':'string',},
-        {'fieldID':'dav_xml_id','fieldType':'string',},
-        {'fieldID':'deleted','fieldType':'string',},
-        {'fieldID':'dav_xml_id','fieldType':'string',},
-        {'fieldID':'dt_from','fieldType':'datetime',},
-        {'fieldID':'dt_length','fieldType':'string',},
-        {'fieldID':'dt_skip_time','fieldType':'string',},
-        {'fieldID':'dt_to','fieldType':'datetime',},
-        {'fieldID':'event_type','fieldType':'string',},
-        {'fieldID':'exdate','fieldType':'string',},
-        {'fieldID':'g_event_id','fieldType':'string',},
-        {'fieldID':'id','fieldType':'string',},
-        {'fieldID':'importance','fieldType':'string',},
-        {'fieldID':'is_meeting','fieldType':'string',},
-        {'fieldID':'location','fieldType':'string',},
-        {'fieldID':'meeting','fieldType':'string',},
-        {'fieldID':'allow_invite','fieldType':'string',},
-        {'fieldID':'chat_id','fieldType':'string',},
-        {'fieldID':'hide_guests','fieldType':'string',},
-        {'fieldID':'host_name','fieldType':'string',},
-        {'fieldID':'language_id','fieldType':'string',},
-        {'fieldID':'mail_from','fieldType':'string',},
-        {'fieldID':'meeting_creator','fieldType':'string',},
-        {'fieldID':'notify','fieldType':'string',},
-        {'fieldID':'reinvite','fieldType':'string',},
-        {'fieldID':'meeting_host','fieldType':'string',},
-        {'fieldID':'meeting_status','fieldType':'string',},
-        {'fieldID':'name','fieldType':'string',},
-        {'fieldID':'options','fieldType':'string',},
-        {'fieldID':'original_date_from','fieldType':'datetime',},
-        {'fieldID':'owner_id','fieldType':'string',},
-        {'fieldID':'parent_id','fieldType':'string',},
-        {'fieldID':'private_event','fieldType':'string',},
-        {'fieldID':'recurrence_id','fieldType':'string',},
-        {'fieldID':'relations','fieldType':'string',},
-        {'fieldID':'remind','fieldType':'string',},
-        {'fieldID':'rrule','fieldType':'string',},
-        {'fieldID':'section_dav_xml_id','fieldType':'string',},
-        {'fieldID':'section_id','fieldType':'string',},
-        {'fieldID':'sect_id','fieldType':'string',},
-        {'fieldID':'sync_status','fieldType':'string',},
-        {'fieldID':'text_color','fieldType':'string',},
-        {'fieldID':'timestamp_x','fieldType':'datetime',},
-        {'fieldID':'tz_from','fieldType':'string',},
-        {'fieldID':'tz_offset_from','fieldType':'string',},
-        {'fieldID':'tz_offset_to','fieldType':'string',},
-        {'fieldID':'tz_to','fieldType':'string',},
-        {'fieldID':'uf_crm_cal_event','fieldType':'string',},
-        {'fieldID':'uf_webdav_cal_event','fieldType':'string',},
-        {'fieldID':'version','fieldType':'string',},
-        {'fieldID':'attendees_entity_list','fieldType':'array',},
-        {'fieldID':'user_offset_from','fieldType':'string',},
-        {'fieldID':'user_offset_to','fieldType':'string',},
-    ]
-    await workPostgres.create_table_from_fields('event_fields',prepareFieldsEvent)
+    #     {'fieldID':'accessibility','fieldType':'string',},
+    #     {'fieldID':'active','fieldType':'string',},
+    #     {'fieldID':'attendees_codes','fieldType':'array',},
+    #     {'fieldID':'attendee_list','fieldType':'array',},
+    #     {'fieldID':'cal_dav_label','fieldType':'string',},
+    #     {'fieldID':'cal_type','fieldType':'string',},
+    #     {'fieldID':'collab_id','fieldType':'string',},
+    #     {'fieldID':'color','fieldType':'string',},
+    #     {'fieldID':'created_by','fieldType':'string',},
+    #     {'fieldID':'date_create','fieldType':'datetime',},
+    #     {'fieldID':'date_from','fieldType':'datetime',},
+    #     {'fieldID':'date_from_formatted','fieldType':'datetime',},
+    #     {'fieldID':'date_from_ts_utc','fieldType':'datetime',},
+    #     {'fieldID':'date_to','fieldType':'datetime',},
+    #     {'fieldID':'date_to_formatted','fieldType':'datetime',},
+    #     {'fieldID':'date_to_ts_utc','fieldType':'datetime',},
+    #     {'fieldID':'date_to_formatted','fieldType':'datetime',},
+    #     {'fieldID':'dav_exch_label','fieldType':'string',},
+    #     {'fieldID':'dav_xml_id','fieldType':'string',},
+    #     {'fieldID':'deleted','fieldType':'string',},
+    #     {'fieldID':'dav_xml_id','fieldType':'string',},
+    #     {'fieldID':'dt_from','fieldType':'datetime',},
+    #     {'fieldID':'dt_length','fieldType':'string',},
+    #     {'fieldID':'dt_skip_time','fieldType':'string',},
+    #     {'fieldID':'dt_to','fieldType':'datetime',},
+    #     {'fieldID':'event_type','fieldType':'string',},
+    #     {'fieldID':'exdate','fieldType':'string',},
+    #     {'fieldID':'g_event_id','fieldType':'string',},
+    #     {'fieldID':'id','fieldType':'string',},
+    #     {'fieldID':'importance','fieldType':'string',},
+    #     {'fieldID':'is_meeting','fieldType':'string',},
+    #     {'fieldID':'location','fieldType':'string',},
+    #     {'fieldID':'meeting','fieldType':'string',},
+    #     {'fieldID':'allow_invite','fieldType':'string',},
+    #     {'fieldID':'chat_id','fieldType':'string',},
+    #     {'fieldID':'hide_guests','fieldType':'string',},
+    #     {'fieldID':'host_name','fieldType':'string',},
+    #     {'fieldID':'language_id','fieldType':'string',},
+    #     {'fieldID':'mail_from','fieldType':'string',},
+    #     {'fieldID':'meeting_creator','fieldType':'string',},
+    #     {'fieldID':'notify','fieldType':'string',},
+    #     {'fieldID':'reinvite','fieldType':'string',},
+    #     {'fieldID':'meeting_host','fieldType':'string',},
+    #     {'fieldID':'meeting_status','fieldType':'string',},
+    #     {'fieldID':'name','fieldType':'string',},
+    #     {'fieldID':'options','fieldType':'string',},
+    #     {'fieldID':'original_date_from','fieldType':'datetime',},
+    #     {'fieldID':'owner_id','fieldType':'string',},
+    #     {'fieldID':'parent_id','fieldType':'string',},
+    #     {'fieldID':'private_event','fieldType':'string',},
+    #     {'fieldID':'recurrence_id','fieldType':'string',},
+    #     {'fieldID':'relations','fieldType':'string',},
+    #     {'fieldID':'remind','fieldType':'string',},
+    #     {'fieldID':'rrule','fieldType':'string',},
+    #     {'fieldID':'section_dav_xml_id','fieldType':'string',},
+    #     {'fieldID':'section_id','fieldType':'string',},
+    #     {'fieldID':'sect_id','fieldType':'string',},
+    #     {'fieldID':'sync_status','fieldType':'string',},
+    #     {'fieldID':'text_color','fieldType':'string',},
+    #     {'fieldID':'timestamp_x','fieldType':'datetime',},
+    #     {'fieldID':'tz_from','fieldType':'string',},
+    #     {'fieldID':'tz_offset_from','fieldType':'string',},
+    #     {'fieldID':'tz_offset_to','fieldType':'string',},
+    #     {'fieldID':'tz_to','fieldType':'string',},
+    #     {'fieldID':'uf_crm_cal_event','fieldType':'string',},
+    #     {'fieldID':'uf_webdav_cal_event','fieldType':'string',},
+    #     {'fieldID':'version','fieldType':'string',},
+    #     {'fieldID':'attendees_entity_list','fieldType':'array',},
+    #     {'fieldID':'user_offset_from','fieldType':'string',},
+    #     {'fieldID':'user_offset_to','fieldType':'string',},
+    # ]
+    # await workPostgres.create_table_from_fields('event_fields',prepareFieldsEvent)
 
 
 
@@ -313,6 +416,7 @@ async def main():
         {'fieldID':'name','fieldType':'string',},
         {'fieldID':'parent','fieldType':'string',},
         {'fieldID':'sort','fieldType':'string',},
+        {'fieldID':'uf_head','fieldType':'string',},
      
     ]
     await workPostgres.create_table_from_fields('department',prepareFieldsDepartment)
@@ -361,20 +465,26 @@ async def insert_records():
     # Создаем семафор для ограничения количества одновременных подключений
     semaphore = asyncio.Semaphore(5)  # Ограничиваем до 5 одновременных подключений
     
-    # Обработка сделок
+
+
+
+
+
+    # # Обработка сделок
     deals = await workBitrix.get_all_deal()
     print(f'Всего записей Deal: {len(deals)}')
     
     async def process_deal(deal):
         async with semaphore:
             try:
-                await workPostgres.insert_record('deal_fields', deal)
+                await workPostgres.insert_record('deal_fields', deal, is_mapping=True)
             except Exception as e:
-                print(f"Ошибка при добавлении записи: {str(e)}")
+                print(f"Ошибка при добавлении записи: {traceback.format_exc()}")
     
     tasks = [process_deal(deal) for deal in deals]
     await tqdm.gather(*tasks, desc="Обработка сделок")
 
+    # 1/0
     # Обработка компаний
     companies = await workBitrix.get_all_company()
     print(f'Всего записей Company: {len(companies)}')
@@ -382,36 +492,37 @@ async def insert_records():
     async def process_company(company):
         async with semaphore:
             try:
-                await workPostgres.insert_record('company_fields', company)
+                await workPostgres.insert_record('company_fields', company, is_mapping=True)
             except Exception as e:
                 print(f"Ошибка при добавлении записи: {str(e)}")
     
     tasks = [process_company(company) for company in companies]
     await tqdm.gather(*tasks, desc="Обработка компаний")
 
-    # Обработка лидов
-    leads = await workBitrix.get_all_lead()
-    print(f'Всего записей Lead: {len(leads)}')
+    # # 1/0
+    # # # Обработка лидов
+    # # leads = await workBitrix.get_all_lead()
+    # # print(f'Всего записей Lead: {len(leads)}')
     
-    async def process_lead(lead):
-        async with semaphore:
-            try:
-                await workPostgres.insert_record('lead_fields', lead)
-            except Exception as e:
-                print(f"Ошибка при добавлении записи: {str(e)}")
+    # # async def process_lead(lead):
+    # #     async with semaphore:
+    # #         try:
+    # #             await workPostgres.insert_record('lead_fields', lead)
+    # #         except Exception as e:
+    # #             print(f"Ошибка при добавлении записи: {str(e)}")
     
-    tasks = [process_lead(lead) for lead in leads]
-    await tqdm.gather(*tasks, desc="Обработка лидов")
+    # # tasks = [process_lead(lead) for lead in leads]
+    # # await tqdm.gather(*tasks, desc="Обработка лидов")
 
 
-    # Обработка контактов
+    # # Обработка контактов
     contacts = await workBitrix.get_all_contact()
     print(f'Всего записей Contact: {len(contacts)}')
     
     async def process_contact(contact):
         async with semaphore:
             try:
-                await workPostgres.insert_record('contact_fields', contact)
+                await workPostgres.insert_record('contact_fields', contact,is_mapping=True)
             except Exception as e:
                 print(f"Ошибка при добавлении записи: {str(e)}")
     
@@ -420,12 +531,15 @@ async def insert_records():
 
     # Обработка задач
     tasks_list = await workBitrix.get_all_task()
+    # pprint(tasks_list[0])
+    # 1/0
+
     print(f'Всего записей Task: {len(tasks_list)}')
     
     async def process_task(task):
         async with semaphore:
             try:
-                await workPostgres.insert_record('task_fields', task)
+                await workPostgres.insert_record('task_fields', task, is_mapping=True)
             except Exception as e:
                 print(f"Ошибка при добавлении записи: {str(e)}")
     
@@ -439,13 +553,13 @@ async def insert_records():
     async def process_user(user):
         async with semaphore:
             try:
-                await workPostgres.insert_record('user_fields', user)
+                await workPostgres.insert_record('user_fields', user,is_mapping=True)
             except Exception as e:
                 print(f"Ошибка при добавлении записи: {str(e)}")
     
     tasks = [process_user(user) for user in users]
     await tqdm.gather(*tasks, desc="Обработка пользователей")
-
+    
     # Обработка динамических элементов
     items = await workBitrix.get_all_dynamic_item()
     for item in items:
@@ -455,70 +569,78 @@ async def insert_records():
         async def process_dynamic_field(field):
             async with semaphore:
                 try:
-                    await workPostgres.insert_record(f'dynamic_item_fields_{entityTypeId}', field)
+                    await workPostgres.insert_record(f'dynamic_item_fields_{entityTypeId}', field, is_mapping=True)
                 except Exception as e:
                     print(f"Ошибка при добавлении записи: {str(e)}")
         
         tasks = [process_dynamic_field(field) for field in fields]
         await tqdm.gather(*tasks, desc=f"Обработка динамических элементов {entityTypeId}")
 
-    #Обработка звонков
-    calls=await workBitrix.get_all_call()
-    print(f'Всего записей Call: {len(calls)}')
-    async def process_call(call):
-        async with semaphore:
-            try:
-                await workPostgres.insert_record('call_fields', call)
-            except Exception as e:
-                print(f"Ошибка при добавлении записи: {str(e)}")
+    # #Обработка звонков
+    # # calls=await workBitrix.get_all_call()
+    # # print(f'Всего записей Call: {len(calls)}')
+    # # async def process_call(call):
+    # #     async with semaphore:
+    # #         try:
+    # #             await workPostgres.insert_record('call_fields', call)
+    # #         except Exception as e:
+    # #             print(f"Ошибка при добавлении записи: {str(e)}")
 
-    tasks = [process_call(call) for call in calls]
-    await tqdm.gather(*tasks, desc="Обработка звонков")
+    # # tasks = [process_call(call) for call in calls]
+    # # await tqdm.gather(*tasks, desc="Обработка звонков")
 
-    #Обработака истории перемещения сделок
-    history_move_deal=await workBitrix.get_history_move_deal()
-    print(f'Всего записей HistoryMoveDeal: {len(history_move_deal)}')
-    async def process_history_move_deal(history_move_deal):
-        async with semaphore:
-            try:
-                await workPostgres.insert_record('history_move_deal', history_move_deal)
-            except Exception as e:
-                print(f"Ошибка при добавлении записи: {str(e)}")
+
+
+
+    #TODO
+    # # Обработака истории перемещения сделок
+    # history_move_deal=await workBitrix.get_history_move_deal()
+    # print(f'Всего записей HistoryMoveDeal: {len(history_move_deal)}')
+    # async def process_history_move_deal(history_move_deal):
+    #     async with semaphore:
+    #         try:
+    #             await workPostgres.insert_record('history_move_deal', history_move_deal)
+    #         except Exception as e:
+    #             print(f"Ошибка при добавлении записи: {str(e)}")
     
-    tasks = [process_history_move_deal(history_move_deal) for history_move_deal in history_move_deal]
-    await tqdm.gather(*tasks, desc="Обработка истории перемещения сделок")
-
-    #Обработка истории перемещения лидов
-    history_move_lead=await workBitrix.get_history_move_lead()
-    print(f'Всего записей HistoryMoveLead: {len(history_move_lead)}')
-    async def process_history_move_lead(history_move_lead):
-        async with semaphore:
-            try:
-                await workPostgres.insert_record('history_move_lead', history_move_lead)
-            except Exception as e:
-                print(f"Ошибка при добавлении записи: {str(e)}")
-
-    tasks = [process_history_move_lead(history_move_lead) for history_move_lead in history_move_lead]
-    await tqdm.gather(*tasks, desc="Обработка истории перемещения лидов")
+    # tasks = [process_history_move_deal(history_move_deal) for history_move_deal in history_move_deal]
+    # await tqdm.gather(*tasks, desc="Обработка истории перемещения сделок")
 
 
-    #Обработка событий
-    events=await workBitrix.get_all_event()
-    print(f'Всего записей Event: {len(events)}')
-    async def process_event(event):
-        async with semaphore:
-            try:
-                eventID=await workPostgres.get_record('event_fields', event.get('id'))
-                if eventID:
-                    await workPostgres.update_record('event_fields', event)
-                else:   
-                    await workPostgres.insert_record('event_fields', event)
+
+
+
+    # #Обработка истории перемещения лидов
+    # # history_move_lead=await workBitrix.get_history_move_lead()
+    # # print(f'Всего записей HistoryMoveLead: {len(history_move_lead)}')
+    # # async def process_history_move_lead(history_move_lead):
+    # #     async with semaphore:
+    # #         try:
+    # #             await workPostgres.insert_record('history_move_lead', history_move_lead)
+    # #         except Exception as e:
+    # #             print(f"Ошибка при добавлении записи: {str(e)}")
+
+    # # tasks = [process_history_move_lead(history_move_lead) for history_move_lead in history_move_lead]
+    # # await tqdm.gather(*tasks, desc="Обработка истории перемещения лидов")
+
+
+    # #Обработка событий
+    # # events=await workBitrix.get_all_event()
+    # # print(f'Всего записей Event: {len(events)}')
+    # # async def process_event(event):
+    # #     async with semaphore:
+    # #         try:
+    # #             eventID=await workPostgres.get_record('event_fields', event.get('id'))
+    # #             if eventID:
+    # #                 await workPostgres.update_record('event_fields', event)
+    # #             else:   
+    # #                 await workPostgres.insert_record('event_fields', event)
                     
-            except Exception as e:
-                print(f"Ошибка при добавлении записи: {str(e)}")
+    # #         except Exception as e:
+    # #             print(f"Ошибка при добавлении записи: {str(e)}")
     
-    tasks = [process_event(event) for event in events]
-    await tqdm.gather(*tasks, desc="Обработка событий")
+    # # tasks = [process_event(event) for event in events]
+    # # await tqdm.gather(*tasks, desc="Обработка событий")
 
 
     #Обработка подразделений
@@ -533,7 +655,7 @@ async def insert_records():
 
     tasks = [process_department(department) for department in departments]
     await tqdm.gather(*tasks, desc="Обработка подразделений")
-
+    # 1/0
     #Обработка воронок
     categories=await workBitrix.get_all_category()
     print(f'Всего записей Category: {len(categories)}')
@@ -560,7 +682,7 @@ async def insert_records():
     tasks = [process_status(status) for status in status]
     await tqdm.gather(*tasks, desc="Обработка статусов воронок")
 
-    #Обработка токенов
+    # Обработка токенов
     token=[workBitrix.WEBHOOK]
     print(f'Всего записей Token: {len(token)}')
     async def process_token(token):
@@ -573,6 +695,7 @@ async def insert_records():
     tasks = [process_token(token) for token in token]
     await tqdm.gather(*tasks, desc="Обработка токенов")
 
+    
 
     #Обработка комментариев задач
     tasksBitrix=await workBitrix.get_all_task()
@@ -601,7 +724,7 @@ async def insert_records():
     tasks = [process_task_comments(task_id,task_comments) for task_id,task_comments in task_and_comments.items()]
     await tqdm.gather(*tasks, desc="Обработка комментариев задач")
             
-
+    # 1/0
     #Обработка результатов задач
     results=await workBitrix.get_result_task_comments(tasks=tasksBitrix)
     print(f'Всего записей ResultTask: {len(results)}')
@@ -620,7 +743,7 @@ async def insert_records():
                         'status':result.get('status'),
                         'commentid':result.get('commentId'),
                     }
-                    await workPostgres.insert_record('result_task', result)
+                    await workPostgres.insert_record('task_result_fields', result,is_mapping=True)
             except Exception as e:
                 print(f"Ошибка при добавлении записи: {str(e)}")
 
@@ -662,12 +785,13 @@ async def drop_table():
         await workPostgres.drop_table(f'dynamic_item_fields_{entityTypeId}')
 
 async def update_records():
-    deal = await workBitrix.get_deal(2)
+    deal = await workBitrix.get_deal(18270)
     try:
-        await workPostgres.update_record('deal_fields', deal)
+        await workPostgres.update_record('deal_fields', deal, is_mapping=True)
         print("Запись успешно обновлена")
     except Exception as e:
-        print(f"Ошибка при обновлении записи: {str(e)}")
+        print(f"Ошибка при обновлении записи: {traceback.format_exc()}")
+
 async def update_records_task():
     task=await workBitrix.get_task(2)
     pprint(task) 
@@ -745,6 +869,7 @@ if __name__ == '__main__':
     # status= asyncio.run(workBitrix.get_all_status())
     # pprint(status)
     asyncio.run(main())
+    # asyncio.run(update_records())
     # pass
     # asyncio.run(delete_records())
     # asyncio.run(update_records_task())

@@ -15,7 +15,7 @@ url = os.environ.get('CLICKHOUSE_HOST')
 db = os.environ.get('CLICKHOUSE_DB')
 
 
-MAPPING_FIELDS_PATH='bitrix-to-postgres/bitrix_to_postgres/scripts/mapping_fields'
+MAPPING_FIELDS_PATH='/opt/airflow/scripts/mapping_fields'
 client = asyncio.run(clickhouse_connect.get_async_client(
     host=url,
     user=userName,
@@ -125,8 +125,7 @@ async def create_table_from_fields(table_name, fields_list):
             ch_type = 'Array(String)'
         else:
             ch_type = 'String'
-        if field_name=='bitrix_id' or field_name=='`bitrix_id`':
-            continue
+            
         query += f"    {field_name} {ch_type} COMMENT '{description}',\n"
     
     # Завершаем запрос
@@ -584,7 +583,7 @@ async def update_record(table_name, data, is_mapping=False):
     
     # Преобразуем имена колонок в нижний регистр в column_types
     column_types = {k.lower(): v for k, v in column_types.items()}
-    pprint(column_types)
+    # pprint(column_types)
     # Преобразуем данные в соответствии с типами столбцов
     converted_data = {}
     mapping_fields = {}
@@ -620,6 +619,7 @@ async def update_record(table_name, data, is_mapping=False):
         raise ValueError("Нет данных для обновления после преобразования")
     
     # В ClickHouse обновление через ALTER TABLE ... UPDATE
+    pprint(converted_data)
     bitrix_id = converted_data.pop('bitrix_id')
     
     if converted_data:

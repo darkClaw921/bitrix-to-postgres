@@ -7,14 +7,14 @@ import sys
 import os
 import asyncio
 from pathlib import Path
-
+from scripts.notification import MyNotifier
 # # Добавляем путь к директории scripts в PYTHONPATH
 # scripts_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 # sys.path.append(scripts_dir)
 
 # Импортируем модули из scripts
-import scripts.workBitrix1 as bit
-from scripts.workPostgres1 import (
+import scripts.workBitrix_click as bit
+from scripts.workPostgres_click import (
     insert_record, update_record, get_record,
     create_table_from_fields
 )
@@ -41,13 +41,16 @@ dag = DAG(
     catchup=False,
     tags=['bitrix'],
     max_active_runs=1,
-    max_active_tasks=8
+    max_active_tasks=8,
+    on_success_callback=MyNotifier(message="Success!"),
+    on_failure_callback=MyNotifier(message="Failure!"),
 )
 
 async def update_history_move_deal():
     # """Обновление таблицы history_move_deal"""
     client = bit
-    deals = await client.get_history_move_deal()
+    last_update = await get_last_update_date('history_move_deal')
+    deals = await client.get_history_move_deal(last_update=last_update)
     for deal in deals:
         existing_record = await get_record('history_move_deal', deal['ID'])
         if existing_record:
@@ -127,13 +130,16 @@ async def update_call_fields():
 async def update_user():
     """Обновление таблицы user"""
     users = await bit.get_all_user()
+    #pwd
+    print(f'{os.getcwd()=}')
     # users=users['order0000000000']
+
     for user in users:
         existing_record = await get_record('user_fields', str(user['ID']))
         if existing_record:
-            await update_record('user_fields', user)
+            await update_record('user_fields', user,is_mapping=True)
         else:
-            await insert_record('user_fields', user)
+            await insert_record('user_fields', user,is_mapping=True)
 
 async def get_last_update_date(table_name: str) -> datetime:
     """Получение даты последнего обновления таблицы"""
@@ -141,7 +147,7 @@ async def get_last_update_date(table_name: str) -> datetime:
     if record and hasattr(record, 'date_update'):
         #преобразуем строку в datetime
         return datetime.strptime(record.date_update, '%Y-%m-%d %H:%M:%S.%f')
-    return datetime(2023, 1, 1)  # Если нет записи, возвращаем начальную дату
+    return datetime(2025, 3, 1)  # Если нет записи, возвращаем начальную дату
 
 
 async def update_deals():
@@ -153,9 +159,9 @@ async def update_deals():
     for deal in deals:
         existing_record = await get_record('deal_fields', str(deal['ID']))
         if existing_record:
-            await update_record('deal_fields', deal)
+            await update_record('deal_fields', deal,is_mapping=True)
         else:
-            await insert_record('deal_fields', deal)
+            await insert_record('deal_fields', deal,is_mapping=True)
 
 async def update_companies():
     """Инкрементное обновление таблицы company_fields"""
@@ -165,9 +171,9 @@ async def update_companies():
     for company in companies:
         existing_record = await get_record('company_fields', str(company['ID']))
         if existing_record:
-            await update_record('company_fields', company)
+            await update_record('company_fields', company,is_mapping=True)
         else:
-            await insert_record('company_fields', company)
+            await insert_record('company_fields', company,is_mapping=True)
 
 async def update_contacts():
     """Инкрементное обновление таблицы contact_fields"""
@@ -176,9 +182,9 @@ async def update_contacts():
     for contact in contacts:
         existing_record = await get_record('contact_fields', str(contact['ID']))
         if existing_record:
-            await update_record('contact_fields', contact)
+            await update_record('contact_fields', contact,is_mapping=True)
         else:
-            await insert_record('contact_fields', contact)
+            await insert_record('contact_fields', contact,is_mapping=True)
 
 async def update_leads():
     """Инкрементное обновление таблицы lead_fields"""
@@ -198,9 +204,9 @@ async def update_tasks():
     for task in tasks:
         existing_record = await get_record('task_fields', str(task['id']))
         if existing_record:
-            await update_record('task_fields', task)
+            await update_record('task_fields', task,is_mapping=True)
         else:
-            await insert_record('task_fields', task)
+            await insert_record('task_fields', task,is_mapping=True)
 
 async def update_events():
     """Инкрементное обновление таблицы event_fields"""
@@ -268,57 +274,52 @@ async def update_task_results():
             }
             existing_record = await get_record('task_result_fields', str(task_result['bitrix_id']))
             if existing_record:
-                await update_record('task_result_fields', task_result)
+                await update_record('task_result_fields', task_result,is_mapping=True)
             else:
-                await insert_record('task_result_fields', task_result)
+                await insert_record('task_result_fields', task_result,is_mapping=True)
 
 
 
-
-
-
-
-# async def update_dynamic_items():
-#     """Инкрементное обновление таблиц dynamic_item_fields"""
-#     dynamic_types = await bit.get_all_dynamic_item()
-#     for dynamic_type in dynamic_types:
-#         entityTypeId = dynamic_type['entityTypeId']
-#         last_update = await get_last_update_date(f'dynamic_item_fields_{entityTypeId}')
-#         dynamic_items = await bit.get_dynamic_item_all_entity(entityTypeId,last_update=last_update)
-#         for item in dynamic_items:
-#             existing_record = await get_record(f'dynamic_item_fields_{entityTypeId}', str(item['id']))
-#             if existing_record:
-#                 await update_record(f'dynamic_item_fields_{entityTypeId}', item)
-#             else:
-#                 await insert_record(f'dynamic_item_fields_{entityTypeId}', item)
+ # Обработка динамических элементов
+async def update_dynamic_items():
+    """Инкрементное обновление таблиц dynamic_item_fields"""
+    dynamic_types = await bit.get_all_dynamic_item()
+    for dynamic_type in dynamic_types:
+        entityTypeId = dynamic_type['entityTypeId']
+        last_update = await get_last_update_date(f'dynamic_item_fields_{entityTypeId}')
+        # dynamic_items = await bit.get_dynamic_item_all_entity(entityTypeId,last_update=last_update)
+        dynamic_items = await bit.get_dynamic_item_all_entity(entityTypeId)
+        for item in dynamic_items:
+            existing_record = await get_record(f'dynamic_item_fields_{entityTypeId}', str(item['id']))
+            if existing_record:
+                await update_record(f'dynamic_item_fields_{entityTypeId}', item,is_mapping=True)
+            else:
+                await insert_record(f'dynamic_item_fields_{entityTypeId}', item,is_mapping=True)
 
 async def update_date_update():
     """Обновление таблицы date_update"""
     tables = [
-        'history_move_deal',
-        'history_move_lead',
+        # 'history_move_deal',
         'department',
         'category',
         'status',
         'token',
-        'call_fields',
         'user_fields',
-        'deal_fields',
         'company_fields',
         'contact_fields',
-        'lead_fields',
+        'deal_fields',
         'task_fields',
-        'event_fields',
         'task_comment_fields',
-        'task_result_fields'
+        'task_result_fields',
+        'dynamic_item_fields'
     ]
     
     for table in tables:
         update_info = {
-            'ID': f"{table}_latest",
+            'bitrix_id': f"{table}_latest",
             'table_name': table,
             'date_update': datetime.now(),
-            'status': 'success'
+            # 'status': 'success'
         }
         existing_record = await get_record('date_update', f"{table}_latest")
         if existing_record:
@@ -327,21 +328,22 @@ async def update_date_update():
             await insert_record('date_update', update_info)
 
     # Добавляем записи для dynamic_item_fields
-    # dynamic_types = await bit.get_all_dynamic_item()
-    # for dynamic_type in dynamic_types:
-    #     entityTypeId = dynamic_type['id']
-    #     table_name = f'dynamic_item_fields_{entityTypeId}'
-    #     update_info = {
-    #         'ID': f"{table_name}_latest",
-    #         'table_name': table_name,
-    #         'last_update': datetime.now(),
-    #         'status': 'success'
-    #     }
-    #     existing_record = await get_record('date_update', f"{table_name}_latest")
-    #     if existing_record:
-    #         await update_record('date_update', update_info)
-    #     else:
-    #         await insert_record('date_update', update_info)
+    dynamic_types = await bit.get_all_dynamic_item()
+    for dynamic_type in dynamic_types:
+        entityTypeId = dynamic_type['id']
+        table_name = f'dynamic_item_fields_{entityTypeId}'
+        update_info = {
+            # 'record_id': f"{table_name}_latest",
+            'table_name': table_name,
+            'date_update': datetime.now(),
+            'bitrix_id':f"{table_name}_latest",
+            # 'status': 'success'
+        }
+        existing_record = await get_record('date_update', f"{table_name}_latest")
+        if existing_record:
+            await update_record('date_update', update_info)
+        else:
+            await insert_record('date_update', update_info)
 
 def run_async(func):
     """Запускает асинхронную функцию"""
@@ -352,34 +354,31 @@ def run_async(func):
         raise e
 
 # Создаем задачи
-update_history_move_deal_task = PythonOperator(
-    task_id='update_history_move_deal',
-    python_callable=lambda f=update_history_move_deal: run_async(f),
-    retries=3,
-    retry_delay=timedelta(minutes=1),
-    execution_timeout=timedelta(minutes=10),
-    dag=dag,
-)
+# update_history_move_deal_task = PythonOperator(
+#     task_id='update_history_move_deal',
+#     python_callable=lambda f=update_history_move_deal: run_async(f),
+#     retries=3,
+#     retry_delay=timedelta(minutes=1),
+#     execution_timeout=timedelta(minutes=10),
+#     dag=dag,
+# )
 
 # Создаем операторы для каждой задачи
 tasks = {
-    'update_history_move_lead': update_history_move_lead,
+    # 'update_history_move_deal': update_history_move_deal,
     'update_department': update_department,
     'update_category': update_category,
     'update_status': update_status,
     'update_token': update_token,
-    'update_call_fields': update_call_fields,
     'update_user': update_user,
     'update_deals': update_deals,
-    'update_companies': update_companies,
-    'update_contacts': update_contacts,
-    'update_leads': update_leads,
     'update_tasks': update_tasks,
-    'update_events': update_events,
-    # 'update_dynamic_items': update_dynamic_items,
     'update_date_update': update_date_update,
     'update_task_comments': update_task_comments,
-    'update_task_results': update_task_results
+    'update_task_results': update_task_results,
+    'update_companies': update_companies,
+    'update_contacts': update_contacts,
+    'update_dynamic_items': update_dynamic_items,
 }
 
 operators = {}

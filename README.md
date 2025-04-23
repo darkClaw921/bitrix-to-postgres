@@ -1,7 +1,7 @@
 # Bitrix to Postgres Connector
 
-Сервис для синхронизации данных между Bitrix24 и PostgreSQL.
-получает данные из Bitrix24 и записывает в PostgreSQL
+Сервис для синхронизации данных между Bitrix24 и ClickHouse.
+получает данные из Bitrix24 и записывает в ClickHouse
 - Сделки
 - Лиды
 - Контакты
@@ -20,7 +20,11 @@ crm,
 ## Компоненты
 - FastAPI сервис
 - Airflow для управления задачами
-- PostgreSQL для хранения данных
+- ClickHouse для хранения данных
+
+```bash
+git checkout clickhouse
+```
 
 ## Установка и запуск
 1. Убедитесь, что у вас установлен Docker и Docker Compose

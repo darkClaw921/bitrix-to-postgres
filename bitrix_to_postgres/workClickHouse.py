@@ -15,7 +15,7 @@ url = os.environ.get('CLICKHOUSE_HOST')
 db = os.environ.get('CLICKHOUSE_DB')
 
 
-MAPPING_FIELDS_PATH='bitrix-to-postgres/bitrix_to_postgres/scripts/mapping_fields'
+MAPPING_FIELDS_PATH='scripts/mapping_fields'
 client = asyncio.run(clickhouse_connect.get_async_client(
     host=url,
     user=userName,
@@ -501,7 +501,7 @@ async def insert_record(table_name, data, is_mapping=False):
             
             if key_bitrix_lower is None or key_bitrix_lower == 'id':
                 key_bitrix_lower=key_bitrix
-        elif is_mapping:
+        elif is_mapping and key_bitrix_lower != 'bitrix_id':
             continue
         # print(key_bitrix_lower)
         # if value_bitrix in [['18309'],['1907'], ['1909']]:
@@ -599,7 +599,7 @@ async def update_record(table_name, data, is_mapping=False):
         mapping_keys=list(mapping_fields.keys())
         if is_mapping and key_lower in mapping_keys:
             key_lower=mapping_fields.get(key_lower)
-        elif is_mapping:
+        elif is_mapping and key_lower != 'bitrix_id':
             continue
         # if value == ['18309']:
         #     print(key_lower)

@@ -408,8 +408,8 @@ async def prepare_record_for_insert(data, date_fields=None):
                               'responsible',
                               'creator',
                               'addInReport',
-                              'active',
-                              'xml_id','post','name',
+                              
+                              'xml_id','post',
                               'sourceid'):
             continue
 
@@ -500,7 +500,8 @@ async def insert_record(table_name, data, is_mapping=False):
             
             if key_bitrix_lower is None or key_bitrix_lower == 'id':
                 key_bitrix_lower=key_bitrix
-        elif is_mapping:
+        
+        elif is_mapping and key_bitrix_lower != 'bitrix_id':
             continue
         # print(key_bitrix_lower)
         # if value_bitrix in [['18309'],['1907'], ['1909']]:
@@ -581,6 +582,7 @@ async def update_record(table_name, data, is_mapping=False):
     # Получаем информацию о типах столбцов
     column_types = await get_table_column_types(table_name)
     
+    
     # Преобразуем имена колонок в нижний регистр в column_types
     column_types = {k.lower(): v for k, v in column_types.items()}
     # pprint(column_types)
@@ -598,7 +600,9 @@ async def update_record(table_name, data, is_mapping=False):
         mapping_keys=list(mapping_fields.keys())
         if is_mapping and key_lower in mapping_keys:
             key_lower=mapping_fields.get(key_lower)
-        elif is_mapping:
+        
+            
+        elif is_mapping and key_lower != 'bitrix_id':
             continue
         # if value == ['18309']:
         #     print(key_lower)
@@ -619,7 +623,7 @@ async def update_record(table_name, data, is_mapping=False):
         raise ValueError("Нет данных для обновления после преобразования")
     
     # В ClickHouse обновление через ALTER TABLE ... UPDATE
-    pprint(converted_data)
+    # pprint(converted_data)
     bitrix_id = converted_data.pop('bitrix_id')
     
     if converted_data:

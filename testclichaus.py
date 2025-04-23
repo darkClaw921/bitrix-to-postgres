@@ -125,7 +125,8 @@ if __name__ == '__main__':
     # 1/0
     # client.query(f'DROP TABLE IF EXISTS company_enumerate_fields')
     # execute_query_string(query2)
-    delete_all_records('date_update')
+    # delete_all_records('deal_fields')
+    drop_tables()
     1/0
     # # add_new_column(table_name='task_comment_fields',
     # #                column_name='test_odlas',

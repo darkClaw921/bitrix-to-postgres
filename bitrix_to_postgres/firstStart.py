@@ -39,9 +39,6 @@ async def main():
 
 
 
-
-
-
     # Deal
 
     fields=await workBitrix.get_all_fields_deal()

@@ -130,7 +130,7 @@ async def get_all_deal(last_update=None)->list:
     # deals=await bit.call('crm.deal.list',items=items)
     deals=deals
     return deals
-    
+
 async def get_history_move_deal(last_update=None):
     #https://apidocs.bitrix24.ru/api-reference/crm/crm-stage-history-list.html
     """
@@ -717,7 +717,7 @@ def prepare_dynamic_item_field_to_postgres(fields:dict,entityTypeId:int, table_n
                     'value':item['VALUE'],
                     'id_value':item['ID'],
                     'table_name':table_name,
-                    'description':meta['listLabel'],
+                    'description':meta['title'].replace(' ','_').lower(),
                 })
 
     return fieldsToPostgres, enumerateFields

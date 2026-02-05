@@ -408,8 +408,7 @@ async def prepare_record_for_insert(data, date_fields=None):
                               'responsible',
                               'creator',
                               'addInReport',
-                              
-                              'xml_id','post',
+                              'xml_id',
                               'sourceid'):
             continue
 

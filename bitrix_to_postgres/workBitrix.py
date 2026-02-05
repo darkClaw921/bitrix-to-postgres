@@ -1071,7 +1071,7 @@ async def main():
     # status=await get_all_user()
     # pprint(status)
     # print(len(status))
-    await get_all_task(last_update=datetime.now())
+    await get_deal('')
     1/0
     # history=await get_result_task(30255)
     history=await get_event(24453)

@@ -32,9 +32,22 @@ async def main():
     # await insert_records()
     # 1/0
 
+   
+    #Task
+    fields= await workBitrix.get_all_fields_task()
+    pprint(fields)
+    1/0
+    prepareFields=workBitrix.prepare_fields_task_to_postgres(fields)
+    
+    allFields=prepareFields
+    # type{'443': {'id': 443, 'title': 'Оплата'}}
+    allFields.append({'fieldID':'tags','fieldType':'json'})
+    allFields.append({'fieldID':'group','fieldType':'json'})
+    # pprint(allFields)
+    await workPostgres.create_table_from_fields('task_fields',allFields)
+    save_mapping_fields('task_fields',allFields)
 
-
-
+    
 
 
 
@@ -462,7 +475,7 @@ async def insert_records():
     # Создаем семафор для ограничения количества одновременных подключений
     semaphore = asyncio.Semaphore(5)  # Ограничиваем до 5 одновременных подключений
     
-
+    
 
 
 

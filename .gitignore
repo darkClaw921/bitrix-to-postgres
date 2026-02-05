@@ -88,7 +88,7 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
-
+interactions.jsonl
 # Flask stuff:
 instance/
 .webassets-cache
@@ -102,14 +102,15 @@ docs/_build/
 # PyBuilder
 .pybuilder/
 target/
-
+.beads
 # Jupyter Notebook
 .ipynb_checkpoints
 
 # IPython
 profile_default/
 ipython_config.py
-
+CLAUDE.md
+plan.md
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
 #   intended to run in multiple environments; otherwise, check them in:

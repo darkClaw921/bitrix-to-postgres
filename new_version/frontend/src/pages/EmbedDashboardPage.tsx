@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import PasswordGate from '../components/dashboards/PasswordGate'
 import { publicApi } from '../services/api'
-import type { Dashboard, DashboardChart, ChartSpec, ChartDataResponse } from '../services/api'
+import type { Dashboard, DashboardChart, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
 
 const SESSION_KEY_PREFIX = 'dashboard_token_'
 
@@ -127,11 +127,7 @@ function DashboardChartCard({
   const title = dc.title_override || dc.chart_title || 'Chart'
   const description = dc.description_override || dc.chart_description
 
-  const config = dc.chart_config as {
-    x: string
-    y: string | string[]
-    colors?: string[]
-  } | null
+  const config = dc.chart_config as unknown as ChartDisplayConfig | null
 
   const spec: ChartSpec = {
     title,
@@ -140,6 +136,13 @@ function DashboardChartCard({
     data_keys: { x: config?.x || 'x', y: config?.y || 'y' },
     colors: config?.colors,
     description,
+    legend: config?.legend,
+    grid: config?.grid,
+    xAxis: config?.xAxis,
+    yAxis: config?.yAxis,
+    line: config?.line,
+    area: config?.area,
+    pie: config?.pie,
   }
 
   return (

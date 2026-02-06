@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import { publicApi } from '../services/api'
-import type { ChartSpec, ChartDataResponse } from '../services/api'
+import type { ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
 
 export default function EmbedChartPage() {
   const { chartId } = useParams<{ chartId: string }>()
@@ -42,7 +42,7 @@ export default function EmbedChartPage() {
     )
   }
 
-  const config = meta.chart_config as { x: string; y: string | string[]; colors?: string[] }
+  const config = meta.chart_config as unknown as ChartDisplayConfig
   const spec: ChartSpec = {
     title: meta.title as string,
     chart_type: meta.chart_type as ChartSpec['chart_type'],
@@ -50,6 +50,13 @@ export default function EmbedChartPage() {
     data_keys: { x: config?.x || 'x', y: config?.y || 'y' },
     colors: config?.colors,
     description: meta.description as string | undefined,
+    legend: config?.legend,
+    grid: config?.grid,
+    xAxis: config?.xAxis,
+    yAxis: config?.yAxis,
+    line: config?.line,
+    area: config?.area,
+    pie: config?.pie,
   }
 
   return (

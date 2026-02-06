@@ -336,4 +336,175 @@ export const schemaApi = {
     api.get<SchemaDescriptionListResponse>('/schema/list').then((r) => r.data),
 }
 
+// === Dashboard Types ===
+
+export interface DashboardChart {
+  id: number
+  dashboard_id: number
+  chart_id: number
+  title_override?: string
+  description_override?: string
+  layout_x: number
+  layout_y: number
+  layout_w: number
+  layout_h: number
+  sort_order: number
+  chart_title?: string
+  chart_description?: string
+  chart_type?: string
+  chart_config?: Record<string, unknown>
+  sql_query?: string
+  user_prompt?: string
+  created_at?: string
+}
+
+export interface Dashboard {
+  id: number
+  slug: string
+  title: string
+  description?: string
+  is_active: boolean
+  charts: DashboardChart[]
+  created_at: string
+  updated_at: string
+}
+
+export interface DashboardListItem {
+  id: number
+  slug: string
+  title: string
+  description?: string
+  is_active: boolean
+  chart_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface DashboardListResponse {
+  dashboards: DashboardListItem[]
+  total: number
+  page: number
+  per_page: number
+}
+
+export interface DashboardPublishRequest {
+  title: string
+  description?: string
+  chart_ids: number[]
+}
+
+export interface DashboardPublishResponse {
+  dashboard: Dashboard
+  password: string
+}
+
+export interface DashboardUpdateRequest {
+  title?: string
+  description?: string
+}
+
+export interface LayoutItem {
+  id: number
+  x: number
+  y: number
+  w: number
+  h: number
+  sort_order: number
+}
+
+export interface DashboardLayoutUpdateRequest {
+  layouts: LayoutItem[]
+}
+
+export interface ChartOverrideUpdateRequest {
+  title_override?: string
+  description_override?: string
+}
+
+export interface IframeCodeRequest {
+  chart_ids: number[]
+  width?: string
+  height?: string
+}
+
+export interface IframeCodeItem {
+  chart_id: number
+  html: string
+}
+
+export interface IframeCodeResponse {
+  iframes: IframeCodeItem[]
+}
+
+export interface DashboardAuthResponse {
+  token: string
+  expires_in_minutes: number
+}
+
+export interface PasswordChangeResponse {
+  password: string
+}
+
+// === Dashboards API (internal) ===
+
+export const dashboardsApi = {
+  publish: (data: DashboardPublishRequest) =>
+    api.post<DashboardPublishResponse>('/dashboards/publish', data).then((r) => r.data),
+
+  list: (page = 1, perPage = 20) =>
+    api.get<DashboardListResponse>('/dashboards/list', { params: { page, per_page: perPage } }).then((r) => r.data),
+
+  get: (id: number) =>
+    api.get<Dashboard>(`/dashboards/${id}`).then((r) => r.data),
+
+  update: (id: number, data: DashboardUpdateRequest) =>
+    api.put<Dashboard>(`/dashboards/${id}`, data).then((r) => r.data),
+
+  delete: (id: number) =>
+    api.delete(`/dashboards/${id}`).then((r) => r.data),
+
+  updateLayout: (id: number, data: DashboardLayoutUpdateRequest) =>
+    api.put<Dashboard>(`/dashboards/${id}/layout`, data).then((r) => r.data),
+
+  updateChartOverride: (dashboardId: number, dcId: number, data: ChartOverrideUpdateRequest) =>
+    api.put(`/dashboards/${dashboardId}/charts/${dcId}`, data).then((r) => r.data),
+
+  removeChart: (dashboardId: number, dcId: number) =>
+    api.delete(`/dashboards/${dashboardId}/charts/${dcId}`).then((r) => r.data),
+
+  changePassword: (id: number) =>
+    api.post<PasswordChangeResponse>(`/dashboards/${id}/change-password`).then((r) => r.data),
+
+  getIframeCode: (data: IframeCodeRequest) =>
+    api.post<IframeCodeResponse>('/dashboards/iframe-code', data).then((r) => r.data),
+}
+
+// === Public API (no auth interceptor) ===
+
+const publicAxios = axios.create({
+  baseURL: API_URL,
+  headers: { 'Content-Type': 'application/json' },
+})
+
+export const publicApi = {
+  getChartMeta: (chartId: number) =>
+    publicAxios.get(`/public/chart/${chartId}/meta`).then((r) => r.data),
+
+  getChartData: (chartId: number) =>
+    publicAxios.get<ChartDataResponse>(`/public/chart/${chartId}/data`).then((r) => r.data),
+
+  authenticateDashboard: (slug: string, password: string) =>
+    publicAxios.post<DashboardAuthResponse>(`/public/dashboard/${slug}/auth`, { password }).then((r) => r.data),
+
+  getDashboard: (slug: string, token: string) =>
+    publicAxios.get<Dashboard>(`/public/dashboard/${slug}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data),
+
+  getDashboardChartData: (slug: string, dcId: number, token: string) =>
+    publicAxios.get<ChartDataResponse>(`/public/dashboard/${slug}/chart/${dcId}/data`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data),
+}
+
 export default api

@@ -1,52 +1,155 @@
 # Архитектура проекта
 
 ## Общее описание
-Проект представляет собой коннектор для передачи данных из Bitrix в ClickHouse. Основная задача - получать данные из Bitrix, преобразовывать их и сохранять в ClickHouse для дальнейшего анализа.
+Проект — коннектор для синхронизации данных из Bitrix24 CRM в PostgreSQL/MySQL с AI-аналитикой (генерация чартов, описание схемы) и публикацией дашбордов.
 
-## Структура проекта
+---
+
+## Старая версия (корень проекта)
 
 ### Основные файлы:
+- **workClickHouse.py** — модуль для работы с ClickHouse (устаревшая версия)
+  - Создание таблиц, добавление/удаление столбцов
+  - Вставка, обновление, удаление записей
+  - Конвертация типов данных
 
-- **workClickHouse.py** - модуль для работы с ClickHouse базой данных. Содержит функции для:
-  - Создания таблиц
-  - Добавления и удаления столбцов
-  - Вставки, обновления и удаления записей
-  - Получения метаданных таблиц
-  - Конвертации типов данных
+---
 
-### Основные функции и их назначение:
+## Новая версия (`new_version/`)
 
-#### Функции для работы с таблицами:
-- `create_table_move_task_to_history()` - создает таблицу для хранения истории перемещенных задач
-- `create_table_from_fields(table_name, fields_list)` - создает таблицу на основе предоставленного списка полей
-- `drop_table(table_name)` - удаляет таблицу
-- `get_database_structure()` - получает структуру всех таблиц в базе данных
+### Backend (`new_version/backend/`)
 
-#### Функции для работы со столбцами:
-- `add_column_to_table(table_name, column_name, column_type)` - добавляет столбец в таблицу
-- `drop_column_from_table(table_name, column_name)` - удаляет столбец из таблицы
-- `get_table_column_types(table_name)` - получает информацию о типах столбцов таблицы
+Архитектура: Clean Architecture (API → Domain → Infrastructure)
 
-#### Функции для работы с данными:
-- `insert_record(table_name, data)` - вставляет запись в таблицу
-- `update_record(table_name, data)` - обновляет запись в таблице
-- `get_record(table_name, bitrix_id)` - получает запись по идентификатору Bitrix
-- `delete_record(table_name, bitrix_id)` - удаляет запись из таблицы
+#### Конфигурация и ядро
+- **app/config.py** — Pydantic Settings: DB URL, Bitrix webhook, OpenAI, charts, dashboards (secret_key, token_expiry)
+- **app/core/logging.py** — structlog с JSON/pretty форматированием
+- **app/core/exceptions.py** — иерархия исключений:
+  - `AppException` (base), `BitrixAPIError`, `BitrixRateLimitError`, `BitrixAuthError`
+  - `DatabaseError`, `SyncError`, `AuthenticationError`, `AuthorizationError`
+  - `AIServiceError` (502), `ChartServiceError` (400)
+  - `DashboardServiceError` (400), `DashboardAuthError` (401)
 
-#### Вспомогательные функции:
-- `convert_value_to_type(value, target_type)` - конвертирует значение в указанный тип
-- `prepare_record_for_insert(data, date_fields)` - подготавливает запись для вставки
+#### База данных
+- **app/infrastructure/database/connection.py** — SQLAlchemy async engine (asyncpg/aiomysql), session factory
+- **app/infrastructure/database/models.py** — ORM модели:
+  - `SyncConfig` — конфигурация синхронизации по entity_type
+  - `SyncLog` — история синхронизаций
+  - `SyncState` — состояние инкрементальной синхронизации
+  - `AIChart` — сохранённые AI-чарты
+  - `PublishedDashboard` — опубликованные дашборды (slug, password_hash, is_active)
+  - `DashboardChart` — чарты в дашборде (layout позиции, title/description override)
 
-## Особенности ClickHouse
-В отличие от PostgreSQL, ClickHouse имеет некоторые особенности:
-- Нет прямой поддержки JSON типа данных - используется String
-- Обновления и удаления реализованы через ALTER TABLE и работают относительно медленно
-- Для таблиц используется движок MergeTree
-- Boolean тип представлен как UInt8 (0/1)
+#### Миграции (`alembic/versions/`)
+- **001_create_system_tables.py** — sync_config, sync_logs, sync_state + default config
+- **002_create_ai_charts_table.py** — ai_charts
+- **003_create_schema_descriptions_table.py** — schema_descriptions
+- **004_create_dashboards_tables.py** — published_dashboards, dashboard_charts (FK cascade)
 
-## Подключение к базе данных
-Для подключения используются переменные окружения:
-- CLICKHOUSE_HOST
-- CLICKHOUSE_USERNAME
-- CLICKHOUSE_PASSWORD
-- CLICKHOUSE_DB 
+#### Доменные сервисы (`app/domain/services/`)
+- **chart_service.py** — `ChartService`:
+  - SQL валидация (`validate_sql_query`, `validate_table_names`, `ensure_limit`)
+  - Контекст схемы (`get_schema_context`, `get_allowed_tables`, `get_tables_info`)
+  - Выполнение запросов (`execute_chart_query`) с таймаутом
+  - CRUD чартов (`save_chart`, `get_charts`, `get_chart_by_id`, `delete_chart`, `toggle_pin`)
+  - CRUD описаний схемы (`save_schema_description`, `get_latest_schema_description`, etc.)
+- **ai_service.py** — `AIService`:
+  - `generate_chart_spec(prompt, schema_context)` → JSON спецификация чарта
+  - `generate_schema_description(schema_context)` → Markdown документация
+- **sync_service.py** — `SyncService`: полная/инкрементальная синхронизация сущностей
+- **reference_sync_service.py** — `ReferenceSyncService`: синхронизация справочников
+- **dashboard_service.py** — `DashboardService`:
+  - `create_dashboard(title, chart_ids)` → slug + bcrypt password
+  - `get_dashboards(page, per_page)`, `get_dashboard_by_id/slug` → с join charts
+  - `verify_password(slug, password)` → bcrypt verify
+  - `generate_token(slug)` / `verify_token(token)` → JWT (HS256, python-jose)
+  - `update_dashboard`, `update_layout`, `update_chart_override`
+  - `remove_chart`, `change_password`, `delete_dashboard`
+
+#### Доменные сущности (`app/domain/entities/`)
+- **bitrix_entity.py** — `EntityType` enum (deal, contact, lead, company)
+- **reference.py** — `ReferenceType` (crm_status, crm_deal_category, crm_currency)
+
+#### API (`app/api/v1/`)
+- **__init__.py** — регистрация роутеров (sync, webhooks, status, charts, schema, references, dashboards, public)
+
+##### Схемы (`app/api/v1/schemas/`)
+- **common.py** — `HealthResponse`, `ErrorResponse`, `SuccessResponse`, `PaginationParams`
+- **charts.py** — `ChartGenerateRequest`, `ChartSpec`, `ChartGenerateResponse`, `ChartResponse`, `ChartListResponse`, `ChartDataResponse`
+- **dashboards.py** — `DashboardPublishRequest`, `DashboardUpdateRequest`, `LayoutItem`, `DashboardLayoutUpdateRequest`, `ChartOverrideUpdateRequest`, `DashboardAuthRequest`, `IframeCodeRequest`, `DashboardChartResponse`, `DashboardResponse`, `DashboardListResponse`, `DashboardPublishResponse`, `DashboardAuthResponse`, `PasswordChangeResponse`, `IframeCodeResponse`
+- **schema_description.py** — `ColumnInfo`, `TableInfo`, `SchemaTablesResponse`, `SchemaDescriptionResponse`
+- **sync.py** — `SyncConfigItem`, `SyncStartRequest/Response`, `SyncStatusItem/Response`, `SyncHistoryResponse`
+- **webhooks.py** — `WebhookEventData`, `WebhookResponse`, `WebhookRegistration`
+
+##### Эндпоинты (`app/api/v1/endpoints/`)
+- **charts.py** — POST `/generate`, POST `/save`, GET `/list`, GET `/{id}/data`, DELETE `/{id}`, POST `/{id}/pin`
+- **dashboards.py** (internal):
+  - POST `/publish`, GET `/list`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}`
+  - PUT `/{id}/layout`, PUT `/{id}/charts/{dc_id}`, DELETE `/{id}/charts/{dc_id}`
+  - POST `/{id}/change-password`, POST `/iframe-code`
+- **public.py** (no app auth):
+  - GET `/chart/{id}/meta`, GET `/chart/{id}/data`
+  - POST `/dashboard/{slug}/auth`, GET `/dashboard/{slug}`, GET `/dashboard/{slug}/chart/{dc_id}/data`
+- **schema_description.py** — GET `/describe`, GET `/tables`, GET `/history`, PATCH `/{id}`, GET `/list`
+- **sync.py** — GET `/config`, PUT `/config`, POST `/start/{entity}`, GET `/status`, GET `/running`
+- **webhooks.py** — POST `/register`, DELETE `/unregister`, GET `/registered`
+- **references.py** — GET `/types`, GET `/status`, POST `/sync/{ref_name}`, POST `/sync-all`
+- **status.py** — GET `/health`, GET `/stats`, GET `/history`, GET `/scheduler`
+
+#### Зависимости (`pyproject.toml`)
+- FastAPI, SQLAlchemy[asyncio], asyncpg, aiomysql
+- fast-bitrix24, python-jose[cryptography], passlib[bcrypt]
+- openai, structlog, alembic, httpx, tenacity, apscheduler
+
+---
+
+### Frontend (`new_version/frontend/`)
+
+React 18 + TypeScript + Vite + Tailwind CSS
+
+#### Сервисы и хуки
+- **src/services/api.ts** — axios HTTP клиент, все типы и API объекты:
+  - `syncApi`, `statusApi`, `webhooksApi`, `referencesApi`, `chartsApi`, `schemaApi`
+  - `dashboardsApi` — publish, list, get, update, delete, updateLayout, updateChartOverride, removeChart, changePassword, getIframeCode
+  - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData
+- **src/hooks/useSync.ts** — хуки синхронизации и справочников
+- **src/hooks/useCharts.ts** — хуки чартов и описаний схемы
+- **src/hooks/useDashboards.ts** — `usePublishDashboard`, `useDashboardList`, `useDashboard`, `useUpdateDashboard`, `useDeleteDashboard`, `useUpdateDashboardLayout`, `useUpdateChartOverride`, `useRemoveChartFromDashboard`, `useChangeDashboardPassword`, `useIframeCode`
+- **src/hooks/useAuth.ts** — хук авторизации
+
+#### Страницы (`src/pages/`)
+- **DashboardPage.tsx** — обзор статистики и сущностей
+- **ConfigPage.tsx** — управление конфигурацией синхронизации
+- **MonitoringPage.tsx** — мониторинг и логи синхронизации
+- **ValidationPage.tsx** — валидация данных
+- **ChartsPage.tsx** — AI генерация чартов, сохранённые чарты, кнопка "Publish Dashboard", список опубликованных дашбордов
+- **SchemaPage.tsx** — браузер схемы БД с AI описанием
+- **LoginPage.tsx** — авторизация
+- **EmbedChartPage.tsx** — standalone embed одного чарта (без навигации, публичный)
+- **EmbedDashboardPage.tsx** — публичный дашборд с password gate, JWT в sessionStorage, grid чартов
+- **DashboardEditorPage.tsx** — редактор дашборда: inline редактирование title/description, layout (x/y/w/h), удаление чартов, смена пароля, копирование ссылки
+
+#### Компоненты (`src/components/`)
+- **Layout.tsx** — навигация, health индикатор, outlet
+- **SyncCard.tsx** — карточка синхронизации сущности
+- **ReferenceCard.tsx** — карточка справочника
+- **charts/ChartRenderer.tsx** — рендер чартов (bar, line, pie, area, scatter) через recharts
+- **charts/ChartCard.tsx** — карточка сохранённого чарта (pin, refresh, SQL, embed, delete)
+- **charts/IframeCopyButton.tsx** — кнопка "Embed" для копирования iframe HTML
+- **dashboards/PublishModal.tsx** — модалка публикации дашборда (выбор чартов, title, description → пароль + URL)
+- **dashboards/DashboardCard.tsx** — карточка дашборда в списке (open, edit, link, delete)
+- **dashboards/PasswordGate.tsx** — форма ввода пароля для публичного дашборда
+
+#### State Management
+- **src/store/authStore.ts** — Zustand store авторизации
+- **src/store/syncStore.ts** — Zustand store текущих синхронизаций
+
+#### Маршрутизация (`src/App.tsx`)
+- `/embed/chart/:chartId` → EmbedChartPage (вне Layout)
+- `/embed/dashboard/:slug` → EmbedDashboardPage (вне Layout)
+- `/` → DashboardPage, `/config`, `/monitoring`, `/validation`, `/charts`, `/schema` (внутри Layout)
+- `/dashboards/:id/edit` → DashboardEditorPage (внутри Layout)
+
+#### Зависимости (`package.json`)
+- @tanstack/react-query, axios, react, react-dom, react-router-dom
+- recharts, react-markdown, zustand

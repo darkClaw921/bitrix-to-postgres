@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     chart_query_timeout_seconds: int = 5
     chart_max_rows: int = 10000
 
+    # Dashboards
+    dashboard_secret_key: str = "change-me-in-production"
+    dashboard_token_expiry_minutes: int = 30
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8080

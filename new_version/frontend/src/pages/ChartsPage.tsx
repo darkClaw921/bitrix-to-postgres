@@ -1,16 +1,21 @@
 import { useState } from 'react'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import ChartCard from '../components/charts/ChartCard'
+import DashboardCard from '../components/dashboards/DashboardCard'
+import PublishModal from '../components/dashboards/PublishModal'
 import { useGenerateChart, useSaveChart, useSavedCharts } from '../hooks/useCharts'
+import { useDashboardList } from '../hooks/useDashboards'
 import type { ChartGenerateResponse } from '../services/api'
 
 export default function ChartsPage() {
   const [prompt, setPrompt] = useState('')
   const [preview, setPreview] = useState<ChartGenerateResponse | null>(null)
+  const [showPublishModal, setShowPublishModal] = useState(false)
 
   const generateChart = useGenerateChart()
   const saveChart = useSaveChart()
   const { data: savedData, isLoading: savedLoading } = useSavedCharts()
+  const { data: dashboardsData } = useDashboardList()
 
   const handleGenerate = () => {
     if (!prompt.trim()) return
@@ -123,9 +128,19 @@ export default function ChartsPage() {
 
       {/* Saved Charts */}
       <div>
-        <h2 className="text-lg font-semibold mb-4">
-          Saved Charts {savedData ? `(${savedData.total})` : ''}
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">
+            Saved Charts {savedData ? `(${savedData.total})` : ''}
+          </h2>
+          {savedData && savedData.charts.length > 0 && (
+            <button
+              onClick={() => setShowPublishModal(true)}
+              className="btn btn-primary text-sm"
+            >
+              Publish Dashboard
+            </button>
+          )}
+        </div>
 
         {savedLoading ? (
           <div className="flex items-center justify-center h-32 text-gray-500">Loading...</div>
@@ -141,6 +156,28 @@ export default function ChartsPage() {
           </div>
         )}
       </div>
+
+      {/* Published Dashboards */}
+      {dashboardsData && dashboardsData.dashboards.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-4">
+            Published Dashboards ({dashboardsData.total})
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {dashboardsData.dashboards.map((d) => (
+              <DashboardCard key={d.id} dashboard={d} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Publish Modal */}
+      {showPublishModal && savedData && (
+        <PublishModal
+          charts={savedData.charts}
+          onClose={() => setShowPublishModal(false)}
+        />
+      )}
     </div>
   )
 }

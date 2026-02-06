@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import charts, references, schema_description, sync, webhooks, status
+from app.api.v1.endpoints import charts, dashboards, public, references, schema_description, sync, webhooks, status
 
 router = APIRouter()
 
@@ -12,3 +12,5 @@ router.include_router(status.router, prefix="/status", tags=["status"])
 router.include_router(charts.router, prefix="/charts", tags=["charts"])
 router.include_router(schema_description.router, prefix="/schema", tags=["schema"])
 router.include_router(references.router, prefix="/references", tags=["references"])
+router.include_router(dashboards.router, prefix="/dashboards", tags=["dashboards"])
+router.include_router(public.router, prefix="/public", tags=["public"])

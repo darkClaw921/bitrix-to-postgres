@@ -68,3 +68,19 @@ class ChartServiceError(AppException):
     def __init__(self, message: str, details: dict[str, Any] | None = None):
         super().__init__(message, details)
         self.status_code = 400
+
+
+class DashboardServiceError(AppException):
+    """Ошибки сервиса дашбордов: создание, обновление, удаление."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message, details)
+        self.status_code = 400
+
+
+class DashboardAuthError(AppException):
+    """Ошибки авторизации дашбордов: неверный пароль, невалидный токен."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message, details)
+        self.status_code = 401

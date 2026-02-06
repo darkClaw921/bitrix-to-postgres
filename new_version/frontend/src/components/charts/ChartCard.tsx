@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ChartRenderer from './ChartRenderer'
+import IframeCopyButton from './IframeCopyButton'
 import type { SavedChart } from '../../services/api'
 import { useChartData, useDeleteChart, useToggleChartPin } from '../../hooks/useCharts'
 
@@ -61,6 +62,7 @@ export default function ChartCard({ chart }: ChartCardProps) {
           >
             {isFetching ? '...' : 'Refresh'}
           </button>
+          <IframeCopyButton chartId={chart.id} />
           <button
             onClick={() => setShowSql(!showSql)}
             className="p-1.5 rounded text-sm bg-gray-100 text-gray-500 hover:bg-gray-200"

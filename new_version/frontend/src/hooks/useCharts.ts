@@ -1,0 +1,72 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { chartsApi, schemaApi } from '../services/api'
+import type { ChartGenerateRequest, ChartSaveRequest } from '../services/api'
+
+export function useGenerateChart() {
+  return useMutation({
+    mutationFn: (data: ChartGenerateRequest) => chartsApi.generate(data),
+  })
+}
+
+export function useSaveChart() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: ChartSaveRequest) => chartsApi.save(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['savedCharts'] })
+    },
+  })
+}
+
+export function useSavedCharts(page = 1, perPage = 20) {
+  return useQuery({
+    queryKey: ['savedCharts', page, perPage],
+    queryFn: () => chartsApi.list(page, perPage),
+  })
+}
+
+export function useChartData(chartId: number) {
+  return useQuery({
+    queryKey: ['chartData', chartId],
+    queryFn: () => chartsApi.getData(chartId),
+    enabled: !!chartId,
+  })
+}
+
+export function useDeleteChart() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (chartId: number) => chartsApi.delete(chartId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['savedCharts'] })
+    },
+  })
+}
+
+export function useToggleChartPin() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (chartId: number) => chartsApi.togglePin(chartId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['savedCharts'] })
+    },
+  })
+}
+
+export function useSchemaDescription() {
+  return useQuery({
+    queryKey: ['schemaDescription'],
+    queryFn: schemaApi.describe,
+    enabled: false, // manual trigger via refetch()
+  })
+}
+
+export function useSchemaTables() {
+  return useQuery({
+    queryKey: ['schemaTables'],
+    queryFn: schemaApi.tables,
+  })
+}

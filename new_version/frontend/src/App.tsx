@@ -4,6 +4,8 @@ import DashboardPage from './pages/DashboardPage'
 import ConfigPage from './pages/ConfigPage'
 import MonitoringPage from './pages/MonitoringPage'
 import ValidationPage from './pages/ValidationPage'
+import ChartsPage from './pages/ChartsPage'
+import SchemaPage from './pages/SchemaPage'
 
 function App() {
   return (
@@ -13,6 +15,8 @@ function App() {
         <Route path="config" element={<ConfigPage />} />
         <Route path="monitoring" element={<MonitoringPage />} />
         <Route path="validation" element={<ValidationPage />} />
+        <Route path="charts" element={<ChartsPage />} />
+        <Route path="schema" element={<SchemaPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

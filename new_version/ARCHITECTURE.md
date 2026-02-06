@@ -67,15 +67,19 @@ Bitrix24 Sync Service — микросервис для односторонне
 ```
 app/api/
 ├── v1/
-│   ├── __init__.py          # Роутер версии API
+│   ├── __init__.py          # Роутер версии API (sync, webhooks, status, charts, schema)
 │   ├── endpoints/
 │   │   ├── sync.py          # Эндпоинты синхронизации
 │   │   ├── webhooks.py      # Обработка webhooks от Bitrix24
-│   │   └── status.py        # Статус и health checks
+│   │   ├── status.py        # Статус и health checks
+│   │   ├── charts.py        # AI-генерация и CRUD чартов
+│   │   └── schema_description.py  # AI-описание схемы БД
 │   └── schemas/
 │       ├── sync.py          # Pydantic схемы для sync
 │       ├── webhooks.py      # Схемы webhooks
-│       └── common.py        # Общие схемы
+│       ├── common.py        # Общие схемы
+│       ├── charts.py        # Схемы чартов (ChartSpec, ChartGenerateRequest/Response и др.)
+│       └── schema_description.py  # Схемы описания схемы (TableInfo, ColumnInfo и др.)
 ```
 
 #### Ключевые эндпоинты:
@@ -88,6 +92,14 @@ app/api/
 | `PUT` | `/api/v1/sync/config` | Обновление конфигурации |
 | `POST` | `/api/v1/webhooks/bitrix` | Приём webhooks |
 | `POST` | `/api/v1/webhooks/register` | Регистрация в Bitrix24 |
+| `POST` | `/api/v1/charts/generate` | AI-генерация чарта из промпта |
+| `POST` | `/api/v1/charts/save` | Сохранение чарта |
+| `GET` | `/api/v1/charts/list` | Список сохранённых чартов |
+| `GET` | `/api/v1/charts/{id}/data` | Обновление данных чарта |
+| `DELETE` | `/api/v1/charts/{id}` | Удаление чарта |
+| `POST` | `/api/v1/charts/{id}/pin` | Закрепить/открепить чарт |
+| `GET` | `/api/v1/schema/describe` | AI-описание схемы БД (markdown) |
+| `GET` | `/api/v1/schema/tables` | Список таблиц с колонками |
 | `GET` | `/health` | Health check |
 
 ### 2. Domain Layer (`app/domain/`)
@@ -102,7 +114,9 @@ app/domain/
 │   └── company.py           # Модель компании
 ├── services/
 │   ├── sync_service.py      # Основная логика синхронизации
-│   └── field_mapper.py      # Маппинг полей Bitrix → DB (кросс-БД совместимый)
+│   ├── field_mapper.py      # Маппинг полей Bitrix → DB (кросс-БД совместимый)
+│   ├── ai_service.py        # Взаимодействие с OpenAI API (генерация чартов, описание схемы)
+│   └── chart_service.py     # SQL-валидация, выполнение запросов, CRUD чартов
 └── interfaces/              # Абстракции (для DI)
 ```
 
@@ -116,6 +130,30 @@ class SyncService:
     async def delete_entity_by_id(entity_type: str, entity_id: str) -> dict
 ```
 
+#### AIService — AI-интеграция:
+
+```python
+class AIService:
+    async def generate_chart_spec(prompt: str, schema_context: str) -> dict
+    async def generate_schema_description(schema_context: str) -> str
+```
+
+#### ChartService — управление чартами:
+
+```python
+class ChartService:
+    @staticmethod def validate_sql_query(sql: str) -> None
+    @staticmethod def validate_table_names(sql: str, allowed: list[str]) -> None
+    @staticmethod def ensure_limit(sql: str, max_rows: int) -> str
+    async def get_schema_context(table_filter?) -> str
+    async def get_tables_info() -> list[dict]
+    async def execute_chart_query(sql: str) -> tuple[list[dict], float]
+    async def save_chart(data: dict) -> dict
+    async def get_charts(page, per_page) -> tuple[list[dict], int]
+    async def delete_chart(chart_id: int) -> bool
+    async def toggle_pin(chart_id: int) -> dict
+```
+
 ### 3. Infrastructure Layer (`app/infrastructure/`)
 
 ```
@@ -124,7 +162,7 @@ app/infrastructure/
 │   └── client.py            # BitrixClient с retry и rate limiting
 ├── database/
 │   ├── connection.py        # AsyncEngine, get_session, get_dialect()
-│   ├── models.py            # SQLAlchemy модели (SyncConfig, SyncLog, SyncState)
+│   ├── models.py            # SQLAlchemy модели (SyncConfig, SyncLog, SyncState, AIChart)
 │   └── dynamic_table.py     # Динамическое создание таблиц (кросс-БД)
 └── scheduler/
     └── scheduler.py         # APScheduler для периодической синхронизации
@@ -132,7 +170,8 @@ app/infrastructure/
 alembic/
 ├── env.py                   # Alembic environment (async)
 └── versions/
-    └── 001_create_system_tables.py  # Initial migration (кросс-БД)
+    ├── 001_create_system_tables.py  # Initial migration (кросс-БД)
+    └── 002_create_ai_charts_table.py  # Таблица ai_charts для сохранённых чартов
 ```
 
 #### connection.py — ключевые функции:
@@ -149,7 +188,7 @@ async def get_session()            # Dependency для FastAPI
 ```
 app/core/
 ├── auth.py                  # JWT валидация (опциональная)
-├── exceptions.py            # Кастомные исключения
+├── exceptions.py            # Кастомные исключения (AppException, AIServiceError, ChartServiceError и др.)
 ├── logging.py               # Structlog конфигурация
 └── webhooks.py              # Парсинг Bitrix24 webhooks
 
@@ -181,6 +220,14 @@ class Settings(BaseSettings):
     # Sync
     sync_batch_size: int = 50
     sync_default_interval_minutes: int = 30
+
+    # AI / OpenAI
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+
+    # Charts
+    chart_query_timeout_seconds: int = 5
+    chart_max_rows: int = 10000
 
     # Server
     host: str = "0.0.0.0"
@@ -233,3 +280,46 @@ services:
 | tenacity | ≥8.2.0 | Retry logic |
 | structlog | ≥24.0.0 | Structured logging |
 | httpx | ≥0.27.0 | Async HTTP client |
+| openai | ≥1.0 | OpenAI API client |
+
+### Frontend
+
+| Пакет | Версия | Назначение |
+|-------|--------|------------|
+| react | ^18.3.0 | UI framework |
+| react-router-dom | ^6.26.0 | Routing |
+| @tanstack/react-query | ^5.51.0 | Server state management |
+| axios | ^1.7.0 | HTTP client |
+| zustand | ^4.5.0 | Client state management |
+| recharts | ^2.12.0 | Chart library (SVG, responsive) |
+| react-markdown | ^9.0.0 | Markdown rendering |
+| tailwindcss | ^3.4.0 | CSS framework |
+
+## Frontend Architecture
+
+```
+frontend/src/
+├── App.tsx                    # Роутинг (/charts, /schema, /config, /monitoring, /validation)
+├── components/
+│   ├── Layout.tsx             # Навигация (Dashboard, AI Charts, Configuration, Monitoring, Validation, Schema)
+│   ├── SyncCard.tsx           # Карточка синхронизации
+│   └── charts/
+│       ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter через Recharts)
+│       └── ChartCard.tsx      # Карточка сохранённого чарта с действиями
+├── pages/
+│   ├── DashboardPage.tsx      # Обзор синхронизации
+│   ├── ChartsPage.tsx         # AI-генерация чартов + список сохранённых
+│   ├── SchemaPage.tsx         # AI-описание схемы + сырая структура таблиц
+│   ├── ConfigPage.tsx         # Настройки синхронизации
+│   ├── MonitoringPage.tsx     # Мониторинг
+│   └── ValidationPage.tsx     # Валидация данных
+├── hooks/
+│   ├── useSync.ts             # React Query хуки для синхронизации
+│   ├── useCharts.ts           # React Query хуки для чартов и схемы
+│   └── useAuth.ts             # Хук авторизации
+├── services/
+│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, chartsApi, schemaApi)
+└── store/
+    ├── authStore.ts           # Zustand store авторизации
+    └── syncStore.ts           # Zustand store синхронизации
+```

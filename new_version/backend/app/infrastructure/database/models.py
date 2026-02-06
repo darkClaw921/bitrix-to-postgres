@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.connection import Base
@@ -63,6 +63,28 @@ class SyncState(Base):
     )
     last_bitrix_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     total_records: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class AIChart(Base):
+    """AI-generated chart saved by user."""
+
+    __tablename__ = "ai_charts"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    user_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    chart_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    chart_config: Mapped[dict] = mapped_column(JSON, nullable=False)
+    sql_query: Mapped[str] = mapped_column(Text, nullable=False)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False, index=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )

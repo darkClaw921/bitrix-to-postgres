@@ -10,9 +10,11 @@ export default function Layout() {
 
   const navigation = [
     { name: 'Dashboard', href: '/' },
+    { name: 'AI Charts', href: '/charts' },
     { name: 'Configuration', href: '/config' },
     { name: 'Monitoring', href: '/monitoring' },
     { name: 'Validation', href: '/validation' },
+    { name: 'Schema', href: '/schema' },
   ]
 
   const isActive = (href: string) => {

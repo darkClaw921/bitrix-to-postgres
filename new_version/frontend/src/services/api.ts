@@ -132,4 +132,121 @@ export const webhooksApi = {
     api.get('/webhooks/registered').then((r) => r.data),
 }
 
+// === Charts Types ===
+
+export interface ChartSpec {
+  title: string
+  chart_type: 'bar' | 'line' | 'pie' | 'area' | 'scatter'
+  sql_query: string
+  data_keys: {
+    x: string
+    y: string | string[]
+  }
+  colors?: string[]
+  description?: string
+}
+
+export interface ChartGenerateRequest {
+  prompt: string
+  table_filter?: string[]
+}
+
+export interface ChartGenerateResponse {
+  chart: ChartSpec
+  data: Record<string, unknown>[]
+  row_count: number
+  execution_time_ms: number
+}
+
+export interface ChartSaveRequest {
+  title: string
+  description?: string
+  user_prompt: string
+  chart_type: string
+  chart_config: Record<string, unknown>
+  sql_query: string
+}
+
+export interface SavedChart {
+  id: number
+  title: string
+  description?: string
+  user_prompt: string
+  chart_type: string
+  chart_config: Record<string, unknown>
+  sql_query: string
+  is_pinned: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ChartListResponse {
+  charts: SavedChart[]
+  total: number
+  page: number
+  per_page: number
+}
+
+export interface ChartDataResponse {
+  data: Record<string, unknown>[]
+  row_count: number
+  execution_time_ms: number
+}
+
+// === Schema Types ===
+
+export interface ColumnInfo {
+  name: string
+  data_type: string
+  is_nullable: boolean
+  column_default?: string
+}
+
+export interface TableInfo {
+  table_name: string
+  columns: ColumnInfo[]
+  row_count?: number
+}
+
+export interface SchemaTablesResponse {
+  tables: TableInfo[]
+}
+
+export interface SchemaDescriptionResponse {
+  tables: TableInfo[]
+  markdown: string
+}
+
+// === Charts API ===
+
+export const chartsApi = {
+  generate: (data: ChartGenerateRequest) =>
+    api.post<ChartGenerateResponse>('/charts/generate', data).then((r) => r.data),
+
+  save: (data: ChartSaveRequest) =>
+    api.post<SavedChart>('/charts/save', data).then((r) => r.data),
+
+  list: (page = 1, perPage = 20) =>
+    api.get<ChartListResponse>('/charts/list', { params: { page, per_page: perPage } }).then((r) => r.data),
+
+  getData: (chartId: number) =>
+    api.get<ChartDataResponse>(`/charts/${chartId}/data`).then((r) => r.data),
+
+  delete: (chartId: number) =>
+    api.delete(`/charts/${chartId}`).then((r) => r.data),
+
+  togglePin: (chartId: number) =>
+    api.post<SavedChart>(`/charts/${chartId}/pin`).then((r) => r.data),
+}
+
+// === Schema API ===
+
+export const schemaApi = {
+  describe: () =>
+    api.get<SchemaDescriptionResponse>('/schema/describe').then((r) => r.data),
+
+  tables: () =>
+    api.get<SchemaTablesResponse>('/schema/tables').then((r) => r.data),
+}
+
 export default api

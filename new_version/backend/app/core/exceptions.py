@@ -52,3 +52,19 @@ class AuthorizationError(AppException):
     """Authorization error."""
 
     pass
+
+
+class AIServiceError(AppException):
+    """Ошибки взаимодействия с OpenAI API: таймаут, невалидный ответ, превышение лимита токенов."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message, details)
+        self.status_code = 502
+
+
+class ChartServiceError(AppException):
+    """Ошибки сервиса чартов: невалидный SQL, запрещённые таблицы, таймаут выполнения запроса."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message, details)
+        self.status_code = 400

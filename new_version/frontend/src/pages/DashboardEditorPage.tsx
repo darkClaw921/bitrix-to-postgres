@@ -1,5 +1,9 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import ReactGridLayout, { useContainerWidth } from 'react-grid-layout'
+import type { Layout, LayoutItem } from 'react-grid-layout'
+import 'react-grid-layout/css/styles.css'
+import 'react-resizable/css/styles.css'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import {
   useDashboard,
@@ -10,7 +14,10 @@ import {
   useChangeDashboardPassword,
 } from '../hooks/useDashboards'
 import { chartsApi } from '../services/api'
-import type { DashboardChart, ChartSpec, ChartDataResponse } from '../services/api'
+import type { DashboardChart, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
+
+const GRID_COLS = 12
+const ROW_HEIGHT = 120
 
 export default function DashboardEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -31,24 +38,26 @@ export default function DashboardEditorPage() {
   const [newPassword, setNewPassword] = useState<string | null>(null)
   const [copiedLink, setCopiedLink] = useState(false)
 
-  // Layouts state for drag/resize (editable positions)
-  const [layouts, setLayouts] = useState<
-    Array<{ id: number; x: number; y: number; w: number; h: number; sort_order: number }>
-  >([])
+  // Grid layout state
+  const [gridLayout, setGridLayout] = useState<Layout>([])
   const [layoutDirty, setLayoutDirty] = useState(false)
+
+  // react-grid-layout v2 container width
+  const { containerRef, width: containerWidth, mounted } = useContainerWidth()
 
   useEffect(() => {
     if (dashboard) {
       setTitleValue(dashboard.title)
       setDescValue(dashboard.description || '')
-      setLayouts(
+      setGridLayout(
         dashboard.charts.map((c) => ({
-          id: c.id,
+          i: String(c.id),
           x: c.layout_x,
           y: c.layout_y,
           w: c.layout_w,
           h: c.layout_h,
-          sort_order: c.sort_order,
+          minW: 2,
+          minH: 2,
         })),
       )
 
@@ -72,11 +81,24 @@ export default function DashboardEditorPage() {
   }
 
   const handleSaveLayout = () => {
+    const layouts = gridLayout.map((item, idx) => ({
+      id: Number(item.i),
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h,
+      sort_order: idx,
+    }))
     updateLayout.mutate(
       { id: dashboardId, data: { layouts } },
       { onSuccess: () => { setLayoutDirty(false); refetch() } },
     )
   }
+
+  const handleLayoutChange = useCallback((newLayout: Layout) => {
+    setGridLayout(newLayout)
+    setLayoutDirty(true)
+  }, [])
 
   const handleChangePassword = () => {
     changePassword.mutate(dashboardId, {
@@ -110,14 +132,6 @@ export default function DashboardEditorPage() {
     },
     [dashboardId, updateOverride, refetch],
   )
-
-  // Simple layout position edit
-  const updateChartLayout = (dcId: number, field: string, value: number) => {
-    setLayouts((prev) =>
-      prev.map((l) => (l.id === dcId ? { ...l, [field]: value } : l)),
-    )
-    setLayoutDirty(true)
-  }
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64 text-gray-500">Loading...</div>
@@ -196,21 +210,47 @@ export default function DashboardEditorPage() {
             <p className="text-xs text-green-500 mt-1">Save this — it won't be shown again</p>
           </div>
         )}
+
+        {dashboard.charts.length > 0 && (
+          <p className="mt-3 text-xs text-gray-400">
+            Drag charts to reposition. Resize by dragging the handle at bottom-right corner.
+          </p>
+        )}
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {dashboard.charts.map((dc) => (
-          <EditorChartCard
-            key={dc.id}
-            dc={dc}
-            data={chartData[dc.chart_id] || null}
-            layout={layouts.find((l) => l.id === dc.id)}
-            onRemove={() => handleRemoveChart(dc.id)}
-            onUpdateOverride={handleUpdateOverride}
-            onUpdateLayout={updateChartLayout}
-          />
-        ))}
+      {/* Draggable/Resizable Grid */}
+      <div ref={containerRef as React.RefObject<HTMLDivElement>} className="min-h-[200px]">
+        {mounted && dashboard.charts.length > 0 && (
+          <ReactGridLayout
+            layout={gridLayout}
+            onLayoutChange={handleLayoutChange}
+            width={containerWidth}
+            gridConfig={{
+              cols: GRID_COLS,
+              rowHeight: ROW_HEIGHT,
+              margin: [16, 16] as const,
+              containerPadding: [0, 0] as const,
+              maxRows: Infinity,
+            }}
+            dragConfig={{ enabled: true, bounded: false, threshold: 3 }}
+            resizeConfig={{ enabled: true, handles: ['se'] }}
+          >
+            {dashboard.charts.map((dc) => {
+              const layoutItem = gridLayout.find((l) => l.i === String(dc.id))
+              return (
+                <div key={String(dc.id)} className="overflow-hidden">
+                  <EditorChartCard
+                    dc={dc}
+                    data={chartData[dc.chart_id] || null}
+                    layout={layoutItem}
+                    onRemove={() => handleRemoveChart(dc.id)}
+                    onUpdateOverride={handleUpdateOverride}
+                  />
+                </div>
+              )
+            })}
+          </ReactGridLayout>
+        )}
       </div>
 
       {dashboard.charts.length === 0 && (
@@ -234,14 +274,12 @@ function EditorChartCard({
   layout,
   onRemove,
   onUpdateOverride,
-  onUpdateLayout,
 }: {
   dc: DashboardChart
   data: ChartDataResponse | null
-  layout?: { id: number; x: number; y: number; w: number; h: number }
+  layout?: LayoutItem
   onRemove: () => void
   onUpdateOverride: (dcId: number, field: 'title_override' | 'description_override', value: string) => void
-  onUpdateLayout: (dcId: number, field: string, value: number) => void
 }) {
   const [editTitle, setEditTitle] = useState(false)
   const [titleVal, setTitleVal] = useState(dc.title_override || '')
@@ -251,11 +289,7 @@ function EditorChartCard({
   const title = dc.title_override || dc.chart_title || 'Chart'
   const description = dc.description_override || dc.chart_description
 
-  const config = dc.chart_config as {
-    x: string
-    y: string | string[]
-    colors?: string[]
-  } | null
+  const config = dc.chart_config as unknown as ChartDisplayConfig | null
 
   const spec: ChartSpec = {
     title,
@@ -264,11 +298,21 @@ function EditorChartCard({
     data_keys: { x: config?.x || 'x', y: config?.y || 'y' },
     colors: config?.colors,
     description,
+    legend: config?.legend,
+    grid: config?.grid,
+    xAxis: config?.xAxis,
+    yAxis: config?.yAxis,
+    line: config?.line,
+    area: config?.area,
+    pie: config?.pie,
   }
 
+  // Calculate chart height from grid layout
+  const chartHeight = layout ? Math.max(layout.h * ROW_HEIGHT - 100, 120) : 200
+
   return (
-    <div className="card">
-      <div className="flex justify-between items-start mb-3">
+    <div className="h-full bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex flex-col">
+      <div className="flex justify-between items-start mb-2">
         <div className="flex-1 min-w-0">
           {editTitle ? (
             <div className="flex items-center space-x-2">
@@ -278,6 +322,7 @@ function EditorChartCard({
                 onChange={(e) => setTitleVal(e.target.value)}
                 className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
                 placeholder="Custom title"
+                onMouseDown={(e) => e.stopPropagation()}
               />
               <button
                 onClick={() => {
@@ -294,7 +339,7 @@ function EditorChartCard({
             </div>
           ) : (
             <h3
-              className="text-base font-semibold cursor-pointer hover:text-blue-600"
+              className="text-sm font-semibold cursor-pointer hover:text-blue-600 truncate"
               onClick={() => setEditTitle(true)}
               title="Click to edit title"
             >
@@ -310,6 +355,7 @@ function EditorChartCard({
                 onChange={(e) => setDescVal(e.target.value)}
                 className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs"
                 placeholder="Custom description"
+                onMouseDown={(e) => e.stopPropagation()}
               />
               <button
                 onClick={() => {
@@ -326,7 +372,7 @@ function EditorChartCard({
             </div>
           ) : (
             <p
-              className="text-sm text-gray-500 mt-1 cursor-pointer hover:text-blue-500"
+              className="text-xs text-gray-500 mt-0.5 cursor-pointer hover:text-blue-500 truncate"
               onClick={() => setEditDesc(true)}
               title="Click to edit description"
             >
@@ -337,70 +383,22 @@ function EditorChartCard({
 
         <button
           onClick={onRemove}
-          className="p-1.5 rounded text-sm bg-red-50 text-red-500 hover:bg-red-100 ml-2"
+          className="p-1 rounded text-xs bg-red-50 text-red-500 hover:bg-red-100 ml-2 flex-shrink-0"
           title="Remove from dashboard"
         >
           Remove
         </button>
       </div>
 
-      {data ? (
-        <ChartRenderer spec={spec} data={data.data} height={250} />
-      ) : (
-        <div className="flex items-center justify-center h-40 text-gray-400 text-sm">
-          Loading chart data...
-        </div>
-      )}
-
-      {/* Layout controls */}
-      {layout && (
-        <div className="mt-3 flex items-center space-x-3 text-xs text-gray-500">
-          <span>Layout:</span>
-          <label>
-            W:
-            <input
-              type="number"
-              value={layout.w}
-              min={1}
-              max={12}
-              onChange={(e) => onUpdateLayout(dc.id, 'w', Number(e.target.value))}
-              className="w-12 ml-1 px-1 py-0.5 border border-gray-200 rounded text-xs"
-            />
-          </label>
-          <label>
-            H:
-            <input
-              type="number"
-              value={layout.h}
-              min={1}
-              max={12}
-              onChange={(e) => onUpdateLayout(dc.id, 'h', Number(e.target.value))}
-              className="w-12 ml-1 px-1 py-0.5 border border-gray-200 rounded text-xs"
-            />
-          </label>
-          <label>
-            X:
-            <input
-              type="number"
-              value={layout.x}
-              min={0}
-              max={11}
-              onChange={(e) => onUpdateLayout(dc.id, 'x', Number(e.target.value))}
-              className="w-12 ml-1 px-1 py-0.5 border border-gray-200 rounded text-xs"
-            />
-          </label>
-          <label>
-            Y:
-            <input
-              type="number"
-              value={layout.y}
-              min={0}
-              onChange={(e) => onUpdateLayout(dc.id, 'y', Number(e.target.value))}
-              className="w-12 ml-1 px-1 py-0.5 border border-gray-200 rounded text-xs"
-            />
-          </label>
-        </div>
-      )}
+      <div className="flex-1 min-h-0">
+        {data ? (
+          <ChartRenderer spec={spec} data={data.data} height={chartHeight} />
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+            Loading chart data...
+          </div>
+        )}
+      </div>
     </div>
   )
 }

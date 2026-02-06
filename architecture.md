@@ -127,7 +127,7 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **LoginPage.tsx** — авторизация
 - **EmbedChartPage.tsx** — standalone embed одного чарта (без навигации, публичный)
 - **EmbedDashboardPage.tsx** — публичный дашборд с password gate, JWT в sessionStorage, grid чартов
-- **DashboardEditorPage.tsx** — редактор дашборда: inline редактирование title/description, layout (x/y/w/h), удаление чартов, смена пароля, копирование ссылки
+- **DashboardEditorPage.tsx** — редактор дашборда: drag & drop + resize чартов (react-grid-layout v2), inline редактирование title/description, удаление чартов, смена пароля, копирование ссылки
 
 #### Компоненты (`src/components/`)
 - **Layout.tsx** — навигация, health индикатор, outlet
@@ -153,4 +153,4 @@ React 18 + TypeScript + Vite + Tailwind CSS
 
 #### Зависимости (`package.json`)
 - @tanstack/react-query, axios, react, react-dom, react-router-dom
-- recharts, react-markdown, zustand
+- recharts, react-markdown, zustand, react-grid-layout

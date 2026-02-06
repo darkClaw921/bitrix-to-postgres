@@ -63,6 +63,16 @@ CURRENCY_FIELDS = [
     ReferenceFieldDef("date_update", "TIMESTAMP"),
 ]
 
+ENUM_VALUES_FIELDS = [
+    ReferenceFieldDef("field_name", "VARCHAR(100)", nullable=False),
+    ReferenceFieldDef("entity_type", "VARCHAR(50)", nullable=False),
+    ReferenceFieldDef("item_id", "VARCHAR(50)", nullable=False),
+    ReferenceFieldDef("value", "VARCHAR(500)"),
+    ReferenceFieldDef("sort", "INTEGER"),
+    ReferenceFieldDef("is_default", "VARCHAR(10)"),
+    ReferenceFieldDef("xml_id", "VARCHAR(100)"),
+]
+
 
 # --- Registry ---
 
@@ -88,6 +98,13 @@ REFERENCE_TYPES: dict[str, ReferenceType] = {
         api_method="crm.currency.list",
         unique_key=["currency"],
         fields=CURRENCY_FIELDS,
+    ),
+    "enum_values": ReferenceType(
+        name="enum_values",
+        table_name="ref_enum_values",
+        api_method="",
+        unique_key=["field_name", "entity_type", "item_id"],
+        fields=ENUM_VALUES_FIELDS,
     ),
 }
 

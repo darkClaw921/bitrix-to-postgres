@@ -100,6 +100,9 @@ class SyncService:
             # Step 6: Best-effort sync of related reference tables
             await self._sync_related_references(entity_type)
 
+            # Step 7: Best-effort sync of enumeration field values
+            await self._sync_enum_userfields(entity_type, user_fields)
+
             return {
                 "status": "completed",
                 "entity_type": entity_type,
@@ -607,6 +610,27 @@ class SyncService:
         except Exception as e:
             logger.warning(
                 "Failed to sync related references",
+                entity_type=entity_type,
+                error=str(e),
+            )
+
+    async def _sync_enum_userfields(
+        self, entity_type: str, user_fields: list[dict[str, Any]]
+    ) -> None:
+        """Best-effort sync of enumeration userfield values to ref_enum_values."""
+        try:
+            from app.domain.services.reference_sync_service import ReferenceSyncService
+
+            ref_service = ReferenceSyncService(bitrix_client=self._bitrix)
+            result = await ref_service.sync_enum_userfields(entity_type, user_fields)
+            logger.info(
+                "Enum userfields synced",
+                entity_type=entity_type,
+                records_processed=result.get("records_processed", 0),
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to sync enum userfields, skipping",
                 entity_type=entity_type,
                 error=str(e),
             )

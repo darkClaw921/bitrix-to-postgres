@@ -31,6 +31,11 @@ class ReferenceSyncService:
         ref_type = get_reference_type(ref_name)
         if ref_type is None:
             raise SyncError(f"Unknown reference type: {ref_name}")
+        if not ref_type.api_method:
+            raise SyncError(
+                f"Reference type '{ref_name}' has no API method "
+                f"and cannot be synced standalone (it is synced automatically during full_sync)"
+            )
 
         logger.info("Starting reference sync", ref_name=ref_name)
         sync_log_id = await self._create_sync_log(ref_type)
@@ -69,12 +74,88 @@ class ReferenceSyncService:
                 f"Reference sync failed for {ref_name}: {str(e)}"
             ) from e
 
+    async def sync_enum_userfields(
+        self, entity_type: str, userfields: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Sync enumeration userfield LIST values into ref_enum_values table.
+
+        Filters userfields with USER_TYPE_ID == "enumeration" and non-empty LIST,
+        then upserts each list item as a row in ref_enum_values.
+        """
+        ref_type = get_reference_type("enum_values")
+        if ref_type is None:
+            raise SyncError("enum_values reference type not registered")
+
+        logger.info(
+            "Starting enum userfields sync",
+            entity_type=entity_type,
+            total_userfields=len(userfields),
+        )
+
+        sync_log_id = await self._create_sync_log(ref_type)
+
+        try:
+            await self._ensure_table(ref_type)
+
+            records: list[dict[str, Any]] = []
+            for uf in userfields:
+                if uf.get("USER_TYPE_ID") != "enumeration":
+                    continue
+                items = uf.get("LIST") or []
+                if not items:
+                    continue
+                field_name = uf.get("FIELD_NAME", "")
+                for item in items:
+                    records.append({
+                        "field_name": field_name,
+                        "entity_type": entity_type,
+                        "item_id": str(item.get("ID", "")),
+                        "value": item.get("VALUE"),
+                        "sort": _safe_int(item.get("SORT")),
+                        "is_default": item.get("DEF", "N"),
+                        "xml_id": item.get("XML_ID"),
+                    })
+
+            logger.info(
+                "Enum values collected",
+                entity_type=entity_type,
+                enum_fields=sum(
+                    1 for uf in userfields
+                    if uf.get("USER_TYPE_ID") == "enumeration" and uf.get("LIST")
+                ),
+                total_values=len(records),
+            )
+
+            upserted = await self._upsert_reference_records(ref_type, records)
+
+            await self._complete_sync_log(sync_log_id, "completed", upserted)
+
+            return {
+                "status": "completed",
+                "ref_name": "enum_values",
+                "entity_type": entity_type,
+                "records_processed": upserted,
+            }
+
+        except Exception as e:
+            logger.error(
+                "Enum userfields sync failed",
+                entity_type=entity_type,
+                error=str(e),
+            )
+            await self._complete_sync_log(sync_log_id, "failed", 0, str(e))
+            raise SyncError(
+                f"Enum userfields sync failed for {entity_type}: {str(e)}"
+            ) from e
+
     async def sync_all_references(self) -> dict[str, Any]:
         """Synchronize all reference types."""
         logger.info("Starting sync of all references")
         results: dict[str, Any] = {}
 
         for name, ref_type in get_all_reference_types().items():
+            if not ref_type.api_method:
+                continue
             try:
                 result = await self.sync_reference(name)
                 results[name] = result

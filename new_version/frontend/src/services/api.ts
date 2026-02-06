@@ -157,6 +157,7 @@ export interface ReferenceStatusItem {
   error_message: string | null
   last_sync_at: string | null
   completed_at: string | null
+  auto_only?: boolean
 }
 
 export interface ReferenceStatusResponse {

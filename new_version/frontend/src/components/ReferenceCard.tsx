@@ -4,6 +4,7 @@ const REF_DISPLAY_NAMES: Record<string, string> = {
   crm_status: 'Statuses & Stages',
   crm_deal_category: 'Deal Pipelines',
   crm_currency: 'Currencies',
+  enum_values: 'Enum Field Values',
 }
 
 interface ReferenceCardProps {
@@ -19,6 +20,7 @@ export default function ReferenceCard({
 }: ReferenceCardProps) {
   const isRunning = reference.status === 'running'
   const isFailed = reference.status === 'failed'
+  const isAutoOnly = reference.auto_only === true
 
   const formatDate = (date: string | null) => {
     if (!date) return 'Never'
@@ -48,8 +50,8 @@ export default function ReferenceCard({
           <h3 className="text-lg font-semibold">{displayName}</h3>
           <span className={`text-sm ${getStatusColor()}`}>{getStatusText()}</span>
         </div>
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-          Reference
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isAutoOnly ? 'bg-gray-100 text-gray-600' : 'bg-purple-100 text-purple-800'}`}>
+          {isAutoOnly ? 'Auto' : 'Reference'}
         </span>
       </div>
 
@@ -79,13 +81,19 @@ export default function ReferenceCard({
       )}
 
       <div className="flex space-x-2">
-        <button
-          onClick={onSync}
-          disabled={isRunning || isSyncing}
-          className="btn btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isRunning ? 'Syncing...' : 'Sync'}
-        </button>
+        {isAutoOnly ? (
+          <span className="text-xs text-gray-400 flex-1 text-center py-2">
+            Syncs automatically during full sync
+          </span>
+        ) : (
+          <button
+            onClick={onSync}
+            disabled={isRunning || isSyncing}
+            className="btn btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isRunning ? 'Syncing...' : 'Sync'}
+          </button>
+        )}
       </div>
     </div>
   )

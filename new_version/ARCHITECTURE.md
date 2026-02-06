@@ -167,6 +167,7 @@ class ChartService:
 class ReferenceSyncService:
     async def sync_reference(ref_name: str) -> dict      # Синхронизация одного справочника
     async def sync_all_references() -> dict               # Синхронизация всех справочников
+    async def sync_enum_userfields(entity_type, userfields) -> dict  # Синхронизация значений enum-полей
 ```
 
 Справочные таблицы:
@@ -176,8 +177,9 @@ class ReferenceSyncService:
 | Статусы/стадии | `crm.status.list` | `ref_crm_statuses` | `(status_id, entity_id, category_id)` |
 | Воронки сделок | `crm.dealcategory.list` | `ref_crm_deal_categories` | `(id)` |
 | Валюты | `crm.currency.list` | `ref_crm_currencies` | `(currency)` |
+| Значения enum-полей | из `userfield.list` → `LIST` | `ref_enum_values` | `(field_name, entity_type, item_id)` |
 
-При `full_sync` CRM-сущности автоматически синхронизируются связанные справочники (best-effort).
+При `full_sync` CRM-сущности автоматически синхронизируются связанные справочники и значения enumeration-полей пользовательских полей (best-effort).
 
 ### 3. Infrastructure Layer (`app/infrastructure/`)
 

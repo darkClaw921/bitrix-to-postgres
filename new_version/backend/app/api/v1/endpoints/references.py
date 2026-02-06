@@ -29,6 +29,7 @@ async def list_reference_types() -> dict:
                 "api_method": rt.api_method,
                 "unique_key": rt.unique_key,
                 "fields_count": len(rt.fields),
+                "auto_only": not bool(rt.api_method),
             }
             for rt in ref_types.values()
         ]
@@ -93,6 +94,7 @@ async def get_reference_status() -> dict:
             "error_message": log_row[3] if log_row and log_row[0] == "failed" else None,
             "last_sync_at": log_row[4].isoformat() if log_row and log_row[4] else None,
             "completed_at": log_row[5].isoformat() if log_row and log_row[5] else None,
+            "auto_only": not bool(rt.api_method),
         }
 
         statuses.append(status_info)
@@ -123,11 +125,18 @@ async def _run_all_ref_sync() -> None:
 @router.post("/sync/{ref_name}")
 async def sync_reference(ref_name: str, background_tasks: BackgroundTasks) -> dict:
     """Start synchronization of a specific reference type."""
-    if get_reference_type(ref_name) is None:
+    ref_type = get_reference_type(ref_name)
+    if ref_type is None:
         available = list(get_all_reference_types().keys())
         raise HTTPException(
             status_code=400,
             detail=f"Unknown reference type: {ref_name}. Available: {available}",
+        )
+
+    if not ref_type.api_method:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Reference type '{ref_name}' is auto-only and syncs automatically during full_sync",
         )
 
     if _running_ref_syncs.get(ref_name):

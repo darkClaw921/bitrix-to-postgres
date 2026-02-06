@@ -31,13 +31,14 @@ async def generate_chart(request: ChartGenerateRequest) -> ChartGenerateResponse
     settings = get_settings()
 
     try:
-        # 1. Get schema context
-        schema_context = await chart_service.get_schema_context(request.table_filter)
-        if not schema_context.strip():
+        # 1. Get latest schema description (generated via /schema/describe)
+        schema_desc = await chart_service.get_any_latest_schema_description()
+        if not schema_desc:
             raise HTTPException(
                 status_code=400,
-                detail="Не найдено CRM-таблиц в базе данных. Сначала выполните синхронизацию.",
+                detail="Сначала сгенерируйте описание схемы базы данных (GET /api/v1/schema/describe).",
             )
+        schema_context = schema_desc["markdown"]
 
         # 2. Get allowed tables
         allowed_tables = await chart_service.get_allowed_tables()

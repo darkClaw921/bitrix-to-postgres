@@ -179,6 +179,7 @@ class ChartService:
     async def toggle_pin(chart_id: int) -> dict
 
     # CRUD описаний схемы
+    async def get_any_latest_schema_description() -> dict | None  # Последнее описание без фильтров (для генерации чартов)
     async def save_schema_description(markdown, entity_filter?, include_related?) -> dict
     async def get_latest_schema_description(entity_filter?, include_related?) -> dict | None
     async def get_schema_description_by_id(desc_id: int) -> dict | None
@@ -452,14 +453,15 @@ GET /api/v1/schema/tables?entity_tables=crm_deals&include_related=false
 ```
 Вернёт только: `crm_deals`
 
-### Генерация чартов с фильтрацией по сущности
+### Генерация чартов
 
-**Создать чарт только на основе данных сделок:**
+Генерация чартов использует последнее сохранённое AI-описание схемы БД (`schema_descriptions`) в качестве контекста для AI. Если описание схемы ещё не было сгенерировано, endpoint вернёт ошибку 400 с просьбой сначала вызвать `GET /api/v1/schema/describe`.
+
+**Создать чарт:**
 ```json
 POST /api/v1/charts/generate
 {
-  "prompt": "Количество сделок по стадиям воронки",
-  "table_filter": ["crm_deals"]
+  "prompt": "Количество сделок по стадиям воронки"
 }
 ```
-AI получит контекст включающий `crm_deals` и все связанные справочники (`ref_crm_statuses`, `ref_crm_deal_categories`, и т.д.)
+AI получит markdown из последней генерации описания схемы как контекст для построения SQL-запроса.

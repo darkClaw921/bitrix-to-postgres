@@ -575,6 +575,24 @@ class ChartService:
 
     # === Schema Descriptions CRUD ===
 
+    async def get_any_latest_schema_description(self) -> dict[str, Any] | None:
+        """Get the most recent schema description regardless of filters."""
+        engine = get_engine()
+        query = text(
+            "SELECT id, markdown, entity_filter, include_related, created_at, updated_at "
+            "FROM schema_descriptions "
+            "ORDER BY created_at DESC LIMIT 1"
+        )
+        async with engine.begin() as conn:
+            result = await conn.execute(query)
+            row = result.fetchone()
+
+        if not row:
+            return None
+
+        columns = list(result.keys())
+        return dict(zip(columns, row))
+
     async def save_schema_description(
         self,
         markdown: str,

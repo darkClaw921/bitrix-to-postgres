@@ -67,13 +67,14 @@ Bitrix24 Sync Service — микросервис для односторонне
 ```
 app/api/
 ├── v1/
-│   ├── __init__.py          # Роутер версии API (sync, webhooks, status, charts, schema)
+│   ├── __init__.py          # Роутер версии API (sync, webhooks, status, charts, schema, references)
 │   ├── endpoints/
 │   │   ├── sync.py          # Эндпоинты синхронизации
 │   │   ├── webhooks.py      # Обработка webhooks от Bitrix24
 │   │   ├── status.py        # Статус и health checks
 │   │   ├── charts.py        # AI-генерация и CRUD чартов
-│   │   └── schema_description.py  # AI-описание схемы БД
+│   │   ├── schema_description.py  # AI-описание схемы БД
+│   │   └── references.py    # Синхронизация справочных данных (статусы, воронки, валюты)
 │   └── schemas/
 │       ├── sync.py          # Pydantic схемы для sync
 │       ├── webhooks.py      # Схемы webhooks
@@ -100,6 +101,10 @@ app/api/
 | `POST` | `/api/v1/charts/{id}/pin` | Закрепить/открепить чарт |
 | `GET` | `/api/v1/schema/describe` | AI-описание схемы БД (markdown) |
 | `GET` | `/api/v1/schema/tables` | Список таблиц с колонками |
+| `GET` | `/api/v1/references/types` | Список доступных справочников |
+| `GET` | `/api/v1/references/status` | Статус синхронизации справочников |
+| `POST` | `/api/v1/references/sync/{ref_name}` | Синхронизация конкретного справочника |
+| `POST` | `/api/v1/references/sync-all` | Синхронизация всех справочников |
 | `GET` | `/health` | Health check |
 
 ### 2. Domain Layer (`app/domain/`)
@@ -111,9 +116,11 @@ app/domain/
 │   ├── deal.py              # Модель сделки
 │   ├── contact.py           # Модель контакта
 │   ├── lead.py              # Модель лида
-│   └── company.py           # Модель компании
+│   ├── company.py           # Модель компании
+│   └── reference.py         # Реестр справочных типов (ReferenceType, ReferenceFieldDef)
 ├── services/
-│   ├── sync_service.py      # Основная логика синхронизации
+│   ├── sync_service.py      # Основная логика синхронизации (+ авто-синхронизация справочников)
+│   ├── reference_sync_service.py  # Синхронизация справочных таблиц (статусы, воронки, валюты)
 │   ├── field_mapper.py      # Маппинг полей Bitrix → DB (кросс-БД совместимый)
 │   ├── ai_service.py        # Взаимодействие с OpenAI API (генерация чартов, описание схемы)
 │   └── chart_service.py     # SQL-валидация, выполнение запросов, CRUD чартов
@@ -153,6 +160,24 @@ class ChartService:
     async def delete_chart(chart_id: int) -> bool
     async def toggle_pin(chart_id: int) -> dict
 ```
+
+#### ReferenceSyncService — синхронизация справочников:
+
+```python
+class ReferenceSyncService:
+    async def sync_reference(ref_name: str) -> dict      # Синхронизация одного справочника
+    async def sync_all_references() -> dict               # Синхронизация всех справочников
+```
+
+Справочные таблицы:
+
+| Справочник | API метод | Таблица БД | Уникальный ключ |
+|---|---|---|---|
+| Статусы/стадии | `crm.status.list` | `ref_crm_statuses` | `(status_id, entity_id, category_id)` |
+| Воронки сделок | `crm.dealcategory.list` | `ref_crm_deal_categories` | `(id)` |
+| Валюты | `crm.currency.list` | `ref_crm_currencies` | `(currency)` |
+
+При `full_sync` CRM-сущности автоматически синхронизируются связанные справочники (best-effort).
 
 ### 3. Infrastructure Layer (`app/infrastructure/`)
 
@@ -302,7 +327,8 @@ frontend/src/
 ├── App.tsx                    # Роутинг (/charts, /schema, /config, /monitoring, /validation)
 ├── components/
 │   ├── Layout.tsx             # Навигация (Dashboard, AI Charts, Configuration, Monitoring, Validation, Schema)
-│   ├── SyncCard.tsx           # Карточка синхронизации
+│   ├── SyncCard.tsx           # Карточка синхронизации CRM-сущности
+│   ├── ReferenceCard.tsx      # Карточка справочника (статусы, воронки, валюты)
 │   └── charts/
 │       ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter через Recharts)
 │       └── ChartCard.tsx      # Карточка сохранённого чарта с действиями
@@ -314,11 +340,11 @@ frontend/src/
 │   ├── MonitoringPage.tsx     # Мониторинг
 │   └── ValidationPage.tsx     # Валидация данных
 ├── hooks/
-│   ├── useSync.ts             # React Query хуки для синхронизации
+│   ├── useSync.ts             # React Query хуки для синхронизации и справочников
 │   ├── useCharts.ts           # React Query хуки для чартов и схемы
 │   └── useAuth.ts             # Хук авторизации
 ├── services/
-│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, chartsApi, schemaApi)
+│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi)
 └── store/
     ├── authStore.ts           # Zustand store авторизации
     └── syncStore.ts           # Zustand store синхронизации

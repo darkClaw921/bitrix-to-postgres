@@ -132,6 +132,60 @@ export const webhooksApi = {
     api.get('/webhooks/registered').then((r) => r.data),
 }
 
+// === References Types ===
+
+export interface ReferenceTypeInfo {
+  name: string
+  table_name: string
+  api_method: string
+  unique_key: string[]
+  fields_count: number
+}
+
+export interface ReferenceTypesResponse {
+  reference_types: ReferenceTypeInfo[]
+}
+
+export interface ReferenceStatusItem {
+  name: string
+  table_name: string
+  table_exists: boolean
+  record_count: number
+  status: string
+  last_sync_type: string | null
+  records_synced: number | null
+  error_message: string | null
+  last_sync_at: string | null
+  completed_at: string | null
+}
+
+export interface ReferenceStatusResponse {
+  references: ReferenceStatusItem[]
+}
+
+export interface RefSyncStartResponse {
+  status: string
+  ref_name?: string
+  message: string
+  reference_types?: string[]
+}
+
+// === References API ===
+
+export const referencesApi = {
+  getTypes: () =>
+    api.get<ReferenceTypesResponse>('/references/types').then((r) => r.data),
+
+  getStatus: () =>
+    api.get<ReferenceStatusResponse>('/references/status').then((r) => r.data),
+
+  syncOne: (refName: string) =>
+    api.post<RefSyncStartResponse>(`/references/sync/${refName}`).then((r) => r.data),
+
+  syncAll: () =>
+    api.post<RefSyncStartResponse>('/references/sync-all').then((r) => r.data),
+}
+
 // === Charts Types ===
 
 export interface ChartSpec {

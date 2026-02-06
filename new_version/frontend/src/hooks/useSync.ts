@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { syncApi, statusApi } from '../services/api'
+import { syncApi, statusApi, referencesApi } from '../services/api'
 
 export function useSyncConfig() {
   return useQuery({
@@ -73,6 +73,38 @@ export function useStartSync() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['syncStatus'] })
       queryClient.invalidateQueries({ queryKey: ['runningSyncs'] })
+    },
+  })
+}
+
+// === Reference hooks ===
+
+export function useReferenceStatus() {
+  return useQuery({
+    queryKey: ['referenceStatus'],
+    queryFn: referencesApi.getStatus,
+    refetchInterval: 5000,
+  })
+}
+
+export function useStartRefSync() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (refName: string) => referencesApi.syncOne(refName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['referenceStatus'] })
+    },
+  })
+}
+
+export function useStartAllRefSync() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => referencesApi.syncAll(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['referenceStatus'] })
     },
   })
 }

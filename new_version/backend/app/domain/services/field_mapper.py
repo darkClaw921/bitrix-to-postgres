@@ -192,13 +192,22 @@ class FieldMapper:
             is_multiple = field.get("MULTIPLE") == "Y"
 
             # Get title from LIST_COLUMN_LABEL or EDIT_FORM_LABEL
+            # With LANG filter: labels come as strings; without LANG: as dicts or absent
             title = None
-            if field.get("LIST_COLUMN_LABEL"):
-                labels = field["LIST_COLUMN_LABEL"]
-                title = labels.get("ru") or labels.get("en") or next(iter(labels.values()), None)
-            if not title and field.get("EDIT_FORM_LABEL"):
-                labels = field["EDIT_FORM_LABEL"]
-                title = labels.get("ru") or labels.get("en") or next(iter(labels.values()), None)
+            for label_key in ("LIST_COLUMN_LABEL", "EDIT_FORM_LABEL"):
+                label_val = field.get(label_key)
+                if not label_val:
+                    continue
+                if isinstance(label_val, str):
+                    title = label_val
+                elif isinstance(label_val, dict):
+                    title = (
+                        label_val.get("ru")
+                        or label_val.get("en")
+                        or next(iter(label_val.values()), None)
+                    )
+                if title:
+                    break
 
             field_info = FieldInfo(
                 field_id=field_name,
@@ -221,6 +230,8 @@ class FieldMapper:
         """Merge standard fields and user fields, removing duplicates.
 
         User fields take precedence when field_id matches.
+        If a user field has no meaningful description (falls back to field_id),
+        the description from the standard field is used instead.
 
         Args:
             standard_fields: Fields from crm.*.fields
@@ -229,9 +240,18 @@ class FieldMapper:
         Returns:
             Merged list of unique fields
         """
+        std_by_id = {f.field_id.upper(): f for f in standard_fields}
         user_field_ids = {f.field_id.upper() for f in user_fields}
         result = [f for f in standard_fields if f.field_id.upper() not in user_field_ids]
-        result.extend(user_fields)
+
+        for uf in user_fields:
+            # Fallback: use standard field description when userfield has no label
+            if uf.description == uf.field_id:
+                std = std_by_id.get(uf.field_id.upper())
+                if std and std.description != std.field_id:
+                    uf.description = std.description
+            result.append(uf)
+
         return result
 
     @staticmethod

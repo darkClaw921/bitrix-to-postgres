@@ -92,10 +92,11 @@ interactions.jsonl
 # Flask stuff:
 instance/
 .webassets-cache
-
+get_stage_deal.md
+a.md
 # Scrapy stuff:
 .scrapy
-
+userfields.md
 # Sphinx documentation
 docs/_build/
 

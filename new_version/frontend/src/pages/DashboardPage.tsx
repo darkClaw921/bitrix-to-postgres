@@ -1,10 +1,14 @@
 import SyncCard from '../components/SyncCard'
+import ReferenceCard from '../components/ReferenceCard'
 import {
   useSyncConfig,
   useSyncStatus,
   useSyncStats,
   useStartSync,
   useUpdateSyncConfig,
+  useReferenceStatus,
+  useStartRefSync,
+  useStartAllRefSync,
 } from '../hooks/useSync'
 
 export default function DashboardPage() {
@@ -13,6 +17,9 @@ export default function DashboardPage() {
   const { data: stats } = useSyncStats()
   const startSync = useStartSync()
   const updateConfig = useUpdateSyncConfig()
+  const { data: refStatus } = useReferenceStatus()
+  const startRefSync = useStartRefSync()
+  const startAllRefSync = useStartAllRefSync()
 
   if (configLoading) {
     return (
@@ -76,6 +83,32 @@ export default function DashboardPage() {
           />
         ))}
       </div>
+
+      {/* Reference Data Cards */}
+      {refStatus && refStatus.references.length > 0 && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold">Reference Data</h2>
+            <button
+              onClick={() => startAllRefSync.mutate()}
+              disabled={startAllRefSync.isPending}
+              className="btn btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {startAllRefSync.isPending ? 'Syncing...' : 'Sync All References'}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {refStatus.references.map((ref) => (
+              <ReferenceCard
+                key={ref.name}
+                reference={ref}
+                onSync={() => startRefSync.mutate(ref.name)}
+                isSyncing={startRefSync.isPending}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats Table */}
       {stats && (

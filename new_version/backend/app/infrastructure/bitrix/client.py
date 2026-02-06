@@ -196,7 +196,7 @@ class BitrixClient:
             List of user field definitions from crm.{entity}.userfield.list
         """
         method = f"crm.{entity_type}.userfield.list"
-        params = {"FILTER": {">ID": 0}}
+        params = {"FILTER": {">ID": 0, "LANG": "ru"}}
         return await self.get_all(method, params)
 
     async def register_webhook(

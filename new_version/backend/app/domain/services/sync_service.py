@@ -97,6 +97,9 @@ class SyncService:
 
             await self._complete_sync_log(sync_log.id, "completed", records_processed)
 
+            # Step 6: Best-effort sync of related reference tables
+            await self._sync_related_references(entity_type)
+
             return {
                 "status": "completed",
                 "entity_type": entity_type,
@@ -567,6 +570,46 @@ class SyncService:
         if row and row[0]:
             return row[0]
         return None
+
+    # Mapping of CRM entity types to related reference types
+    _ENTITY_REFERENCE_MAP: dict[str, list[str]] = {
+        "deal": ["crm_status", "crm_deal_category", "crm_currency"],
+        "lead": ["crm_status", "crm_currency"],
+        "contact": ["crm_currency"],
+        "company": ["crm_currency"],
+    }
+
+    async def _sync_related_references(self, entity_type: str) -> None:
+        """Best-effort sync of reference tables related to this entity type."""
+        ref_names = self._ENTITY_REFERENCE_MAP.get(entity_type, [])
+        if not ref_names:
+            return
+
+        try:
+            from app.domain.services.reference_sync_service import ReferenceSyncService
+
+            ref_service = ReferenceSyncService(bitrix_client=self._bitrix)
+            for ref_name in ref_names:
+                try:
+                    await ref_service.sync_reference(ref_name)
+                    logger.info(
+                        "Related reference synced",
+                        entity_type=entity_type,
+                        ref_name=ref_name,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to sync related reference, skipping",
+                        entity_type=entity_type,
+                        ref_name=ref_name,
+                        error=str(e),
+                    )
+        except Exception as e:
+            logger.warning(
+                "Failed to sync related references",
+                entity_type=entity_type,
+                error=str(e),
+            )
 
     async def _ensure_schema_updated(self, entity_type: str, table_name: str) -> None:
         """Ensure table schema is up to date with Bitrix fields."""

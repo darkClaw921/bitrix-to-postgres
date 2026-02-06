@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { chartsApi, schemaApi } from '../services/api'
-import type { ChartGenerateRequest, ChartSaveRequest } from '../services/api'
+import type { ChartGenerateRequest, ChartSaveRequest, SchemaDescriptionUpdateRequest } from '../services/api'
 
 export function useGenerateChart() {
   return useMutation({
@@ -61,6 +61,26 @@ export function useSchemaDescription() {
     queryKey: ['schemaDescription'],
     queryFn: schemaApi.describe,
     enabled: false, // manual trigger via refetch()
+  })
+}
+
+export function useSchemaHistory() {
+  return useQuery({
+    queryKey: ['schemaHistory'],
+    queryFn: schemaApi.getHistory,
+  })
+}
+
+export function useUpdateSchemaDescription() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ descId, data }: { descId: number; data: SchemaDescriptionUpdateRequest }) =>
+      schemaApi.update(descId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schemaDescription'] })
+      queryClient.invalidateQueries({ queryKey: ['schemaHistory'] })
+    },
   })
 }
 

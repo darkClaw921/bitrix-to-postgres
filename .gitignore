@@ -99,14 +99,14 @@ a.md
 userfields.md
 # Sphinx documentation
 docs/_build/
-
+TODO.md
 # PyBuilder
 .pybuilder/
 target/
 .beads
 # Jupyter Notebook
 .ipynb_checkpoints
-
+task*.md
 # IPython
 profile_default/
 ipython_config.py

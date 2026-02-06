@@ -20,7 +20,9 @@ class ChartGenerateRequest(BaseModel):
         description="Chart description in natural language",
     )
     table_filter: Optional[list[str]] = Field(
-        None, description='Filter tables, e.g. ["crm_deals", "crm_contacts"]'
+        None,
+        description='Filter tables, e.g. ["crm_deals", "crm_contacts"]. '
+        "Related reference tables (statuses, categories, enum values) will be automatically included.",
     )
 
 

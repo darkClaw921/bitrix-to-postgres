@@ -1,3 +1,7 @@
+
+сервис переходи на новую версию, смотри папку new_version
+
+![main](main.png)
 # Bitrix to Postgres Connector
 
 Сервис для синхронизации данных между Bitrix24 и PostgreSQL.

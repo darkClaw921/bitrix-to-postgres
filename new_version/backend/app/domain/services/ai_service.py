@@ -133,7 +133,7 @@ class AIService:
                     },
                 ],
                 temperature=0.3,
-                max_tokens=4000,
+                max_tokens=10000,
             )
         except openai.APIConnectionError as e:
             logger.error("OpenAI connection error", error=str(e))

@@ -28,9 +28,98 @@ _TABLE_PATTERN = re.compile(
 # Detect existing LIMIT clause
 _LIMIT_PATTERN = re.compile(r"\bLIMIT\s+(\d+)", re.IGNORECASE)
 
+# Mapping of entity tables to their related reference tables
+_ENTITY_RELATED_TABLES = {
+    "crm_deals": [
+        "ref_crm_statuses",       # Statuses & Stages
+        "ref_crm_deal_categories", # Deal Pipelines
+        "ref_crm_currencies",      # Currencies
+        "ref_enum_values",         # Enum Field Values
+    ],
+    "crm_contacts": [
+        "ref_crm_statuses",
+        "ref_enum_values",
+    ],
+    "crm_leads": [
+        "ref_crm_statuses",
+        "ref_enum_values",
+    ],
+    "crm_companies": [
+        "ref_crm_statuses",
+        "ref_enum_values",
+    ],
+}
+
 
 class ChartService:
     """Service for chart generation, validation, and persistence."""
+
+    # === Helper Methods ===
+
+    @staticmethod
+    def get_related_tables(entity_table: str) -> list[str]:
+        """Get related reference tables for a given entity table.
+
+        Args:
+            entity_table: Main entity table name (e.g., 'crm_deals')
+
+        Returns:
+            List of related reference table names
+        """
+        return _ENTITY_RELATED_TABLES.get(entity_table, [])
+
+    @staticmethod
+    def expand_tables_with_related(tables: list[str]) -> list[str]:
+        """Expand a list of tables to include related reference tables.
+
+        Args:
+            tables: List of main entity table names
+
+        Returns:
+            Expanded list including all related reference tables (deduplicated)
+        """
+        expanded = set(tables)
+        for table in tables:
+            related = ChartService.get_related_tables(table)
+            expanded.update(related)
+        return sorted(expanded)
+
+    # === Helper Methods for Metadata ===
+
+    async def _get_enum_values_map(
+        self,
+    ) -> dict[str, dict[str, list[str]]]:
+        """Get enum values for userfields grouped by table and field_name.
+
+        Returns:
+            Dict[table_name, Dict[field_name, List[values]]]
+        """
+        engine = get_engine()
+        query = text(
+            "SELECT entity_type, field_name, value "
+            "FROM ref_enum_values "
+            "ORDER BY entity_type, field_name, sort"
+        )
+
+        try:
+            async with engine.begin() as conn:
+                result = await conn.execute(query)
+                rows = result.fetchall()
+        except Exception as e:
+            logger.warning("Failed to get enum values", error=str(e))
+            return {}
+
+        # Group by entity_type (maps to table name) and field_name
+        enum_map: dict[str, dict[str, list[str]]] = {}
+        for row in rows:
+            entity_type, field_name, value = row[0], row[1], row[2]
+            # entity_type maps to table name (e.g., "DEAL" -> "crm_deals")
+            table_name = f"crm_{entity_type.lower()}s"
+            enum_map.setdefault(table_name, {}).setdefault(field_name, []).append(
+                value
+            )
+
+        return enum_map
 
     # === SQL Validation ===
 
@@ -85,50 +174,94 @@ class ChartService:
     # === Schema context ===
 
     async def get_schema_context(
-        self, table_filter: list[str] | None = None
+        self, table_filter: list[str] | None = None, include_related: bool = True
     ) -> str:
         """Collect schema info from information_schema for CRM tables.
+
+        Args:
+            table_filter: Optional list of specific tables to include
+            include_related: If True, automatically include related reference tables
+                           for filtered entity tables (default: True)
 
         Returns a formatted string describing tables and columns.
         """
         engine = get_engine()
         dialect = get_dialect()
 
+        # Expand table filter to include related tables if requested
+        effective_filter = table_filter
+        if table_filter and include_related:
+            effective_filter = self.expand_tables_with_related(table_filter)
+            logger.info(
+                "Expanded table filter with related tables",
+                original=table_filter,
+                expanded=effective_filter,
+            )
+
+        # Query for CRM and reference tables with comments
         if dialect == "mysql":
             query = text(
-                "SELECT table_name, column_name, data_type, is_nullable "
+                "SELECT table_name, column_name, data_type, is_nullable, column_comment "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND table_name LIKE 'crm_%' "
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%') "
                 "ORDER BY table_name, ordinal_position"
             )
         else:
+            # PostgreSQL: get comments from pg_description (optimized)
             query = text(
-                "SELECT table_name, column_name, data_type, is_nullable "
-                "FROM information_schema.columns "
-                "WHERE table_name LIKE 'crm_%' "
-                "ORDER BY table_name, ordinal_position"
+                """
+                SELECT
+                    c.table_name,
+                    c.column_name,
+                    c.data_type,
+                    c.is_nullable,
+                    col_description((quote_ident(c.table_schema)||'.'||quote_ident(c.table_name))::regclass::oid, c.ordinal_position) as column_comment
+                FROM information_schema.columns c
+                WHERE c.table_schema = current_schema()
+                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%')
+                ORDER BY c.table_name, c.ordinal_position
+                """
             )
 
         async with engine.begin() as conn:
             result = await conn.execute(query)
             rows = result.fetchall()
 
+        # Get enum values for userfields
+        enum_values_map = await self._get_enum_values_map()
+
         # Group by table
-        tables: dict[str, list[tuple[str, str, str]]] = {}
+        tables: dict[str, list[tuple[str, str, str, str | None]]] = {}
         for row in rows:
-            tbl, col, dtype, nullable = row[0], row[1], row[2], row[3]
-            if table_filter and tbl not in table_filter:
+            tbl, col, dtype, nullable, comment = row[0], row[1], row[2], row[3], row[4]
+            if effective_filter and tbl not in effective_filter:
                 continue
-            tables.setdefault(tbl, []).append((col, dtype, nullable))
+            tables.setdefault(tbl, []).append((col, dtype, nullable, comment))
 
         # Format as text
         lines: list[str] = []
         for tbl, columns in tables.items():
             lines.append(f"Table: {tbl}")
             lines.append("  Columns:")
-            for col, dtype, nullable in columns:
+            for col, dtype, nullable, comment in columns:
                 null_str = "NULL" if nullable == "YES" else "NOT NULL"
-                lines.append(f"    - {col} ({dtype}, {null_str})")
+
+                # Build description
+                description_parts = [f"{dtype}", null_str]
+                if comment:
+                    description_parts.append(f"- {comment}")
+
+                # Add enum values if available
+                if col.startswith("uf_crm_") and tbl in enum_values_map:
+                    enum_vals = enum_values_map[tbl].get(col, [])
+                    if enum_vals:
+                        enum_str = ", ".join(enum_vals[:5])  # Show first 5 values
+                        if len(enum_vals) > 5:
+                            enum_str += f", ... (+{len(enum_vals) - 5} more)"
+                        description_parts.append(f"(enum: {enum_str})")
+
+                description = " ".join(description_parts)
+                lines.append(f"    - {col}: {description}")
             lines.append("")
 
         context = "\n".join(lines)
@@ -136,7 +269,7 @@ class ChartService:
         return context
 
     async def get_allowed_tables(self) -> list[str]:
-        """Get list of CRM table names from information_schema."""
+        """Get list of CRM and reference table names from information_schema."""
         engine = get_engine()
         dialect = get_dialect()
 
@@ -144,13 +277,13 @@ class ChartService:
             query = text(
                 "SELECT DISTINCT table_name "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND table_name LIKE 'crm_%'"
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%')"
             )
         else:
             query = text(
                 "SELECT DISTINCT table_name "
                 "FROM information_schema.columns "
-                "WHERE table_name LIKE 'crm_%'"
+                "WHERE (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%')"
             )
 
         async with engine.begin() as conn:
@@ -159,43 +292,96 @@ class ChartService:
 
         return [row[0] for row in rows]
 
-    async def get_tables_info(self) -> list[dict[str, Any]]:
+    async def get_tables_info(
+        self, table_filter: list[str] | None = None, include_related: bool = True
+    ) -> list[dict[str, Any]]:
         """Get table structure for /schema/tables endpoint.
+
+        Args:
+            table_filter: Optional list of specific tables to include
+            include_related: If True, automatically include related reference tables
+                           for filtered entity tables (default: True)
 
         Returns list of dicts with table_name, columns, and row_count.
         """
         engine = get_engine()
         dialect = get_dialect()
 
+        # Expand table filter to include related tables if requested
+        effective_filter = table_filter
+        if table_filter and include_related:
+            effective_filter = self.expand_tables_with_related(table_filter)
+            logger.info(
+                "Expanded table filter with related tables",
+                original=table_filter,
+                expanded=effective_filter,
+            )
+
+        # Query for CRM and reference tables with comments
         if dialect == "mysql":
             query = text(
-                "SELECT table_name, column_name, data_type, is_nullable, column_default "
+                "SELECT table_name, column_name, data_type, is_nullable, column_default, column_comment "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND table_name LIKE 'crm_%' "
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%') "
                 "ORDER BY table_name, ordinal_position"
             )
         else:
+            # PostgreSQL: get comments from pg_description (optimized)
             query = text(
-                "SELECT table_name, column_name, data_type, is_nullable, column_default "
-                "FROM information_schema.columns "
-                "WHERE table_name LIKE 'crm_%' "
-                "ORDER BY table_name, ordinal_position"
+                """
+                SELECT
+                    c.table_name,
+                    c.column_name,
+                    c.data_type,
+                    c.is_nullable,
+                    c.column_default,
+                    col_description((quote_ident(c.table_schema)||'.'||quote_ident(c.table_name))::regclass::oid, c.ordinal_position) as column_comment
+                FROM information_schema.columns c
+                WHERE c.table_schema = current_schema()
+                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%')
+                ORDER BY c.table_name, c.ordinal_position
+                """
             )
 
         async with engine.begin() as conn:
             result = await conn.execute(query)
             rows = result.fetchall()
 
+        # Get enum values for userfields
+        enum_values_map = await self._get_enum_values_map()
+
         # Group by table
         tables: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             tbl = row[0]
+            col_name = row[1]
+            # Apply filter if specified
+            if effective_filter and tbl not in effective_filter:
+                continue
+
+            # Build column description with comment and enum values
+            comment = row[5] if len(row) > 5 else None
+            description = comment or ""
+
+            # Add enum values if available
+            if col_name.startswith("uf_crm_") and tbl in enum_values_map:
+                enum_vals = enum_values_map[tbl].get(col_name, [])
+                if enum_vals:
+                    enum_str = ", ".join(enum_vals[:10])  # Show first 10 values
+                    if len(enum_vals) > 10:
+                        enum_str += f" (+ еще {len(enum_vals) - 10})"
+                    if description:
+                        description += f" (enum: {enum_str})"
+                    else:
+                        description = f"Enumeration: {enum_str}"
+
             tables.setdefault(tbl, []).append(
                 {
-                    "name": row[1],
+                    "name": col_name,
                     "data_type": row[2],
                     "is_nullable": row[3] == "YES",
                     "column_default": row[4],
+                    "description": description,
                 }
             )
 
@@ -386,3 +572,165 @@ class ChartService:
         if not chart:
             raise ChartServiceError(f"Чарт с id={chart_id} не найден")
         return chart
+
+    # === Schema Descriptions CRUD ===
+
+    async def save_schema_description(
+        self,
+        markdown: str,
+        entity_filter: list[str] | None = None,
+        include_related: bool = True,
+    ) -> dict[str, Any]:
+        """Save a schema description to the database.
+
+        Args:
+            markdown: The generated markdown documentation
+            entity_filter: Optional list of filtered tables
+            include_related: Whether related tables were included
+
+        Returns:
+            The created schema description record
+        """
+        engine = get_engine()
+        dialect = get_dialect()
+
+        entity_filter_str = ",".join(entity_filter) if entity_filter else None
+
+        params = {
+            "markdown": markdown,
+            "entity_filter": entity_filter_str,
+            "include_related": include_related,
+        }
+
+        if dialect == "mysql":
+            query = text(
+                "INSERT INTO schema_descriptions (markdown, entity_filter, include_related) "
+                "VALUES (:markdown, :entity_filter, :include_related)"
+            )
+            async with engine.begin() as conn:
+                result = await conn.execute(query, params)
+                desc_id = result.lastrowid
+        else:
+            query = text(
+                "INSERT INTO schema_descriptions (markdown, entity_filter, include_related) "
+                "VALUES (:markdown, :entity_filter, :include_related) "
+                "RETURNING id"
+            )
+            async with engine.begin() as conn:
+                result = await conn.execute(query, params)
+                desc_id = result.scalar()
+
+        logger.info("Schema description saved", id=desc_id)
+        return await self.get_schema_description_by_id(desc_id)  # type: ignore[return-value]
+
+    async def get_latest_schema_description(
+        self,
+        entity_filter: list[str] | None = None,
+        include_related: bool = True,
+    ) -> dict[str, Any] | None:
+        """Get the latest schema description matching the filter.
+
+        Args:
+            entity_filter: Optional list of filtered tables
+            include_related: Whether related tables were included
+
+        Returns:
+            The latest matching schema description or None
+        """
+        engine = get_engine()
+        entity_filter_str = ",".join(entity_filter) if entity_filter else None
+
+        if entity_filter_str:
+            query = text(
+                "SELECT id, markdown, entity_filter, include_related, created_at, updated_at "
+                "FROM schema_descriptions "
+                "WHERE entity_filter = :entity_filter AND include_related = :include_related "
+                "ORDER BY created_at DESC LIMIT 1"
+            )
+            params = {
+                "entity_filter": entity_filter_str,
+                "include_related": include_related,
+            }
+        else:
+            query = text(
+                "SELECT id, markdown, entity_filter, include_related, created_at, updated_at "
+                "FROM schema_descriptions "
+                "WHERE entity_filter IS NULL AND include_related = :include_related "
+                "ORDER BY created_at DESC LIMIT 1"
+            )
+            params = {"include_related": include_related}
+
+        async with engine.begin() as conn:
+            result = await conn.execute(query, params)
+            row = result.fetchone()
+
+        if not row:
+            return None
+
+        columns = list(result.keys())
+        return dict(zip(columns, row))
+
+    async def get_schema_description_by_id(
+        self, desc_id: int
+    ) -> dict[str, Any] | None:
+        """Get a schema description by ID.
+
+        Args:
+            desc_id: Schema description ID
+
+        Returns:
+            The schema description record or None
+        """
+        engine = get_engine()
+        query = text(
+            "SELECT id, markdown, entity_filter, include_related, created_at, updated_at "
+            "FROM schema_descriptions WHERE id = :id"
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(query, {"id": desc_id})
+            row = result.fetchone()
+
+        if not row:
+            return None
+
+        columns = list(result.keys())
+        return dict(zip(columns, row))
+
+    async def update_schema_description(
+        self, desc_id: int, markdown: str
+    ) -> dict[str, Any]:
+        """Update the markdown of a schema description.
+
+        Args:
+            desc_id: Schema description ID
+            markdown: New markdown content
+
+        Returns:
+            The updated schema description record
+        """
+        engine = get_engine()
+        dialect = get_dialect()
+
+        if dialect == "mysql":
+            query = text(
+                "UPDATE schema_descriptions SET markdown = :markdown, updated_at = NOW() "
+                "WHERE id = :id"
+            )
+        else:
+            query = text(
+                "UPDATE schema_descriptions SET markdown = :markdown, updated_at = NOW() "
+                "WHERE id = :id"
+            )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(query, {"id": desc_id, "markdown": markdown})
+
+        if result.rowcount == 0:
+            raise ChartServiceError(f"Описание схемы с id={desc_id} не найдено")
+
+        logger.info("Schema description updated", id=desc_id)
+        desc = await self.get_schema_description_by_id(desc_id)
+        if not desc:
+            raise ChartServiceError(f"Описание схемы с id={desc_id} не найдено")
+        return desc

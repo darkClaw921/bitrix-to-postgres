@@ -255,6 +255,7 @@ export interface ColumnInfo {
   data_type: string
   is_nullable: boolean
   column_default?: string
+  description?: string
 }
 
 export interface TableInfo {
@@ -268,8 +269,30 @@ export interface SchemaTablesResponse {
 }
 
 export interface SchemaDescriptionResponse {
+  id: number
   tables: TableInfo[]
   markdown: string
+  entity_filter?: string
+  include_related: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SchemaDescriptionUpdateRequest {
+  markdown: string
+}
+
+export interface SchemaDescriptionListItem {
+  id: number
+  entity_filter?: string
+  include_related: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SchemaDescriptionListResponse {
+  items: SchemaDescriptionListItem[]
+  total: number
 }
 
 // === Charts API ===
@@ -302,6 +325,15 @@ export const schemaApi = {
 
   tables: () =>
     api.get<SchemaTablesResponse>('/schema/tables').then((r) => r.data),
+
+  getHistory: () =>
+    api.get<SchemaDescriptionResponse>('/schema/history').then((r) => r.data),
+
+  update: (descId: number, data: SchemaDescriptionUpdateRequest) =>
+    api.patch<SchemaDescriptionResponse>(`/schema/${descId}`, data).then((r) => r.data),
+
+  list: () =>
+    api.get<SchemaDescriptionListResponse>('/schema/list').then((r) => r.data),
 }
 
 export default api

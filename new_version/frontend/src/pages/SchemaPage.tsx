@@ -1,9 +1,67 @@
+import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { useSchemaDescription, useSchemaTables } from '../hooks/useCharts'
+import {
+  useSchemaDescription,
+  useSchemaHistory,
+  useUpdateSchemaDescription,
+  useSchemaTables,
+} from '../hooks/useCharts'
 
 export default function SchemaPage() {
-  const { data: description, refetch, isFetching, isError, error } = useSchemaDescription()
+  const { data: newDescription, refetch, isFetching, isError, error } = useSchemaDescription()
+  const { data: history, isLoading: historyLoading } = useSchemaHistory()
   const { data: tablesData, isLoading: tablesLoading } = useSchemaTables()
+  const updateMutation = useUpdateSchemaDescription()
+
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedMarkdown, setEditedMarkdown] = useState('')
+  const [currentDescription, setCurrentDescription] = useState(history)
+  const [copySuccess, setCopySuccess] = useState(false)
+
+  // Update current description when history or new description changes
+  useEffect(() => {
+    if (newDescription) {
+      setCurrentDescription(newDescription)
+      setEditedMarkdown(newDescription.markdown)
+    } else if (history && !currentDescription) {
+      setCurrentDescription(history)
+      setEditedMarkdown(history.markdown)
+    }
+  }, [newDescription, history, currentDescription])
+
+  const handleCopy = async () => {
+    if (!currentDescription?.markdown) return
+    try {
+      await navigator.clipboard.writeText(currentDescription.markdown)
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  const handleEdit = () => {
+    setEditedMarkdown(currentDescription?.markdown || '')
+    setIsEditing(true)
+  }
+
+  const handleSave = async () => {
+    if (!currentDescription?.id) return
+    try {
+      await updateMutation.mutateAsync({
+        descId: currentDescription.id,
+        data: { markdown: editedMarkdown },
+      })
+      setIsEditing(false)
+    } catch (err) {
+      console.error('Failed to save:', err)
+    }
+  }
+
+  const handleCancel = () => {
+    setEditedMarkdown(currentDescription?.markdown || '')
+    setIsEditing(false)
+  }
 
   return (
     <div className="space-y-6">
@@ -11,13 +69,44 @@ export default function SchemaPage() {
       <div className="card">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold">AI Schema Description</h2>
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isFetching ? 'Generating...' : 'Generate Descriptions'}
-          </button>
+          <div className="flex gap-2">
+            {currentDescription && !isEditing && (
+              <>
+                <button onClick={handleEdit} className="btn btn-secondary">
+                  Edit
+                </button>
+                <button
+                  onClick={handleCopy}
+                  className={`btn ${copySuccess ? 'btn-success' : 'btn-secondary'}`}
+                >
+                  {copySuccess ? '✓ Copied!' : 'Copy All'}
+                </button>
+              </>
+            )}
+            {isEditing && (
+              <>
+                <button
+                  onClick={handleSave}
+                  disabled={updateMutation.isPending}
+                  className="btn btn-primary disabled:opacity-50"
+                >
+                  {updateMutation.isPending ? 'Saving...' : 'Save'}
+                </button>
+                <button onClick={handleCancel} className="btn btn-secondary">
+                  Cancel
+                </button>
+              </>
+            )}
+            {!isEditing && (
+              <button
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isFetching ? 'Generating...' : 'Regenerate'}
+              </button>
+            )}
+          </div>
         </div>
 
         {isError && (
@@ -26,13 +115,36 @@ export default function SchemaPage() {
           </div>
         )}
 
-        {description?.markdown ? (
+        {updateMutation.isError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 mb-4">
+            Failed to save changes
+          </div>
+        )}
+
+        {historyLoading && !currentDescription ? (
+          <div className="flex items-center justify-center h-32 text-gray-500">
+            Loading last description...
+          </div>
+        ) : isEditing ? (
+          <textarea
+            value={editedMarkdown}
+            onChange={(e) => setEditedMarkdown(e.target.value)}
+            className="w-full h-96 p-4 border border-gray-300 rounded font-mono text-sm"
+            placeholder="Edit markdown here..."
+          />
+        ) : currentDescription?.markdown ? (
           <div className="prose prose-sm max-w-none">
-            <ReactMarkdown>{description.markdown}</ReactMarkdown>
+            <ReactMarkdown>{currentDescription.markdown}</ReactMarkdown>
           </div>
         ) : (
           <div className="text-center text-gray-400 py-8">
-            Click "Generate Descriptions" to create an AI-powered description of your database schema.
+            Click "Regenerate" to create an AI-powered description of your database schema.
+          </div>
+        )}
+
+        {currentDescription && (
+          <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
+            Last updated: {new Date(currentDescription.updated_at).toLocaleString()}
           </div>
         )}
       </div>
@@ -74,6 +186,9 @@ export default function SchemaPage() {
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           Default
                         </th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          Description
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -89,6 +204,7 @@ export default function SchemaPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-gray-400 text-xs">{col.column_default || '-'}</td>
+                          <td className="px-3 py-2 text-gray-600 text-xs">{col.description || '-'}</td>
                         </tr>
                       ))}
                     </tbody>

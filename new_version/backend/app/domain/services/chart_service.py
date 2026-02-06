@@ -549,6 +549,53 @@ class ChartService:
 
         return result.rowcount > 0
 
+    async def update_chart_config(
+        self, chart_id: int, config_patch: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Deep-merge config_patch into existing chart_config and persist.
+
+        Returns the updated chart record.
+        """
+        import json as json_mod
+
+        chart = await self.get_chart_by_id(chart_id)
+        if not chart:
+            raise ChartServiceError(f"Чарт с id={chart_id} не найден")
+
+        existing_config = chart["chart_config"]
+        if isinstance(existing_config, str):
+            existing_config = json_mod.loads(existing_config)
+
+        # Deep merge: update nested dicts, replace scalars
+        for key, value in config_patch.items():
+            if (
+                isinstance(value, dict)
+                and key in existing_config
+                and isinstance(existing_config[key], dict)
+            ):
+                existing_config[key].update(value)
+            else:
+                existing_config[key] = value
+
+        config_json = json_mod.dumps(existing_config, ensure_ascii=False)
+
+        engine = get_engine()
+        update_query = text(
+            "UPDATE ai_charts SET chart_config = :config, updated_at = NOW() "
+            "WHERE id = :id"
+        )
+
+        async with engine.begin() as conn:
+            await conn.execute(
+                update_query, {"id": chart_id, "config": config_json}
+            )
+
+        updated = await self.get_chart_by_id(chart_id)
+        if not updated:
+            raise ChartServiceError(f"Чарт с id={chart_id} не найден после обновления")
+        logger.info("Chart config updated", chart_id=chart_id)
+        return updated
+
     async def toggle_pin(self, chart_id: int) -> dict[str, Any]:
         """Toggle the is_pinned flag on a chart."""
         engine = get_engine()

@@ -51,7 +51,7 @@
   - SQL валидация (`validate_sql_query`, `validate_table_names`, `ensure_limit`)
   - Контекст схемы (`get_schema_context`, `get_allowed_tables`, `get_tables_info`)
   - Выполнение запросов (`execute_chart_query`) с таймаутом
-  - CRUD чартов (`save_chart`, `get_charts`, `get_chart_by_id`, `delete_chart`, `toggle_pin`)
+  - CRUD чартов (`save_chart`, `get_charts`, `get_chart_by_id`, `delete_chart`, `toggle_pin`, `update_chart_config`)
   - CRUD описаний схемы (`save_schema_description`, `get_latest_schema_description`, etc.)
 - **ai_service.py** — `AIService`:
   - `generate_chart_spec(prompt, schema_context)` → JSON спецификация чарта
@@ -75,14 +75,14 @@
 
 ##### Схемы (`app/api/v1/schemas/`)
 - **common.py** — `HealthResponse`, `ErrorResponse`, `SuccessResponse`, `PaginationParams`
-- **charts.py** — `ChartGenerateRequest`, `ChartSpec`, `ChartGenerateResponse`, `ChartResponse`, `ChartListResponse`, `ChartDataResponse`
+- **charts.py** — `ChartGenerateRequest`, `ChartConfigUpdateRequest`, `ChartSpec`, `ChartGenerateResponse`, `ChartResponse`, `ChartListResponse`, `ChartDataResponse`
 - **dashboards.py** — `DashboardPublishRequest`, `DashboardUpdateRequest`, `LayoutItem`, `DashboardLayoutUpdateRequest`, `ChartOverrideUpdateRequest`, `DashboardAuthRequest`, `IframeCodeRequest`, `DashboardChartResponse`, `DashboardResponse`, `DashboardListResponse`, `DashboardPublishResponse`, `DashboardAuthResponse`, `PasswordChangeResponse`, `IframeCodeResponse`
 - **schema_description.py** — `ColumnInfo`, `TableInfo`, `SchemaTablesResponse`, `SchemaDescriptionResponse`
 - **sync.py** — `SyncConfigItem`, `SyncStartRequest/Response`, `SyncStatusItem/Response`, `SyncHistoryResponse`
 - **webhooks.py** — `WebhookEventData`, `WebhookResponse`, `WebhookRegistration`
 
 ##### Эндпоинты (`app/api/v1/endpoints/`)
-- **charts.py** — POST `/generate`, POST `/save`, GET `/list`, GET `/{id}/data`, DELETE `/{id}`, POST `/{id}/pin`
+- **charts.py** — POST `/generate`, POST `/save`, GET `/list`, GET `/{id}/data`, PATCH `/{id}/config`, DELETE `/{id}`, POST `/{id}/pin`
 - **dashboards.py** (internal):
   - POST `/publish`, GET `/list`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}`
   - PUT `/{id}/layout`, PUT `/{id}/charts/{dc_id}`, DELETE `/{id}/charts/{dc_id}`
@@ -109,11 +109,11 @@ React 18 + TypeScript + Vite + Tailwind CSS
 
 #### Сервисы и хуки
 - **src/services/api.ts** — axios HTTP клиент, все типы и API объекты:
-  - `syncApi`, `statusApi`, `webhooksApi`, `referencesApi`, `chartsApi`, `schemaApi`
+  - `syncApi`, `statusApi`, `webhooksApi`, `referencesApi`, `chartsApi` (с `updateConfig` для PATCH), `schemaApi`
   - `dashboardsApi` — publish, list, get, update, delete, updateLayout, updateChartOverride, removeChart, changePassword, getIframeCode
   - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData
 - **src/hooks/useSync.ts** — хуки синхронизации и справочников
-- **src/hooks/useCharts.ts** — хуки чартов и описаний схемы
+- **src/hooks/useCharts.ts** — хуки чартов (`useUpdateChartConfig` для PATCH config) и описаний схемы
 - **src/hooks/useDashboards.ts** — `usePublishDashboard`, `useDashboardList`, `useDashboard`, `useUpdateDashboard`, `useDeleteDashboard`, `useUpdateDashboardLayout`, `useUpdateChartOverride`, `useRemoveChartFromDashboard`, `useChangeDashboardPassword`, `useIframeCode`
 - **src/hooks/useAuth.ts** — хук авторизации
 
@@ -133,8 +133,9 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **Layout.tsx** — навигация, health индикатор, outlet
 - **SyncCard.tsx** — карточка синхронизации сущности
 - **ReferenceCard.tsx** — карточка справочника
-- **charts/ChartRenderer.tsx** — рендер чартов (bar, line, pie, area, scatter) через recharts
-- **charts/ChartCard.tsx** — карточка сохранённого чарта (pin, refresh, SQL, embed, delete)
+- **charts/ChartRenderer.tsx** — рендер чартов (bar, line, pie, area, scatter) через recharts с поддержкой настроек отображения (legend, grid, axes, line/area/pie параметры)
+- **charts/ChartSettingsPanel.tsx** — панель настроек чарта (visual, data format, line/area/pie settings) с PATCH сохранением в chart_config
+- **charts/ChartCard.tsx** — карточка сохранённого чарта (pin, refresh, settings, SQL, embed, delete)
 - **charts/IframeCopyButton.tsx** — кнопка "Embed" для копирования iframe HTML
 - **dashboards/PublishModal.tsx** — модалка публикации дашборда (выбор чартов, title, description → пароль + URL)
 - **dashboards/DashboardCard.tsx** — карточка дашборда в списке (open, edit, link, delete)

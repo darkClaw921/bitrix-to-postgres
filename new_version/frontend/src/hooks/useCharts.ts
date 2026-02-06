@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { chartsApi, schemaApi } from '../services/api'
-import type { ChartGenerateRequest, ChartSaveRequest, SchemaDescriptionUpdateRequest } from '../services/api'
+import type { ChartGenerateRequest, ChartSaveRequest, ChartDisplayConfig, SchemaDescriptionUpdateRequest } from '../services/api'
 
 export function useGenerateChart() {
   return useMutation({
@@ -50,6 +50,18 @@ export function useToggleChartPin() {
 
   return useMutation({
     mutationFn: (chartId: number) => chartsApi.togglePin(chartId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['savedCharts'] })
+    },
+  })
+}
+
+export function useUpdateChartConfig() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ chartId, config }: { chartId: number; config: Partial<ChartDisplayConfig> }) =>
+      chartsApi.updateConfig(chartId, config),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['savedCharts'] })
     },

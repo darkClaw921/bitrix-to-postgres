@@ -37,6 +37,14 @@ class ChartSaveRequest(BaseModel):
     sql_query: str
 
 
+class ChartConfigUpdateRequest(BaseModel):
+    """Request to partially update chart_config (deep merge)."""
+
+    config: dict[str, Any] = Field(
+        ..., description="Partial chart_config to merge with existing"
+    )
+
+
 # --- Chart spec (from AI) ---
 
 

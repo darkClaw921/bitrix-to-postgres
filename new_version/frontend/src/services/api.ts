@@ -189,6 +189,26 @@ export const referencesApi = {
 
 // === Charts Types ===
 
+export interface ChartDisplayConfig {
+  // data keys (existing)
+  x: string
+  y: string | string[]
+  colors?: string[]
+  description?: string
+  // legend
+  legend?: { visible?: boolean; position?: 'top' | 'bottom' | 'left' | 'right' }
+  // grid
+  grid?: { visible?: boolean; strokeDasharray?: string }
+  // axes
+  xAxis?: { label?: string; angle?: number }
+  yAxis?: { label?: string; format?: 'number' | 'currency' | 'percent' }
+  // line/area
+  line?: { strokeWidth?: number; type?: 'monotone' | 'linear' | 'natural' | 'step' }
+  area?: { fillOpacity?: number }
+  // pie
+  pie?: { innerRadius?: number; showLabels?: boolean }
+}
+
 export interface ChartSpec {
   title: string
   chart_type: 'bar' | 'line' | 'pie' | 'area' | 'scatter'
@@ -199,6 +219,14 @@ export interface ChartSpec {
   }
   colors?: string[]
   description?: string
+  // display config (optional, from chart_config)
+  legend?: ChartDisplayConfig['legend']
+  grid?: ChartDisplayConfig['grid']
+  xAxis?: ChartDisplayConfig['xAxis']
+  yAxis?: ChartDisplayConfig['yAxis']
+  line?: ChartDisplayConfig['line']
+  area?: ChartDisplayConfig['area']
+  pie?: ChartDisplayConfig['pie']
 }
 
 export interface ChartGenerateRequest {
@@ -315,6 +343,9 @@ export const chartsApi = {
 
   togglePin: (chartId: number) =>
     api.post<SavedChart>(`/charts/${chartId}/pin`).then((r) => r.data),
+
+  updateConfig: (chartId: number, config: Partial<ChartDisplayConfig>) =>
+    api.patch<SavedChart>(`/charts/${chartId}/config`, { config }).then((r) => r.data),
 }
 
 // === Schema API ===

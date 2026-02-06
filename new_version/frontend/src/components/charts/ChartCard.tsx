@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import ChartRenderer from './ChartRenderer'
+import ChartSettingsPanel from './ChartSettingsPanel'
 import IframeCopyButton from './IframeCopyButton'
-import type { SavedChart } from '../../services/api'
-import { useChartData, useDeleteChart, useToggleChartPin } from '../../hooks/useCharts'
+import type { SavedChart, ChartDisplayConfig } from '../../services/api'
+import { useChartData, useDeleteChart, useToggleChartPin, useUpdateChartConfig } from '../../hooks/useCharts'
 
 interface ChartCardProps {
   chart: SavedChart
@@ -10,16 +11,13 @@ interface ChartCardProps {
 
 export default function ChartCard({ chart }: ChartCardProps) {
   const [showSql, setShowSql] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const { data: freshData, refetch, isFetching } = useChartData(chart.id)
   const deleteChart = useDeleteChart()
   const togglePin = useToggleChartPin()
+  const updateConfig = useUpdateChartConfig()
 
-  const config = chart.chart_config as {
-    x: string
-    y: string | string[]
-    colors?: string[]
-    description?: string
-  }
+  const config = chart.chart_config as unknown as ChartDisplayConfig
 
   const spec = {
     title: chart.title,
@@ -28,9 +26,20 @@ export default function ChartCard({ chart }: ChartCardProps) {
     data_keys: { x: config.x || 'x', y: config.y || 'y' },
     colors: config.colors,
     description: chart.description || config.description,
+    legend: config.legend,
+    grid: config.grid,
+    xAxis: config.xAxis,
+    yAxis: config.yAxis,
+    line: config.line,
+    area: config.area,
+    pie: config.pie,
   }
 
   const chartData = freshData?.data
+
+  const handleConfigUpdate = useCallback((patch: Partial<ChartDisplayConfig>) => {
+    updateConfig.mutate({ chartId: chart.id, config: patch })
+  }, [chart.id, updateConfig])
 
   return (
     <div className="card">
@@ -64,6 +73,17 @@ export default function ChartCard({ chart }: ChartCardProps) {
           </button>
           <IframeCopyButton chartId={chart.id} />
           <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-1.5 rounded text-sm ${
+              showSettings
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+            title="Chart settings"
+          >
+            Settings
+          </button>
+          <button
             onClick={() => setShowSql(!showSql)}
             className="p-1.5 rounded text-sm bg-gray-100 text-gray-500 hover:bg-gray-200"
             title="Show SQL"
@@ -81,6 +101,15 @@ export default function ChartCard({ chart }: ChartCardProps) {
           </button>
         </div>
       </div>
+
+      {showSettings && (
+        <ChartSettingsPanel
+          chartType={chart.chart_type}
+          config={config}
+          onApply={handleConfigUpdate}
+          isSaving={updateConfig.isPending}
+        />
+      )}
 
       {showSql && (
         <pre className="mb-3 p-3 bg-gray-50 rounded text-xs overflow-x-auto">

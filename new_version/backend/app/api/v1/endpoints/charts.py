@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.v1.schemas.charts import (
+    ChartConfigUpdateRequest,
     ChartDataResponse,
     ChartGenerateRequest,
     ChartGenerateResponse,
@@ -123,6 +124,18 @@ async def get_chart_data(chart_id: int) -> ChartDataResponse:
         )
     except ChartServiceError as e:
         raise HTTPException(status_code=400, detail=e.message) from e
+
+
+@router.patch("/{chart_id}/config", response_model=ChartResponse)
+async def update_chart_config(
+    chart_id: int, request: ChartConfigUpdateRequest
+) -> ChartResponse:
+    """Partially update chart_config (deep merge)."""
+    try:
+        chart = await chart_service.update_chart_config(chart_id, request.config)
+        return ChartResponse(**chart)
+    except ChartServiceError as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
 
 
 @router.delete("/{chart_id}")

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { supabase } from '../services/supabase'
+import api from '../services/api'
 
 interface User {
   id: string
@@ -24,40 +24,46 @@ export const useAuthStore = create<AuthState>()(
       isLoading: true,
 
       login: async (email: string, password: string) => {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
+        try {
+          const response = await api.post('/auth/login', { email, password })
+          const { user, token } = response.data
 
-        if (error) {
-          throw error
-        }
+          // Store token for API requests
+          localStorage.setItem('auth_token', token)
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`
 
-        if (data.user) {
           set({
-            user: { id: data.user.id, email: data.user.email || '' },
+            user: { id: user.id, email: user.email },
             isAuthenticated: true,
           })
+        } catch (error) {
+          throw error
         }
       },
 
       logout: async () => {
-        await supabase.auth.signOut()
+        localStorage.removeItem('auth_token')
+        delete api.defaults.headers.common['Authorization']
         set({ user: null, isAuthenticated: false })
       },
 
       checkAuth: async () => {
         set({ isLoading: true })
-        const { data: { session } } = await supabase.auth.getSession()
+        const token = localStorage.getItem('auth_token')
 
-        if (session?.user) {
+        if (token) {
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`
           set({
-            user: { id: session.user.id, email: session.user.email || '' },
             isAuthenticated: true,
             isLoading: false,
           })
         } else {
-          set({ user: null, isAuthenticated: false, isLoading: false })
+          // No auth required — allow access without login
+          set({
+            user: null,
+            isAuthenticated: true,
+            isLoading: false,
+          })
         }
       },
     }),

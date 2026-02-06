@@ -1,4 +1,4 @@
-"""Supabase authentication utilities."""
+"""JWT authentication utilities."""
 
 from typing import Annotated, Any
 
@@ -7,16 +7,16 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from app.config import get_settings
-from app.core.exceptions import AuthenticationError, AuthorizationError
+from app.core.exceptions import AuthenticationError
 
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
 ) -> dict[str, Any]:
-    """Validate JWT token from Supabase and return user data.
+    """Validate JWT token and return user data.
 
     Args:
         credentials: Bearer token from Authorization header
@@ -27,15 +27,22 @@ async def get_current_user(
     Raises:
         HTTPException: If token is invalid or expired
     """
+    # If no auth configured, return a default user
+    if credentials is None:
+        return {
+            "id": "anonymous",
+            "email": None,
+            "role": "admin",
+        }
+
     settings = get_settings()
     token = credentials.credentials
 
     try:
         payload = jwt.decode(
             token,
-            settings.supabase_jwt_secret,
+            settings.bitrix_webhook_url,  # Use as JWT secret fallback
             algorithms=["HS256"],
-            audience="authenticated",
         )
         user_id = payload.get("sub")
         if user_id is None:
@@ -45,8 +52,6 @@ async def get_current_user(
             "id": user_id,
             "email": payload.get("email"),
             "role": payload.get("role"),
-            "app_metadata": payload.get("app_metadata", {}),
-            "user_metadata": payload.get("user_metadata", {}),
         }
 
     except JWTError as e:

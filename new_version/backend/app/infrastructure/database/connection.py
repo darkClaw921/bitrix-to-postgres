@@ -21,13 +21,15 @@ class Base(DeclarativeBase):
 # Engine and session factory (initialized on startup)
 _engine = None
 _async_session_factory = None
+_dialect: str = "postgresql"
 
 
 async def init_db() -> None:
     """Initialize database engine and session factory."""
-    global _engine, _async_session_factory
+    global _engine, _async_session_factory, _dialect
 
     settings = get_settings()
+    _dialect = settings.db_dialect
 
     _engine = create_async_engine(
         settings.async_database_url,
@@ -71,3 +73,8 @@ def get_engine():
     if _engine is None:
         raise RuntimeError("Database not initialized. Call init_db() first.")
     return _engine
+
+
+def get_dialect() -> str:
+    """Get current database dialect ('postgresql' or 'mysql')."""
+    return _dialect

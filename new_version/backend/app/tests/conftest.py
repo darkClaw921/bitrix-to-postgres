@@ -11,9 +11,6 @@ from httpx import ASGITransport, AsyncClient
 
 # Set test environment variables before importing app
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")
-os.environ.setdefault("SUPABASE_URL", "http://localhost:54321")
-os.environ.setdefault("SUPABASE_KEY", "test-anon-key")
-os.environ.setdefault("SUPABASE_JWT_SECRET", "test-jwt-secret-for-testing-purposes-only")
 os.environ.setdefault("BITRIX_WEBHOOK_URL", "https://test.bitrix24.ru/rest/1/test/")
 
 
@@ -22,9 +19,8 @@ def mock_settings():
     """Mock settings for testing."""
     settings = MagicMock()
     settings.database_url = "postgresql+asyncpg://test:test@localhost:5432/test"
-    settings.supabase_url = "http://localhost:54321"
-    settings.supabase_key = "test-anon-key"
-    settings.supabase_jwt_secret = "test-jwt-secret-for-testing-purposes-only"
+    settings.async_database_url = "postgresql+asyncpg://test:test@localhost:5432/test"
+    settings.db_dialect = "postgresql"
     settings.bitrix_webhook_url = "https://test.bitrix24.ru/rest/1/test/"
     settings.sync_batch_size = 50
     settings.app_name = "Test App"
@@ -170,41 +166,6 @@ def webhook_contact_add_payload():
 def webhook_deal_delete_payload():
     """Sample Bitrix webhook payload for deal delete."""
     return "event=ONCRMDEALDELETE&data[FIELDS][ID]=123&auth[access_token]=abc"
-
-
-@pytest.fixture
-def valid_jwt_token():
-    """Generate a valid JWT token for testing."""
-    from jose import jwt
-    payload = {
-        "sub": "test-user-id-123",
-        "email": "test@example.com",
-        "role": "authenticated",
-        "aud": "authenticated",
-        "exp": 9999999999,  # Far future
-        "app_metadata": {},
-        "user_metadata": {"name": "Test User"},
-    }
-    return jwt.encode(payload, "test-jwt-secret-for-testing-purposes-only", algorithm="HS256")
-
-
-@pytest.fixture
-def invalid_jwt_token():
-    """Generate an invalid JWT token for testing."""
-    return "invalid.jwt.token"
-
-
-@pytest.fixture
-def expired_jwt_token():
-    """Generate an expired JWT token for testing."""
-    from jose import jwt
-    payload = {
-        "sub": "test-user-id-123",
-        "email": "test@example.com",
-        "aud": "authenticated",
-        "exp": 1000000000,  # Past date
-    }
-    return jwt.encode(payload, "test-jwt-secret-for-testing-purposes-only", algorithm="HS256")
 
 
 @pytest.fixture

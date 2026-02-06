@@ -22,14 +22,14 @@ def upgrade() -> None:
     # sync_config table
     op.create_table(
         "sync_config",
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.Integer(), nullable=False, autoincrement=True),
         sa.Column("entity_type", sa.String(50), nullable=False),
-        sa.Column("enabled", sa.Boolean(), nullable=False, server_default="true"),
+        sa.Column("enabled", sa.Boolean(), nullable=False, server_default="1"),
         sa.Column(
             "sync_interval_minutes", sa.Integer(), nullable=False, server_default="30"
         ),
         sa.Column(
-            "webhook_enabled", sa.Boolean(), nullable=False, server_default="true"
+            "webhook_enabled", sa.Boolean(), nullable=False, server_default="1"
         ),
         sa.Column("last_sync_at", sa.DateTime(), nullable=True),
         sa.Column(
@@ -46,7 +46,7 @@ def upgrade() -> None:
     # sync_logs table
     op.create_table(
         "sync_logs",
-        sa.Column("id", sa.BigInteger(), nullable=False),
+        sa.Column("id", sa.BigInteger(), nullable=False, autoincrement=True),
         sa.Column("entity_type", sa.String(50), nullable=False),
         sa.Column("sync_type", sa.String(20), nullable=False),
         sa.Column("status", sa.String(20), nullable=False),
@@ -75,16 +75,16 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("entity_type"),
     )
 
-    # Insert default configurations for CRM entities
-    op.execute(
-        """
-        INSERT INTO sync_config (entity_type, enabled, sync_interval_minutes, webhook_enabled)
-        VALUES
-            ('deal', true, 30, true),
-            ('contact', true, 30, true),
-            ('lead', true, 30, true),
-            ('company', true, 30, true)
-    """
+    # Insert default configurations
+    bind = op.get_bind()
+    bind.execute(
+        sa.text(
+            "INSERT INTO sync_config (entity_type, enabled, sync_interval_minutes, webhook_enabled) "
+            "VALUES ('deal', 1, 30, 1), "
+            "       ('contact', 1, 30, 1), "
+            "       ('lead', 1, 30, 1), "
+            "       ('company', 1, 30, 1)"
+        )
     )
 
 

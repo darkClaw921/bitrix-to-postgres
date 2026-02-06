@@ -1,9 +1,8 @@
 """Sync management endpoints."""
 
-import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +19,7 @@ from app.core.logging import get_logger
 from app.domain.entities.base import EntityType
 from app.domain.services.sync_service import SyncService
 from app.infrastructure.bitrix.client import BitrixClient
-from app.infrastructure.database.connection import get_engine, get_session
+from app.infrastructure.database.connection import get_dialect, get_engine, get_session
 from app.infrastructure.scheduler import reschedule_entity, remove_entity_job
 
 logger = get_logger(__name__)
@@ -39,11 +38,9 @@ async def get_sync_config(
     engine = get_engine()
 
     query = text(
-        """
-        SELECT entity_type, enabled, sync_interval_minutes, webhook_enabled, last_sync_at
-        FROM sync_config
-        ORDER BY entity_type
-        """
+        "SELECT entity_type, enabled, sync_interval_minutes, webhook_enabled, last_sync_at "
+        "FROM sync_config "
+        "ORDER BY entity_type"
     )
 
     async with engine.begin() as conn:
@@ -62,7 +59,6 @@ async def get_sync_config(
             )
         )
 
-    # If no configs exist, create defaults for all entity types
     if not entities:
         for entity_type in EntityType.all():
             entities.append(
@@ -84,7 +80,6 @@ async def update_sync_config(
     session: AsyncSession = Depends(get_session),
 ) -> SyncConfigItem:
     """Update sync configuration for an entity type."""
-    # Validate entity type
     if config.entity_type not in EntityType.all():
         raise HTTPException(
             status_code=400,
@@ -92,8 +87,8 @@ async def update_sync_config(
         )
 
     engine = get_engine()
+    dialect = get_dialect()
 
-    # Build update fields dynamically
     updates = []
     params: dict = {"entity_type": config.entity_type}
 
@@ -110,36 +105,51 @@ async def update_sync_config(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    # UPSERT the config
     updates.append("updated_at = NOW()")
     update_clause = ", ".join(updates)
 
-    # Try to insert first, then update on conflict
-    upsert_query = text(
-        f"""
-        INSERT INTO sync_config (entity_type, enabled, sync_interval_minutes, webhook_enabled)
-        VALUES (:entity_type,
-                COALESCE(:enabled, true),
-                COALESCE(:sync_interval_minutes, 30),
-                COALESCE(:webhook_enabled, true))
-        ON CONFLICT (entity_type) DO UPDATE SET {update_clause}
-        RETURNING entity_type, enabled, sync_interval_minutes, webhook_enabled, last_sync_at
-        """
-    )
-
-    # Fill in missing params with None for the INSERT part
     params.setdefault("enabled", None)
     params.setdefault("sync_interval_minutes", None)
     params.setdefault("webhook_enabled", None)
 
-    async with engine.begin() as conn:
-        result = await conn.execute(upsert_query, params)
-        row = result.fetchone()
+    if dialect == "mysql":
+        # MySQL: INSERT ... ON DUPLICATE KEY UPDATE, then SELECT
+        upsert_query = text(
+            f"INSERT INTO sync_config (entity_type, enabled, sync_interval_minutes, webhook_enabled) "
+            f"VALUES (:entity_type, "
+            f"        COALESCE(:enabled, 1), "
+            f"        COALESCE(:sync_interval_minutes, 30), "
+            f"        COALESCE(:webhook_enabled, 1)) "
+            f"ON DUPLICATE KEY UPDATE {update_clause}"
+        )
+        async with engine.begin() as conn:
+            await conn.execute(upsert_query, params)
+
+        select_query = text(
+            "SELECT entity_type, enabled, sync_interval_minutes, webhook_enabled, last_sync_at "
+            "FROM sync_config WHERE entity_type = :entity_type"
+        )
+        async with engine.begin() as conn:
+            result = await conn.execute(select_query, {"entity_type": config.entity_type})
+            row = result.fetchone()
+    else:
+        # PostgreSQL: INSERT ... ON CONFLICT ... RETURNING
+        upsert_query = text(
+            f"INSERT INTO sync_config (entity_type, enabled, sync_interval_minutes, webhook_enabled) "
+            f"VALUES (:entity_type, "
+            f"        COALESCE(:enabled, true), "
+            f"        COALESCE(:sync_interval_minutes, 30), "
+            f"        COALESCE(:webhook_enabled, true)) "
+            f"ON CONFLICT (entity_type) DO UPDATE SET {update_clause} "
+            f"RETURNING entity_type, enabled, sync_interval_minutes, webhook_enabled, last_sync_at"
+        )
+        async with engine.begin() as conn:
+            result = await conn.execute(upsert_query, params)
+            row = result.fetchone()
 
     if not row:
         raise HTTPException(status_code=500, detail="Failed to update config")
 
-    # Update scheduler based on new config
     if row[1]:  # enabled
         await reschedule_entity(row[0], row[2])
     else:
@@ -184,27 +194,19 @@ async def start_sync(
     request: SyncStartRequest = SyncStartRequest(),
     session: AsyncSession = Depends(get_session),
 ) -> SyncStartResponse:
-    """Start synchronization for an entity.
-
-    Args:
-        entity: Entity type (deal, contact, lead, company)
-        request: Sync request with sync_type (full or incremental)
-    """
-    # Validate entity type
+    """Start synchronization for an entity."""
     if entity not in EntityType.all():
         raise HTTPException(
             status_code=400,
             detail=f"Invalid entity type: {entity}. Must be one of: {EntityType.all()}",
         )
 
-    # Validate sync type
     if request.sync_type not in ("full", "incremental"):
         raise HTTPException(
             status_code=400,
             detail="sync_type must be 'full' or 'incremental'",
         )
 
-    # Check if already running
     if _running_syncs.get(entity):
         return SyncStartResponse(
             status="already_running",
@@ -213,7 +215,6 @@ async def start_sync(
             message=f"Sync for {entity} is already running",
         )
 
-    # Start sync in background
     background_tasks.add_task(_run_sync, entity, request.sync_type)
 
     logger.info(
@@ -236,35 +237,52 @@ async def get_sync_status(
 ) -> SyncStatusResponse:
     """Get current sync status for all entity types."""
     engine = get_engine()
+    dialect = get_dialect()
 
-    # Get latest sync log for each entity type
-    query = text(
-        """
-        WITH latest_logs AS (
-            SELECT DISTINCT ON (entity_type)
-                entity_type,
-                sync_type,
-                status,
-                records_processed,
-                error_message,
-                started_at,
-                completed_at
-            FROM sync_logs
-            ORDER BY entity_type, started_at DESC
+    if dialect == "mysql":
+        # MySQL: use subquery with MAX instead of DISTINCT ON
+        query = text(
+            "SELECT "
+            "    sc.entity_type, "
+            "    COALESCE(ll.status, 'idle') as status, "
+            "    ll.sync_type, "
+            "    sc.last_sync_at, "
+            "    ll.records_processed, "
+            "    ll.error_message "
+            "FROM sync_config sc "
+            "LEFT JOIN ( "
+            "    SELECT sl.* FROM sync_logs sl "
+            "    INNER JOIN ( "
+            "        SELECT entity_type, MAX(started_at) as max_started "
+            "        FROM sync_logs GROUP BY entity_type "
+            "    ) latest ON sl.entity_type = latest.entity_type "
+            "        AND sl.started_at = latest.max_started "
+            ") ll ON sc.entity_type = ll.entity_type "
+            "WHERE sc.enabled = 1 "
+            "ORDER BY sc.entity_type"
         )
-        SELECT
-            sc.entity_type,
-            COALESCE(ll.status, 'idle') as status,
-            ll.sync_type,
-            sc.last_sync_at,
-            ll.records_processed,
-            ll.error_message
-        FROM sync_config sc
-        LEFT JOIN latest_logs ll ON sc.entity_type = ll.entity_type
-        WHERE sc.enabled = true
-        ORDER BY sc.entity_type
-        """
-    )
+    else:
+        # PostgreSQL: DISTINCT ON
+        query = text(
+            "WITH latest_logs AS ( "
+            "    SELECT DISTINCT ON (entity_type) "
+            "        entity_type, sync_type, status, records_processed, "
+            "        error_message, started_at, completed_at "
+            "    FROM sync_logs "
+            "    ORDER BY entity_type, started_at DESC "
+            ") "
+            "SELECT "
+            "    sc.entity_type, "
+            "    COALESCE(ll.status, 'idle') as status, "
+            "    ll.sync_type, "
+            "    sc.last_sync_at, "
+            "    ll.records_processed, "
+            "    ll.error_message "
+            "FROM sync_config sc "
+            "LEFT JOIN latest_logs ll ON sc.entity_type = ll.entity_type "
+            "WHERE sc.enabled = true "
+            "ORDER BY sc.entity_type"
+        )
 
     async with engine.begin() as conn:
         result = await conn.execute(query)
@@ -275,7 +293,6 @@ async def get_sync_status(
 
     for row in rows:
         entity_type = row[0]
-        # Check if currently running in background
         is_running = _running_syncs.get(entity_type, False)
         status = "running" if is_running else row[1]
         if is_running:
@@ -292,7 +309,6 @@ async def get_sync_status(
             )
         )
 
-    # If no enabled configs, return empty list with all entity types as idle
     if not entities:
         for entity_type in EntityType.all():
             entities.append(
@@ -325,16 +341,11 @@ async def get_running_syncs() -> dict:
 async def validate_entity_fields(
     entity: str,
 ) -> dict:
-    """Validate field type conversion for an entity.
-
-    Fetches sample records from Bitrix24 and tests type conversion
-    to identify fields that fail validation.
-    """
+    """Validate field type conversion for an entity."""
     from decimal import Decimal, InvalidOperation
     from dateutil import parser
     from app.infrastructure.database.dynamic_table import DynamicTableBuilder
 
-    # Validate entity type
     if entity not in EntityType.all():
         raise HTTPException(
             status_code=400,
@@ -344,10 +355,8 @@ async def validate_entity_fields(
     table_name = EntityType.get_table_name(entity)
 
     try:
-        # Get sample records from Bitrix24
         bitrix = BitrixClient()
         all_records = await bitrix.get_entities(entity)
-        # Take only first 10 records
         records = all_records[:10] if len(all_records) > 10 else all_records
 
         if not records:
@@ -358,11 +367,9 @@ async def validate_entity_fields(
                 "validation_results": []
             }
 
-        # Get table columns
         columns = await DynamicTableBuilder.get_table_columns(table_name)
         column_set = set(columns)
 
-        # Field type mappings
         decimal_fields = {'opportunity', 'tax_value'}
         int_fields = {'probability'}
         datetime_fields = {
@@ -370,7 +377,6 @@ async def validate_entity_fields(
             'moved_time', 'last_activity_time', 'last_communication_time'
         }
 
-        # Collect validation results
         field_results = {}
 
         for record in records:
@@ -390,11 +396,9 @@ async def validate_entity_fields(
                         "errors": []
                     }
 
-                # Track sample value
                 if len(field_results[col_name]["sample_values"]) < 3:
                     field_results[col_name]["sample_values"].append(str(value)[:100])
 
-                # Try conversion
                 try:
                     if value == "" or value is None:
                         field_results[col_name]["valid_count"] += 1
@@ -415,7 +419,6 @@ async def validate_entity_fields(
                     if error_msg not in field_results[col_name]["errors"]:
                         field_results[col_name]["errors"].append(error_msg)
 
-        # Convert to list and sort by invalid count (descending)
         validation_results = sorted(
             field_results.values(),
             key=lambda x: x["invalid_count"],

@@ -1,9 +1,8 @@
-"""Field mapper service for transforming Bitrix24 fields to PostgreSQL format."""
+"""Field mapper service for transforming Bitrix24 fields to database format."""
 
 from typing import Any
 
 from sqlalchemy import (
-    ARRAY,
     BigInteger,
     Boolean,
     DateTime,
@@ -11,44 +10,46 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import TypeEngine
 
 
+# Default VARCHAR length for MySQL compatibility
+_STR = String(255)
+
 # Mapping from Bitrix24 field types to SQLAlchemy column types
-TYPE_MAPPING: dict[str, type[TypeEngine]] = {
-    "string": String,
-    "char": String,
-    "text": Text,
-    "integer": BigInteger,
-    "double": Float,
-    "float": Float,
-    "datetime": DateTime,
-    "date": DateTime,
-    "boolean": Boolean,
-    "url": String,
-    "money": Float,
-    "file": String,  # Store file ID as string
-    "disk_file": String,
-    "employee": String,  # User ID
-    "enumeration": String,  # Store enum value
-    "iblock_element": String,
-    "iblock_section": String,
-    "crm_status": String,
-    "crm_category": String,
-    "crm": String,  # CRM entity reference
-    "crm_multifield": String,  # Phone, email etc. - serialized to JSON string
-    "crm_entity": String,
-    "address": Text,
-    "resourcebooking": String,
-    "hlblock": String,  # HighLoad block reference
-    "video": String,
+TYPE_MAPPING: dict[str, TypeEngine] = {
+    "string": _STR,
+    "char": _STR,
+    "text": Text(),
+    "integer": BigInteger(),
+    "double": Float(),
+    "float": Float(),
+    "datetime": DateTime(),
+    "date": DateTime(),
+    "boolean": Boolean(),
+    "url": _STR,
+    "money": Float(),
+    "file": _STR,
+    "disk_file": _STR,
+    "employee": _STR,
+    "enumeration": _STR,
+    "iblock_element": _STR,
+    "iblock_section": _STR,
+    "crm_status": _STR,
+    "crm_category": _STR,
+    "crm": _STR,
+    "crm_multifield": _STR,
+    "crm_entity": _STR,
+    "address": Text(),
+    "resourcebooking": _STR,
+    "hlblock": _STR,
+    "video": _STR,
 }
 
-# SQL type names for ALTER TABLE statements
+# SQL type names for ALTER TABLE statements (cross-database compatible)
 SQL_TYPE_NAMES: dict[str, str] = {
-    "string": "VARCHAR",
-    "char": "VARCHAR",
+    "string": "VARCHAR(255)",
+    "char": "VARCHAR(255)",
     "text": "TEXT",
     "integer": "BIGINT",
     "double": "FLOAT",
@@ -56,23 +57,23 @@ SQL_TYPE_NAMES: dict[str, str] = {
     "datetime": "TIMESTAMP",
     "date": "TIMESTAMP",
     "boolean": "BOOLEAN",
-    "url": "VARCHAR",
+    "url": "VARCHAR(255)",
     "money": "FLOAT",
-    "file": "VARCHAR",
-    "disk_file": "VARCHAR",
-    "employee": "VARCHAR",
-    "enumeration": "VARCHAR",
-    "iblock_element": "VARCHAR",
-    "iblock_section": "VARCHAR",
-    "crm_status": "VARCHAR",
-    "crm_category": "VARCHAR",
-    "crm": "VARCHAR",
-    "crm_multifield": "VARCHAR",
-    "crm_entity": "VARCHAR",
+    "file": "VARCHAR(255)",
+    "disk_file": "VARCHAR(255)",
+    "employee": "VARCHAR(255)",
+    "enumeration": "VARCHAR(255)",
+    "iblock_element": "VARCHAR(255)",
+    "iblock_section": "VARCHAR(255)",
+    "crm_status": "VARCHAR(255)",
+    "crm_category": "VARCHAR(255)",
+    "crm": "VARCHAR(255)",
+    "crm_multifield": "VARCHAR(255)",
+    "crm_entity": "VARCHAR(255)",
     "address": "TEXT",
-    "resourcebooking": "VARCHAR",
-    "hlblock": "VARCHAR",
-    "video": "VARCHAR",
+    "resourcebooking": "VARCHAR(255)",
+    "hlblock": "VARCHAR(255)",
+    "video": "VARCHAR(255)",
 }
 
 
@@ -99,22 +100,22 @@ class FieldInfo:
 
     @property
     def column_name(self) -> str:
-        """Get lowercase column name for PostgreSQL."""
+        """Get lowercase column name."""
         return self.field_id.lower()
 
     @property
-    def sqlalchemy_type(self) -> type[TypeEngine]:
+    def sqlalchemy_type(self) -> TypeEngine:
         """Get SQLAlchemy column type."""
         if self.is_multiple:
-            return ARRAY(String)
-        return TYPE_MAPPING.get(self.field_type.lower(), String)
+            return Text()  # Store JSON array as text for cross-db compatibility
+        return TYPE_MAPPING.get(self.field_type.lower(), _STR)
 
     @property
     def sql_type_name(self) -> str:
         """Get SQL type name for ALTER TABLE."""
         if self.is_multiple:
-            return "VARCHAR[]"
-        return SQL_TYPE_NAMES.get(self.field_type.lower(), "VARCHAR")
+            return "TEXT"
+        return SQL_TYPE_NAMES.get(self.field_type.lower(), "VARCHAR(255)")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
@@ -130,7 +131,7 @@ class FieldInfo:
 
 
 class FieldMapper:
-    """Service for mapping Bitrix24 fields to PostgreSQL format."""
+    """Service for mapping Bitrix24 fields to database format."""
 
     @staticmethod
     def prepare_fields_to_postgres(
@@ -228,43 +229,21 @@ class FieldMapper:
         Returns:
             Merged list of unique fields
         """
-        # Create dict of user fields for quick lookup
         user_field_ids = {f.field_id.upper() for f in user_fields}
-
-        # Filter out standard fields that are duplicated in user fields
         result = [f for f in standard_fields if f.field_id.upper() not in user_field_ids]
-
-        # Add all user fields
         result.extend(user_fields)
-
         return result
 
     @staticmethod
-    def get_sqlalchemy_type(field_type: str, is_multiple: bool = False) -> type[TypeEngine]:
-        """Get SQLAlchemy column type for a Bitrix field type.
-
-        Args:
-            field_type: Bitrix field type string
-            is_multiple: Whether the field can have multiple values
-
-        Returns:
-            SQLAlchemy type class
-        """
+    def get_sqlalchemy_type(field_type: str, is_multiple: bool = False) -> TypeEngine:
+        """Get SQLAlchemy column type for a Bitrix field type."""
         if is_multiple:
-            return ARRAY(String)
-        return TYPE_MAPPING.get(field_type.lower(), String)
+            return Text()
+        return TYPE_MAPPING.get(field_type.lower(), _STR)
 
     @staticmethod
     def get_sql_type_name(field_type: str, is_multiple: bool = False) -> str:
-        """Get SQL type name for ALTER TABLE statements.
-
-        Args:
-            field_type: Bitrix field type string
-            is_multiple: Whether the field can have multiple values
-
-        Returns:
-            SQL type name string (e.g., 'VARCHAR', 'BIGINT')
-        """
+        """Get SQL type name for ALTER TABLE statements."""
         if is_multiple:
-            return "VARCHAR[]"
-        return SQL_TYPE_NAMES.get(field_type.lower(), "VARCHAR")
+            return "TEXT"
+        return SQL_TYPE_NAMES.get(field_type.lower(), "VARCHAR(255)")

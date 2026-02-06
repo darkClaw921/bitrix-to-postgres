@@ -2,6 +2,11 @@
 
 Сервис для синхронизации данных CRM из Bitrix24 в PostgreSQL с использованием Supabase для аутентификации.
 
+📚 **Документация:**
+- [SETUP.md](SETUP.md) - Подробная инструкция по установке и настройке
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Архитектура системы
+- [CHANGELOG.md](CHANGELOG.md) - История изменений
+
 ## Обзор
 
 Этот сервис позволяет:
@@ -82,19 +87,42 @@ PUBLIC_SUPABASE_URL=http://localhost:8000
 ### 4. Запуск сервисов
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
+
+**⚠️ ВАЖНО:** Используйте `docker compose up -d` для автоматического применения миграций.
+НЕ используйте `docker compose restart` - это только перезапускает контейнеры без применения миграций.
+
+**Автоматическое применение миграций:**
+При запуске контейнера backend (`docker compose up -d`) автоматически выполняются:
+1. Ожидание готовности PostgreSQL (до 30 попыток с интервалом 2 секунды)
+2. Применение Alembic миграций (`alembic upgrade head`)
+3. Запуск приложения
 
 Сервисы будут доступны:
 - **Backend API**: http://localhost:8080
 - **Frontend**: http://localhost:3000
 - **Supabase API**: http://localhost:8000
+- **Supabase Studio**: http://localhost:3001
 - **PostgreSQL**: localhost:5432
 
 ### 5. Проверка работоспособности
 
 ```bash
 curl http://localhost:8080/health
+```
+
+Проверка применения миграций:
+```bash
+# Просмотр логов backend при старте
+docker-compose logs backend
+
+# Вы должны увидеть:
+# ✓ Waiting for PostgreSQL...
+# ✓ PostgreSQL is ready!
+# ✓ Running database migrations...
+# ✓ Migrations completed successfully!
+# ✓ Starting application...
 ```
 
 ## Конфигурация
@@ -233,9 +261,17 @@ new_version/
 │   │   │   └── scheduler/   # APScheduler
 │   │   └── tests/           # Unit, integration, e2e tests
 │   ├── alembic/             # Database migrations
+│   │   ├── env.py           # Alembic environment (async)
+│   │   └── versions/        # Migration files
+│   ├── entrypoint.sh        # Auto-migration startup script
+│   ├── alembic.ini          # Alembic configuration
+│   ├── Dockerfile
 │   └── pyproject.toml
 ├── frontend/                # React frontend
+├── supabase/
+│   └── db-init/             # Initial DB setup scripts (first run only)
 ├── docker-compose.yml
+├── ARCHITECTURE.md          # Detailed architecture documentation
 └── README.md
 ```
 
@@ -278,11 +314,28 @@ pytest --cov=app --cov-report=html
 
 ### Проблемы с базой данных
 
-1. Проверьте подключение: `docker-compose exec db pg_isready`
-2. Проверьте логи: `docker-compose logs db`
-3. Запустите миграции вручную:
+1. Проверьте подключение: `docker compose exec db pg_isready`
+2. Проверьте логи: `docker compose logs db`
+3. **Миграции применяются автоматически** только при `docker compose up -d` (НЕ при `restart`)
+4. Проверьте применение миграций:
    ```bash
-   docker-compose exec backend alembic upgrade head
+   docker compose logs backend | grep -i "migration"
+   ```
+5. При необходимости запустите миграции вручную:
+   ```bash
+   docker compose exec backend alembic upgrade head
+   ```
+6. Проверьте текущую версию схемы БД:
+   ```bash
+   docker compose exec backend alembic current
+   ```
+7. После изменения кода пересоздайте контейнер:
+   ```bash
+   docker compose up -d --force-recreate --build backend
+   ```
+8. Создание новой миграции (для разработчиков):
+   ```bash
+   docker compose exec backend alembic revision --autogenerate -m "description"
    ```
 
 ### Webhooks не приходят
@@ -304,3 +357,6 @@ pytest --cov=app --cov-report=html
 ## Лицензия
 
 MIT License
+напиши максимально подробный план по добавлению нового функционала в @new_version/ это создание чартов для дашбордов с помошью ai       
+  gpt-4o-mini сами чарты должны будут брать данные из базы данных, также должен быть функционал который будет создавать описание полей     
+  базы данных в формат markdown это должен быть отдельный endpoint. чарты должны быть в современном дизайне и иметь разные форматы   

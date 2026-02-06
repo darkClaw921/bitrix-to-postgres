@@ -1,159 +1,12 @@
 services:
-  # Supabase PostgreSQL
-  db:
-    image: supabase/postgres:15.14.1.081
-    container_name: bitrix-sync-db
-    healthcheck:
-      test: pg_isready -U postgres -h localhost
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: postgres
-    volumes:
-      - db-data:/var/lib/postgresql/data
-      - ./supabase/db-init:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
-    restart: unless-stopped
-
-  # Supabase Auth (GoTrue)
-  auth:
-    image: supabase/gotrue:v2.164.0
-    container_name: bitrix-sync-auth
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      GOTRUE_API_HOST: 0.0.0.0
-      GOTRUE_API_PORT: 9999
-      API_EXTERNAL_URL: ${PUBLIC_SUPABASE_URL:-http://localhost:8000}
-      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
-      GOTRUE_DB_DRIVER: postgres
-      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3000}
-      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS:-}
-      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
-      GOTRUE_JWT_SECRET: ${JWT_SECRET}
-      GOTRUE_JWT_EXP: 3600
-      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
-      GOTRUE_EXTERNAL_EMAIL_ENABLED: true
-      GOTRUE_MAILER_AUTOCONFIRM: true
-      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
-      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
-      GOTRUE_SMTP_USER: ${SMTP_USER:-}
-      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
-      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-admin@example.com}
-      GOTRUE_MAILER_URLPATHS_INVITE: /auth/v1/verify
-      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
-      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
-      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
-    restart: unless-stopped
-
-  # Supabase Realtime
-  realtime:
-    image: supabase/realtime:v2.30.23
-    container_name: bitrix-sync-realtime
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      APP_NAME: realtime
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_NAME: postgres
-      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
-      DB_ENC_KEY: supabaserealtime
-      SECRET_KEY_BASE: ${JWT_SECRET}
-      PORT: 4000
-      JWT_SECRET: ${JWT_SECRET}
-      REPLICATION_MODE: RLS
-      REPLICATION_POLL_INTERVAL: 100
-      SECURE_CHANNELS: "true"
-      SLOT_NAME: supabase_realtime_rls
-      TEMPORARY_SLOT: "true"
-      RLIMIT_NOFILE: 2048
-    restart: unless-stopped
-
-  # Supabase Kong (API Gateway)
-  kong:
-    image: kong:latest
-    container_name: bitrix-sync-kong
-    depends_on:
-      - auth
-      - realtime
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
-      KONG_DNS_ORDER: LAST,A,CNAME
-      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
-      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
-      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
-    ports:
-      - "8000:8000"
-      - "8443:8443"
-    volumes:
-      - ./supabase/kong.yml:/home/kong/kong.yml:ro
-    restart: unless-stopped
-
-  # Supabase PostgreSQL Meta (metadata API)
-  meta:
-    image: supabase/postgres-meta:v0.84.2
-    container_name: bitrix-sync-meta
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      PG_META_HOST: 0.0.0.0
-      PG_META_PORT: 8080
-      PG_META_DB_HOST: db
-      PG_META_DB_PORT: 5432
-      PG_META_DB_NAME: postgres
-      PG_META_DB_USER: postgres
-      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
-    restart: unless-stopped
-
-  # Supabase Studio (Web UI)
-  studio:
-    image: supabase/studio:latest
-    container_name: bitrix-sync-studio
-    depends_on:
-      - kong
-      - meta
-    environment:
-      STUDIO_PG_META_URL: http://meta:8080
-      SUPABASE_URL: ${PUBLIC_SUPABASE_URL:-http://localhost:8000}
-      SUPABASE_PUBLIC_URL: ${PUBLIC_SUPABASE_URL:-http://localhost:8000}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
-      LOGFLARE_API_KEY: ${LOGFLARE_API_KEY:-}
-      LOGFLARE_URL: ${LOGFLARE_URL:-}
-      NEXT_PUBLIC_ENABLE_LOGS: false
-      NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
-      # Disable Edge Functions features
-      EDGE_FUNCTIONS_MANAGEMENT_FOLDER: /tmp/functions
-      DISABLE_STUDIO_EDGE_FUNCTIONS: "true"
-    ports:
-      - "3001:3000"
-    restart: unless-stopped
-
   # Backend (FastAPI)
   backend:
     build: ./backend
     container_name: bitrix-sync-backend
-    depends_on:
-      db:
-        condition: service_healthy
-      auth:
-        condition: service_started
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
-      SUPABASE_URL: http://kong:8000
-      SUPABASE_KEY: ${SUPABASE_ANON_KEY}
-      SUPABASE_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: ${DATABASE_URL}
       BITRIX_WEBHOOK_URL: ${BITRIX_WEBHOOK_URL}
       DEBUG: ${DEBUG:-false}
     ports:
@@ -166,14 +19,8 @@ services:
     container_name: bitrix-sync-frontend
     depends_on:
       - backend
-      - kong
     environment:
-      VITE_SUPABASE_URL: ${PUBLIC_SUPABASE_URL:-http://localhost:8000}
-      VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
       VITE_API_URL: ${API_URL:-http://localhost:8080}
     ports:
-      - "3000:80"
+      - "3012:80"
     restart: unless-stopped
-
-volumes:
-  db-data:

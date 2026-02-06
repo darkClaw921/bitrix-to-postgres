@@ -15,7 +15,7 @@ from app.api.v1.schemas.sync import (
 )
 from app.core.logging import get_logger
 from app.domain.entities.base import EntityType
-from app.infrastructure.database.connection import get_engine, get_session
+from app.infrastructure.database.connection import get_dialect, get_engine, get_session
 from app.infrastructure.database.dynamic_table import DynamicTableBuilder
 from app.infrastructure.scheduler import get_scheduler_status
 
@@ -219,14 +219,17 @@ async def detailed_health_check() -> dict:
     scheduler = get_scheduler_status()
 
     # Count tables
-    tables_query = text(
-        """
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-        AND table_name LIKE 'crm_%'
-        """
-    )
+    dialect = get_dialect()
+    if dialect == "mysql":
+        tables_query = text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_name LIKE 'crm_%'"
+        )
+    else:
+        tables_query = text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name LIKE 'crm_%'"
+        )
 
     crm_tables = []
     try:

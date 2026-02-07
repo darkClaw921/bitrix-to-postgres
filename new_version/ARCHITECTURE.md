@@ -121,6 +121,7 @@ app/domain/
 │   ├── contact.py           # Модель контакта
 │   ├── lead.py              # Модель лида
 │   ├── company.py           # Модель компании
+│   ├── call.py              # Модель звонка (voximplant.statistic.get)
 │   └── reference.py         # Реестр справочных типов (ReferenceType, ReferenceFieldDef)
 ├── services/
 │   ├── sync_service.py      # Основная логика синхронизации (+ авто-синхронизация справочников)
@@ -227,6 +228,20 @@ class ReferenceSyncService:
 | Значения enum-полей | из `userfield.list` → `LIST` | `ref_enum_values` | `(field_name, entity_type, item_id)` |
 
 При `full_sync` CRM-сущности автоматически синхронизируются связанные справочники и значения enumeration-полей пользовательских полей (best-effort).
+
+#### Сущность Call (Телефония)
+
+Синхронизация истории звонков из Bitrix24 Voximplant:
+
+| Параметр | Значение |
+|---|---|
+| API метод | `voximplant.statistic.get` |
+| Таблица БД | `bitrix_calls` |
+| Уникальный ключ | `CALL_ID` → `bitrix_id` |
+| Инкрементальная синхронизация | По полю `CALL_START_DATE` |
+| Пользовательские поля (UF_*) | Не поддерживаются |
+| Webhooks | Не поддерживаются (нет событий изменения) |
+| Определения полей | Захардкожены в `CALL_FIELD_TYPES` (нет API `.fields`) |
 
 ### 3. Infrastructure Layer (`app/infrastructure/`)
 

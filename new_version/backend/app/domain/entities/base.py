@@ -56,6 +56,7 @@ class EntityType:
     COMPANY = "company"
     USER = "user"
     TASK = "task"
+    CALL = "call"
 
     # CRM entity types (use crm.* API namespace)
     _CRM_TYPES = {DEAL, CONTACT, LEAD, COMPANY}
@@ -63,7 +64,7 @@ class EntityType:
     @classmethod
     def all(cls) -> list[str]:
         """Return all entity types."""
-        return [cls.DEAL, cls.CONTACT, cls.LEAD, cls.COMPANY, cls.USER, cls.TASK]
+        return [cls.DEAL, cls.CONTACT, cls.LEAD, cls.COMPANY, cls.USER, cls.TASK, cls.CALL]
 
     @classmethod
     def is_crm(cls, entity_type: str) -> bool:
@@ -80,6 +81,7 @@ class EntityType:
             cls.COMPANY: "crm.company",
             cls.USER: "user",
             cls.TASK: "tasks.task",
+            cls.CALL: "voximplant.statistic",
         }
         return prefixes.get(entity_type, f"crm.{entity_type}")
 
@@ -89,5 +91,6 @@ class EntityType:
         table_names = {
             cls.USER: "bitrix_users",
             cls.TASK: "bitrix_tasks",
+            cls.CALL: "bitrix_calls",
         }
         return table_names.get(entity_type, f"crm_{entity_type}s")

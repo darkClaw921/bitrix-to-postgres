@@ -91,6 +91,35 @@ USER_FIELD_TYPES: dict[str, str] = {
     "USER_TYPE": "string",
 }
 
+# voximplant.statistic.get has no .fields method.
+# This mapping provides type info for known call fields.
+CALL_FIELD_TYPES: dict[str, str] = {
+    "ID": "integer",
+    "CALL_ID": "string",
+    "CALL_TYPE": "integer",
+    "CALL_VOTE": "integer",
+    "COMMENT": "string",
+    "PORTAL_USER_ID": "string",
+    "PORTAL_NUMBER": "string",
+    "PHONE_NUMBER": "string",
+    "CALL_DURATION": "integer",
+    "CALL_START_DATE": "datetime",
+    "COST": "string",
+    "COST_CURRENCY": "string",
+    "CALL_FAILED_CODE": "string",
+    "CALL_FAILED_REASON": "string",
+    "CRM_ACTIVITY_ID": "string",
+    "CRM_ENTITY_ID": "string",
+    "CRM_ENTITY_TYPE": "string",
+    "REST_APP_ID": "string",
+    "REST_APP_NAME": "string",
+    "REDIAL_ATTEMPT": "integer",
+    "SESSION_ID": "string",
+    "TRANSCRIPT_ID": "string",
+    "TRANSCRIPT_PENDING": "string",
+    "RECORD_FILE_ID": "string",
+}
+
 
 class BitrixClient:
     """Async client for Bitrix24 REST API.
@@ -214,6 +243,8 @@ class BitrixClient:
             return await self._get_users(filter_params)
         if entity_type == "task":
             return await self._get_tasks(filter_params, select)
+        if entity_type == "call":
+            return await self._get_calls(filter_params)
 
         method = f"crm.{entity_type}.list"
         params: dict[str, Any] = {}
@@ -276,6 +307,34 @@ class BitrixClient:
             logger.error("Failed to fetch tasks", error=str(e))
             raise BitrixAPIError(f"Failed to fetch tasks: {str(e)}") from e
 
+    async def _get_calls(
+        self,
+        filter_params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get all call records via voximplant.statistic.get.
+
+        Remaps CALL_ID → ID so that _prepare_record_data() uses CALL_ID
+        as bitrix_id (the unique key).
+        """
+        params: dict[str, Any] = {}
+        if filter_params:
+            params["FILTER"] = filter_params
+
+        try:
+            logger.info("Fetching all calls")
+            result = await self._client.get_all(
+                "voximplant.statistic.get", params=params
+            )
+            # Remap: set ID = CALL_ID so bitrix_id uses CALL_ID
+            for record in result:
+                if "CALL_ID" in record:
+                    record["ID"] = record["CALL_ID"]
+            logger.info("Fetched calls", count=len(result))
+            return result
+        except Exception as e:
+            logger.error("Failed to fetch calls", error=str(e))
+            raise BitrixAPIError(f"Failed to fetch calls: {str(e)}") from e
+
     async def get_entity(
         self,
         entity_type: str,
@@ -308,6 +367,13 @@ class BitrixClient:
                 return result["task"]
             return result
 
+        if entity_type == "call":
+            # voximplant has no .get method; filter by CALL_ID
+            records = await self._get_calls({"CALL_ID": entity_id})
+            if records:
+                return records[0]
+            return {}
+
         method = f"crm.{entity_type}.get"
         items = {"ID": entity_id, "select": ["*", "UF_*"]}
         return await self._call(method, items=items)
@@ -323,6 +389,9 @@ class BitrixClient:
         """
         if entity_type == "user":
             return self._get_user_field_definitions()
+
+        if entity_type == "call":
+            return self._get_call_field_definitions()
 
         if entity_type == "task":
             result = await self._call("tasks.task.getFields")
@@ -351,6 +420,23 @@ class BitrixClient:
             }
         return fields
 
+    @staticmethod
+    def _get_call_field_definitions() -> dict[str, Any]:
+        """Build CRM-compatible field definitions from CALL_FIELD_TYPES.
+
+        voximplant.statistic.get has no .fields method,
+        so we use a predefined mapping to construct proper field definitions.
+        """
+        fields: dict[str, Any] = {}
+        for field_name, field_type in CALL_FIELD_TYPES.items():
+            fields[field_name] = {
+                "type": field_type,
+                "title": field_name,
+                "isMultiple": False,
+                "isRequired": field_name == "CALL_ID",
+            }
+        return fields
+
     async def get_userfields(self, entity_type: str) -> list[dict[str, Any]]:
         """Get user field definitions for an entity type.
 
@@ -363,6 +449,10 @@ class BitrixClient:
         if entity_type == "user":
             params = {"FILTER": {">ID": 0, "LANG": "ru"}}
             return await self.get_all("user.userfield.list", params)
+
+        if entity_type == "call":
+            # Voximplant doesn't support UF_* fields
+            return []
 
         if entity_type == "task":
             # Tasks don't have a separate userfield.list;

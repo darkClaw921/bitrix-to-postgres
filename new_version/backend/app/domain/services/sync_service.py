@@ -583,12 +583,14 @@ class SyncService:
         "company": ["crm_currency"],
         "user": [],
         "task": [],
+        "call": [],
     }
 
     # Date field used for incremental sync filtering per entity type
     _DATE_MODIFY_FIELD: dict[str, str] = {
         "user": "TIMESTAMP_X",
         "task": "CHANGED_DATE",
+        "call": "CALL_START_DATE",
     }
 
     async def _sync_related_references(self, entity_type: str) -> None:

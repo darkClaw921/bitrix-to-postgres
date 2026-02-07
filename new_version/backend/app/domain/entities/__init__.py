@@ -1,6 +1,7 @@
 """Domain entities for Bitrix24 CRM."""
 
 from app.domain.entities.base import BitrixEntity, EntityType
+from app.domain.entities.call import Call
 from app.domain.entities.company import Company
 from app.domain.entities.contact import Contact
 from app.domain.entities.deal import Deal
@@ -17,4 +18,5 @@ __all__ = [
     "Company",
     "User",
     "Task",
+    "Call",
 ]

@@ -43,7 +43,7 @@
   - `SyncLog` — история синхронизаций
   - `SyncState` — состояние инкрементальной синхронизации
   - `AIChart` — сохранённые AI-чарты
-  - `PublishedDashboard` — опубликованные дашборды (slug, password_hash, is_active)
+  - `PublishedDashboard` — опубликованные дашборды (slug, password_hash, is_active, refresh_interval_minutes)
   - `DashboardChart` — чарты в дашборде (layout позиции, title/description override)
 
 #### Миграции (`alembic/versions/`)
@@ -51,6 +51,7 @@
 - **002_create_ai_charts_table.py** — ai_charts
 - **003_create_schema_descriptions_table.py** — schema_descriptions
 - **004_create_dashboards_tables.py** — published_dashboards, dashboard_charts (FK cascade)
+- **005_add_refresh_interval.py** — добавление refresh_interval_minutes в published_dashboards
 
 #### Доменные сервисы (`app/domain/services/`)
 - **chart_service.py** — `ChartService`:
@@ -66,7 +67,7 @@
   - Инкрементальная синхронизация: `DATE_MODIFY` (CRM), `TIMESTAMP_X` (users), `CHANGED_DATE` (tasks)
 - **reference_sync_service.py** — `ReferenceSyncService`: синхронизация справочников
 - **dashboard_service.py** — `DashboardService`:
-  - `create_dashboard(title, chart_ids)` → slug + bcrypt password
+  - `create_dashboard(title, chart_ids, refresh_interval_minutes)` → slug + bcrypt password
   - `get_dashboards(page, per_page)`, `get_dashboard_by_id/slug` → с join charts
   - `verify_password(slug, password)` → bcrypt verify
   - `generate_token(slug)` / `verify_token(token)` → JWT (HS256, python-jose)
@@ -143,7 +144,7 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **SchemaPage.tsx** — браузер схемы БД с AI описанием
 - **LoginPage.tsx** — авторизация
 - **EmbedChartPage.tsx** — standalone embed одного чарта (без навигации, публичный)
-- **EmbedDashboardPage.tsx** — публичный дашборд с password gate, JWT в sessionStorage, grid чартов
+- **EmbedDashboardPage.tsx** — публичный дашборд с password gate, JWT в sessionStorage, grid чартов, auto-refresh по интервалу (setInterval), индикатор обновления и "last updated"
 - **DashboardEditorPage.tsx** — редактор дашборда: drag & drop + resize чартов (react-grid-layout v2), inline редактирование title/description, удаление чартов, смена пароля, копирование ссылки
 
 #### Компоненты (`src/components/`)
@@ -154,7 +155,7 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **charts/ChartSettingsPanel.tsx** — панель настроек чарта (visual, data format, line/area/pie settings) с PATCH сохранением в chart_config
 - **charts/ChartCard.tsx** — карточка сохранённого чарта (pin, refresh, settings, SQL, embed, delete)
 - **charts/IframeCopyButton.tsx** — кнопка "Embed" для копирования iframe HTML
-- **dashboards/PublishModal.tsx** — модалка публикации дашборда (выбор чартов, title, description → пароль + URL)
+- **dashboards/PublishModal.tsx** — модалка публикации дашборда (выбор чартов, title, description, refresh interval → пароль + URL)
 - **dashboards/DashboardCard.tsx** — карточка дашборда в списке (open, edit, link, delete)
 - **dashboards/PasswordGate.tsx** — форма ввода пароля для публичного дашборда
 

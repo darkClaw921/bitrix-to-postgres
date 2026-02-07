@@ -10,6 +10,7 @@ interface PublishModalProps {
 export default function PublishModal({ charts, onClose }: PublishModalProps) {
   const [title, setTitle] = useState('My Dashboard')
   const [description, setDescription] = useState('')
+  const [refreshInterval, setRefreshInterval] = useState(10)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set(charts.map((c) => c.id)))
   const [result, setResult] = useState<DashboardPublishResponse | null>(null)
   const [copiedField, setCopiedField] = useState<string | null>(null)
@@ -41,6 +42,7 @@ export default function PublishModal({ charts, onClose }: PublishModalProps) {
         title: title.trim(),
         description: description.trim() || undefined,
         chart_ids: Array.from(selectedIds),
+        refresh_interval_minutes: refreshInterval,
       },
       {
         onSuccess: (data) => setResult(data),
@@ -140,6 +142,22 @@ export default function PublishModal({ charts, onClose }: PublishModalProps) {
               rows={2}
               placeholder="Brief description"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Auto-refresh interval</label>
+            <select
+              value={refreshInterval}
+              onChange={(e) => setRefreshInterval(Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value={1}>1 minute</option>
+              <option value={5}>5 minutes</option>
+              <option value={10}>10 minutes</option>
+              <option value={15}>15 minutes</option>
+              <option value={30}>30 minutes</option>
+              <option value={60}>60 minutes</option>
+            </select>
           </div>
 
           <div>

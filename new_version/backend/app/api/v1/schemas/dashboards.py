@@ -16,6 +16,7 @@ class DashboardPublishRequest(BaseModel):
     title: str = Field(..., max_length=255)
     description: Optional[str] = None
     chart_ids: list[int] = Field(..., min_length=1)
+    refresh_interval_minutes: int = Field(10, ge=1, le=1440)
 
 
 class DashboardUpdateRequest(BaseModel):
@@ -23,6 +24,7 @@ class DashboardUpdateRequest(BaseModel):
 
     title: Optional[str] = Field(None, max_length=255)
     description: Optional[str] = None
+    refresh_interval_minutes: Optional[int] = Field(None, ge=1, le=1440)
 
 
 class LayoutItem(BaseModel):
@@ -103,6 +105,7 @@ class DashboardResponse(BaseModel):
     title: str
     description: Optional[str] = None
     is_active: bool = True
+    refresh_interval_minutes: int = 10
     charts: list[DashboardChartResponse] = []
     created_at: datetime
     updated_at: datetime
@@ -116,6 +119,7 @@ class DashboardListItem(BaseModel):
     title: str
     description: Optional[str] = None
     is_active: bool = True
+    refresh_interval_minutes: int = 10
     chart_count: int = 0
     created_at: datetime
     updated_at: datetime

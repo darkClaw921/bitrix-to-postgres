@@ -101,6 +101,9 @@ class PublishedDashboard(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    refresh_interval_minutes: Mapped[int] = mapped_column(
+        Integer, default=10, server_default="10", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

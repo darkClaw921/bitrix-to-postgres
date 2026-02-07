@@ -34,6 +34,7 @@ export default function DashboardEditorPage() {
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState('')
   const [descValue, setDescValue] = useState('')
+  const [refreshInterval, setRefreshInterval] = useState(10)
   const [chartData, setChartData] = useState<Record<number, ChartDataResponse>>({})
   const [newPassword, setNewPassword] = useState<string | null>(null)
   const [copiedLink, setCopiedLink] = useState(false)
@@ -49,6 +50,7 @@ export default function DashboardEditorPage() {
     if (dashboard) {
       setTitleValue(dashboard.title)
       setDescValue(dashboard.description || '')
+      setRefreshInterval(dashboard.refresh_interval_minutes)
       setGridLayout(
         dashboard.charts.map((c) => ({
           i: String(c.id),
@@ -75,7 +77,14 @@ export default function DashboardEditorPage() {
   const handleSaveTitle = () => {
     if (!titleValue.trim()) return
     updateDashboard.mutate(
-      { id: dashboardId, data: { title: titleValue.trim(), description: descValue.trim() || undefined } },
+      {
+        id: dashboardId,
+        data: {
+          title: titleValue.trim(),
+          description: descValue.trim() || undefined,
+          refresh_interval_minutes: refreshInterval,
+        },
+      },
       { onSuccess: () => { setEditingTitle(false); refetch() } },
     )
   }
@@ -162,6 +171,21 @@ export default function DashboardEditorPage() {
                   rows={2}
                   placeholder="Description (optional)"
                 />
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm text-gray-600">Auto-refresh:</label>
+                  <select
+                    value={refreshInterval}
+                    onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm"
+                  >
+                    <option value={1}>1 min</option>
+                    <option value={5}>5 min</option>
+                    <option value={10}>10 min</option>
+                    <option value={15}>15 min</option>
+                    <option value={30}>30 min</option>
+                    <option value={60}>60 min</option>
+                  </select>
+                </div>
                 <div className="flex space-x-2">
                   <button onClick={handleSaveTitle} className="btn btn-primary text-sm">
                     Save
@@ -183,6 +207,9 @@ export default function DashboardEditorPage() {
                 {dashboard.description && (
                   <p className="text-gray-500 mt-1">{dashboard.description}</p>
                 )}
+                <p className="text-xs text-gray-400 mt-1">
+                  Auto-refresh: {dashboard.refresh_interval_minutes} min
+                </p>
               </div>
             )}
           </div>

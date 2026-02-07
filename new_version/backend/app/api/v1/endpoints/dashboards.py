@@ -34,6 +34,7 @@ async def publish_dashboard(request: DashboardPublishRequest) -> DashboardPublis
             title=request.title,
             chart_ids=request.chart_ids,
             description=request.description,
+            refresh_interval_minutes=request.refresh_interval_minutes,
         )
         return DashboardPublishResponse(
             dashboard=DashboardResponse(**result["dashboard"]),
@@ -80,6 +81,7 @@ async def update_dashboard(
             dashboard_id,
             title=request.title,
             description=request.description,
+            refresh_interval_minutes=request.refresh_interval_minutes,
         )
         return DashboardResponse(**dashboard)
     except DashboardServiceError as e:

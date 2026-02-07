@@ -398,6 +398,7 @@ export interface Dashboard {
   title: string
   description?: string
   is_active: boolean
+  refresh_interval_minutes: number
   charts: DashboardChart[]
   created_at: string
   updated_at: string
@@ -409,6 +410,7 @@ export interface DashboardListItem {
   title: string
   description?: string
   is_active: boolean
+  refresh_interval_minutes: number
   chart_count: number
   created_at: string
   updated_at: string
@@ -425,6 +427,7 @@ export interface DashboardPublishRequest {
   title: string
   description?: string
   chart_ids: number[]
+  refresh_interval_minutes?: number
 }
 
 export interface DashboardPublishResponse {
@@ -435,6 +438,7 @@ export interface DashboardPublishResponse {
 export interface DashboardUpdateRequest {
   title?: string
   description?: string
+  refresh_interval_minutes?: number
 }
 
 export interface LayoutItem {

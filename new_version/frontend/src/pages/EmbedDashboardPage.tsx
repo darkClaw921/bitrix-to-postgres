@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import PasswordGate from '../components/dashboards/PasswordGate'
@@ -17,6 +17,9 @@ export default function EmbedDashboardPage() {
   const [chartData, setChartData] = useState<Record<number, ChartDataResponse>>({})
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const refreshingRef = useRef(false)
 
   const handleAuth = useCallback(
     async (password: string): Promise<string> => {
@@ -32,6 +35,47 @@ export default function EmbedDashboardPage() {
     setToken(t)
   }, [])
 
+  const fetchAllChartData = useCallback(
+    async (dash: Dashboard, authToken: string) => {
+      if (!slug) return
+      if (refreshingRef.current) return
+      refreshingRef.current = true
+      setRefreshing(true)
+
+      try {
+        const promises = dash.charts.map((c) =>
+          publicApi
+            .getDashboardChartData(slug, c.id, authToken)
+            .then((data) => ({ dcId: c.id, data }))
+            .catch((err) => {
+              const axiosErr = err as { response?: { status?: number } }
+              if (axiosErr?.response?.status === 401) {
+                throw err
+              }
+              return { dcId: c.id, data: null }
+            }),
+        )
+        const results = await Promise.all(promises)
+        const dataMap: Record<number, ChartDataResponse> = {}
+        for (const r of results) {
+          if (r.data) dataMap[r.dcId] = r.data
+        }
+        setChartData(dataMap)
+        setLastUpdatedAt(new Date())
+      } catch (err) {
+        const axiosErr = err as { response?: { status?: number } }
+        if (axiosErr?.response?.status === 401) {
+          sessionStorage.removeItem(SESSION_KEY_PREFIX + slug)
+          setToken(null)
+        }
+      } finally {
+        refreshingRef.current = false
+        setRefreshing(false)
+      }
+    },
+    [slug],
+  )
+
   // Load dashboard once authenticated
   useEffect(() => {
     if (!slug || !token) return
@@ -41,26 +85,11 @@ export default function EmbedDashboardPage() {
       .getDashboard(slug, token)
       .then((d) => {
         setDashboard(d)
-        // Load data for all charts
-        const promises = d.charts.map((c) =>
-          publicApi
-            .getDashboardChartData(slug, c.id, token)
-            .then((data) => ({ dcId: c.id, data }))
-            .catch(() => ({ dcId: c.id, data: null })),
-        )
-        return Promise.all(promises)
-      })
-      .then((results) => {
-        const dataMap: Record<number, ChartDataResponse> = {}
-        for (const r of results) {
-          if (r.data) dataMap[r.dcId] = r.data
-        }
-        setChartData(dataMap)
+        return fetchAllChartData(d, token)
       })
       .catch((err) => {
         const axiosErr = err as { response?: { status?: number } }
         if (axiosErr?.response?.status === 401) {
-          // Token expired — clear and show gate again
           sessionStorage.removeItem(SESSION_KEY_PREFIX + slug)
           setToken(null)
         } else {
@@ -68,7 +97,19 @@ export default function EmbedDashboardPage() {
         }
       })
       .finally(() => setLoading(false))
-  }, [slug, token])
+  }, [slug, token, fetchAllChartData])
+
+  // Auto-refresh interval
+  useEffect(() => {
+    if (!dashboard || !token || !slug) return
+
+    const intervalMs = dashboard.refresh_interval_minutes * 60 * 1000
+    const timer = setInterval(() => {
+      fetchAllChartData(dashboard, token)
+    }, intervalMs)
+
+    return () => clearInterval(timer)
+  }, [dashboard, token, slug, fetchAllChartData])
 
   if (!token) {
     return <PasswordGate onAuthenticated={handleAuthenticated} onSubmit={handleAuth} />
@@ -93,7 +134,27 @@ export default function EmbedDashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">{dashboard.title}</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl font-bold text-gray-800">{dashboard.title}</h1>
+          <div className="flex items-center space-x-3 text-xs text-gray-400">
+            {refreshing && (
+              <span className="flex items-center space-x-1">
+                <svg className="animate-spin h-3 w-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span>Refreshing...</span>
+              </span>
+            )}
+            {lastUpdatedAt && (
+              <span>
+                Updated: {lastUpdatedAt.toLocaleTimeString()}
+              </span>
+            )}
+            <span className="text-gray-300">|</span>
+            <span>Auto-refresh: {dashboard.refresh_interval_minutes} min</span>
+          </div>
+        </div>
         {dashboard.description && (
           <p className="text-gray-500 mb-6">{dashboard.description}</p>
         )}

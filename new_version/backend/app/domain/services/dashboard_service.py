@@ -63,7 +63,11 @@ class DashboardService:
     # === CRUD ===
 
     async def create_dashboard(
-        self, title: str, chart_ids: list[int], description: str | None = None
+        self,
+        title: str,
+        chart_ids: list[int],
+        description: str | None = None,
+        refresh_interval_minutes: int = 10,
     ) -> dict[str, Any]:
         engine = get_engine()
         dialect = get_dialect()
@@ -77,20 +81,21 @@ class DashboardService:
             "title": title,
             "description": description,
             "password_hash": password_hash,
+            "refresh_interval_minutes": refresh_interval_minutes,
         }
 
         if dialect == "mysql":
             query = text(
-                "INSERT INTO published_dashboards (slug, title, description, password_hash) "
-                "VALUES (:slug, :title, :description, :password_hash)"
+                "INSERT INTO published_dashboards (slug, title, description, password_hash, refresh_interval_minutes) "
+                "VALUES (:slug, :title, :description, :password_hash, :refresh_interval_minutes)"
             )
             async with engine.begin() as conn:
                 result = await conn.execute(query, params)
                 dashboard_id = result.lastrowid
         else:
             query = text(
-                "INSERT INTO published_dashboards (slug, title, description, password_hash) "
-                "VALUES (:slug, :title, :description, :password_hash) "
+                "INSERT INTO published_dashboards (slug, title, description, password_hash, refresh_interval_minutes) "
+                "VALUES (:slug, :title, :description, :password_hash, :refresh_interval_minutes) "
                 "RETURNING id"
             )
             async with engine.begin() as conn:
@@ -129,7 +134,8 @@ class DashboardService:
 
         count_query = text("SELECT COUNT(*) FROM published_dashboards")
         list_query = text(
-            "SELECT d.id, d.slug, d.title, d.description, d.is_active, d.created_at, d.updated_at, "
+            "SELECT d.id, d.slug, d.title, d.description, d.is_active, "
+            "d.refresh_interval_minutes, d.created_at, d.updated_at, "
             "(SELECT COUNT(*) FROM dashboard_charts dc WHERE dc.dashboard_id = d.id) as chart_count "
             "FROM published_dashboards d "
             "ORDER BY d.created_at DESC "
@@ -148,7 +154,8 @@ class DashboardService:
         engine = get_engine()
 
         query = text(
-            "SELECT id, slug, title, description, is_active, created_at, updated_at "
+            "SELECT id, slug, title, description, is_active, "
+            "refresh_interval_minutes, created_at, updated_at "
             "FROM published_dashboards WHERE id = :id"
         )
         async with engine.begin() as conn:
@@ -166,7 +173,8 @@ class DashboardService:
         engine = get_engine()
 
         query = text(
-            "SELECT id, slug, title, description, is_active, created_at, updated_at "
+            "SELECT id, slug, title, description, is_active, "
+            "refresh_interval_minutes, created_at, updated_at "
             "FROM published_dashboards WHERE slug = :slug"
         )
         async with engine.begin() as conn:
@@ -225,7 +233,11 @@ class DashboardService:
         return self._verify_password(password, row[0])
 
     async def update_dashboard(
-        self, dashboard_id: int, title: str | None = None, description: str | None = None
+        self,
+        dashboard_id: int,
+        title: str | None = None,
+        description: str | None = None,
+        refresh_interval_minutes: int | None = None,
     ) -> dict[str, Any]:
         engine = get_engine()
 
@@ -238,6 +250,9 @@ class DashboardService:
         if description is not None:
             updates.append("description = :description")
             params["description"] = description
+        if refresh_interval_minutes is not None:
+            updates.append("refresh_interval_minutes = :refresh_interval_minutes")
+            params["refresh_interval_minutes"] = refresh_interval_minutes
 
         if not updates:
             raise DashboardServiceError("Нет полей для обновления")

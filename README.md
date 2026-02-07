@@ -4,6 +4,7 @@
 ![main](main.png)
 ![charts](charts.png)
 
+
 # Bitrix to Postgres Connector
 
 Сервис для синхронизации данных между Bitrix24 и PostgreSQL.
@@ -45,3 +46,8 @@ crm,
 2. Создайте файл .env с необходимыми переменными окружения
 3. Запустите сервисы командой: `docker-compose -f docker-compose-airflow.yml up -d`
 4. Добавьте в crontab команду для запуска скрипта очистки логов: `0 0 * * * /home/user/bitrix-to-postgres/bitrix_to_postgres/cleanup_logs.sh >> /home/user/bitrix-to-postgres/bitrix_to_postgres/cleanup_logs.log 2>&1`
+## Установка и запуск new_version
+```bash
+cd new_version
+docker-compose up -d
+```

@@ -218,24 +218,24 @@ async def detailed_health_check() -> dict:
     # Get scheduler status
     scheduler = get_scheduler_status()
 
-    # Count tables
+    # Count tables (CRM + Bitrix entity tables)
     dialect = get_dialect()
     if dialect == "mysql":
         tables_query = text(
             "SELECT table_name FROM information_schema.tables "
-            "WHERE table_name LIKE 'crm_%'"
+            "WHERE table_name LIKE 'crm_%' OR table_name LIKE 'bitrix_%'"
         )
     else:
         tables_query = text(
             "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema = 'public' AND table_name LIKE 'crm_%'"
+            "WHERE table_schema = 'public' AND (table_name LIKE 'crm_%' OR table_name LIKE 'bitrix_%')"
         )
 
-    crm_tables = []
+    synced_tables = []
     try:
         async with engine.begin() as conn:
             result = await conn.execute(tables_query)
-            crm_tables = [row[0] for row in result.fetchall()]
+            synced_tables = [row[0] for row in result.fetchall()]
     except Exception:
         pass
 
@@ -246,5 +246,5 @@ async def detailed_health_check() -> dict:
             "running": scheduler["running"],
             "jobs_count": scheduler["job_count"],
         },
-        "crm_tables": crm_tables,
+        "synced_tables": synced_tables,
     }

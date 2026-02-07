@@ -76,6 +76,14 @@ export function useSchemaDescription() {
   })
 }
 
+export function useSchemaDescribeRaw() {
+  return useQuery({
+    queryKey: ['schemaDescribeRaw'],
+    queryFn: schemaApi.describeRaw,
+    enabled: false, // manual trigger via refetch()
+  })
+}
+
 export function useSchemaHistory() {
   return useQuery({
     queryKey: ['schemaHistory'],

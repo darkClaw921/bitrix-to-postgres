@@ -22,6 +22,75 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 
+# user.fields returns flat {FIELD: description} without type metadata.
+# This mapping provides type info for known user fields.
+USER_FIELD_TYPES: dict[str, str] = {
+    "ID": "integer",
+    "XML_ID": "string",
+    "ACTIVE": "char",
+    "NAME": "string",
+    "LAST_NAME": "string",
+    "SECOND_NAME": "string",
+    "TITLE": "string",
+    "EMAIL": "string",
+    "LAST_LOGIN": "datetime",
+    "DATE_REGISTER": "datetime",
+    "TIME_ZONE": "string",
+    "IS_ONLINE": "char",
+    "TIME_ZONE_OFFSET": "string",
+    "TIMESTAMP_X": "datetime",
+    "LAST_ACTIVITY_DATE": "datetime",
+    "PERSONAL_GENDER": "string",
+    "PERSONAL_PROFESSION": "string",
+    "PERSONAL_WWW": "string",
+    "PERSONAL_BIRTHDAY": "date",
+    "PERSONAL_PHOTO": "integer",
+    "PERSONAL_ICQ": "string",
+    "PERSONAL_PHONE": "string",
+    "PERSONAL_FAX": "string",
+    "PERSONAL_MOBILE": "string",
+    "PERSONAL_PAGER": "string",
+    "PERSONAL_STREET": "string",
+    "PERSONAL_CITY": "string",
+    "PERSONAL_STATE": "string",
+    "PERSONAL_ZIP": "string",
+    "PERSONAL_COUNTRY": "string",
+    "PERSONAL_MAILBOX": "string",
+    "PERSONAL_NOTES": "text",
+    "WORK_PHONE": "string",
+    "WORK_COMPANY": "string",
+    "WORK_POSITION": "string",
+    "WORK_DEPARTMENT": "string",
+    "WORK_WWW": "string",
+    "WORK_FAX": "string",
+    "WORK_PAGER": "string",
+    "WORK_STREET": "string",
+    "WORK_MAILBOX": "string",
+    "WORK_CITY": "string",
+    "WORK_STATE": "string",
+    "WORK_ZIP": "string",
+    "WORK_COUNTRY": "string",
+    "WORK_PROFILE": "string",
+    "WORK_LOGO": "string",
+    "WORK_NOTES": "text",
+    "UF_SKYPE_LINK": "string",
+    "UF_ZOOM": "string",
+    "UF_EMPLOYMENT_DATE": "datetime",
+    "UF_TIMEMAN": "char",
+    "UF_DEPARTMENT": "string",
+    "UF_INTERESTS": "text",
+    "UF_SKILLS": "text",
+    "UF_WEB_SITES": "text",
+    "UF_XING": "string",
+    "UF_LINKEDIN": "string",
+    "UF_FACEBOOK": "string",
+    "UF_TWITTER": "string",
+    "UF_SKYPE": "string",
+    "UF_DISTRICT": "string",
+    "UF_PHONE_INNER": "string",
+    "USER_TYPE": "string",
+}
+
 
 class BitrixClient:
     """Async client for Bitrix24 REST API.
@@ -134,13 +203,18 @@ class BitrixClient:
         """Get all entities of a specific type.
 
         Args:
-            entity_type: Entity type (deal, contact, lead, company)
+            entity_type: Entity type (deal, contact, lead, company, user, task)
             filter_params: Filter parameters
             select: Fields to select (defaults to all including UF_*)
 
         Returns:
             List of entities
         """
+        if entity_type == "user":
+            return await self._get_users(filter_params)
+        if entity_type == "task":
+            return await self._get_tasks(filter_params, select)
+
         method = f"crm.{entity_type}.list"
         params: dict[str, Any] = {}
 
@@ -156,6 +230,52 @@ class BitrixClient:
 
         return await self.get_all(method, params)
 
+    async def _get_users(
+        self,
+        filter_params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get all users via user.get (non-CRM namespace)."""
+        params: dict[str, Any] = {}
+        if filter_params:
+            params["FILTER"] = filter_params
+        return await self.get_all("user.get", params)
+
+    async def _get_tasks(
+        self,
+        filter_params: dict[str, Any] | None = None,
+        select: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get all tasks via tasks.task.list.
+
+        tasks.task.list returns {tasks: [...]} inside result,
+        so we need to unwrap the response.
+        """
+        params: dict[str, Any] = {}
+        if filter_params:
+            params["filter"] = filter_params
+        if select:
+            params["select"] = select
+
+        try:
+            logger.info("Fetching all tasks")
+            result = await self._client.get_all("tasks.task.list", params=params)
+
+            # fast-bitrix24 may return list directly or dict with 'tasks' key
+            if isinstance(result, list):
+                # If each item is a dict with 'tasks' key, unwrap
+                if result and isinstance(result[0], dict) and "tasks" in result[0]:
+                    tasks = []
+                    for batch in result:
+                        tasks.extend(batch.get("tasks", []))
+                    return tasks
+                return result
+            if isinstance(result, dict) and "tasks" in result:
+                return result["tasks"]
+            return result
+        except Exception as e:
+            logger.error("Failed to fetch tasks", error=str(e))
+            raise BitrixAPIError(f"Failed to fetch tasks: {str(e)}") from e
+
     async def get_entity(
         self,
         entity_type: str,
@@ -164,12 +284,30 @@ class BitrixClient:
         """Get a single entity by ID.
 
         Args:
-            entity_type: Entity type (deal, contact, lead, company)
+            entity_type: Entity type (deal, contact, lead, company, user, task)
             entity_id: Entity ID
 
         Returns:
             Entity data
         """
+        if entity_type == "user":
+            # user.get with ID filter returns a list; take the first item
+            result = await self._call(
+                "user.get", items={"ID": entity_id}
+            )
+            if isinstance(result, list):
+                return result[0] if result else {}
+            return result
+
+        if entity_type == "task":
+            result = await self._call(
+                "tasks.task.get", items={"taskId": entity_id}
+            )
+            # Result may be {"task": {...}} or the task dict directly
+            if isinstance(result, dict) and "task" in result:
+                return result["task"]
+            return result
+
         method = f"crm.{entity_type}.get"
         items = {"ID": entity_id, "select": ["*", "UF_*"]}
         return await self._call(method, items=items)
@@ -178,23 +316,59 @@ class BitrixClient:
         """Get field definitions for an entity type.
 
         Args:
-            entity_type: Entity type (deal, contact, lead, company)
+            entity_type: Entity type (deal, contact, lead, company, user, task)
 
         Returns:
-            Field definitions from crm.{entity}.fields
+            Field definitions in format {FIELD: {type, title, isMultiple, isRequired}}
         """
+        if entity_type == "user":
+            return self._get_user_field_definitions()
+
+        if entity_type == "task":
+            result = await self._call("tasks.task.getFields")
+            # Result may be {"fields": {...}} or the fields dict directly
+            if isinstance(result, dict) and "fields" in result:
+                return result["fields"]
+            return result
+
         method = f"crm.{entity_type}.fields"
         return await self._call(method)
+
+    @staticmethod
+    def _get_user_field_definitions() -> dict[str, Any]:
+        """Build CRM-compatible field definitions from USER_FIELD_TYPES.
+
+        user.fields returns flat {FIELD: description} without type metadata,
+        so we use a predefined mapping to construct proper field definitions.
+        """
+        fields: dict[str, Any] = {}
+        for field_name, field_type in USER_FIELD_TYPES.items():
+            fields[field_name] = {
+                "type": field_type,
+                "title": field_name,
+                "isMultiple": False,
+                "isRequired": field_name == "ID",
+            }
+        return fields
 
     async def get_userfields(self, entity_type: str) -> list[dict[str, Any]]:
         """Get user field definitions for an entity type.
 
         Args:
-            entity_type: Entity type (deal, contact, lead, company)
+            entity_type: Entity type (deal, contact, lead, company, user, task)
 
         Returns:
-            List of user field definitions from crm.{entity}.userfield.list
+            List of user field definitions
         """
+        if entity_type == "user":
+            params = {"FILTER": {">ID": 0, "LANG": "ru"}}
+            return await self.get_all("user.userfield.list", params)
+
+        if entity_type == "task":
+            # Tasks don't have a separate userfield.list;
+            # UF fields are included in tasks.task.getFields response
+            return []
+
         method = f"crm.{entity_type}.userfield.list"
         params = {"FILTER": {">ID": 0, "LANG": "ru"}}
         return await self.get_all(method, params)

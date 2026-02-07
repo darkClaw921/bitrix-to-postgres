@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # AI / OpenAI
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    openai_timeout_seconds: int = 120
 
     # Charts
     chart_query_timeout_seconds: int = 5

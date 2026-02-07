@@ -58,7 +58,10 @@ class AIService:
 
     def __init__(self) -> None:
         settings = get_settings()
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=settings.openai_timeout_seconds,
+        )
         self.model = settings.openai_model
 
     async def generate_chart_spec(self, prompt: str, schema_context: str) -> dict:

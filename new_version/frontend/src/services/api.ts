@@ -354,6 +354,9 @@ export const schemaApi = {
   describe: () =>
     api.get<SchemaDescriptionResponse>('/schema/describe').then((r) => r.data),
 
+  describeRaw: () =>
+    api.get<SchemaDescriptionResponse>('/schema/describe-raw').then((r) => r.data),
+
   tables: () =>
     api.get<SchemaTablesResponse>('/schema/tables').then((r) => r.data),
 

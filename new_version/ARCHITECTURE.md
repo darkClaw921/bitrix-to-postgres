@@ -73,7 +73,7 @@ app/api/
 │   │   ├── webhooks.py      # Обработка webhooks от Bitrix24
 │   │   ├── status.py        # Статус и health checks
 │   │   ├── charts.py        # AI-генерация и CRUD чартов
-│   │   ├── schema_description.py  # AI-описание схемы БД
+│   │   ├── schema_description.py  # AI-описание и raw-описание схемы БД
 │   │   └── references.py    # Синхронизация справочных данных (статусы, воронки, валюты)
 │   └── schemas/
 │       ├── sync.py          # Pydantic схемы для sync
@@ -100,6 +100,7 @@ app/api/
 | `DELETE` | `/api/v1/charts/{id}` | Удаление чарта |
 | `POST` | `/api/v1/charts/{id}/pin` | Закрепить/открепить чарт |
 | `GET` | `/api/v1/schema/describe` | AI-описание схемы БД (markdown). Автоматически сохраняется в БД. Query params: `entity_tables` (comma-separated), `include_related` (bool) |
+| `GET` | `/api/v1/schema/describe-raw` | Генерация markdown-описания схемы из метаданных БД (без AI). Быстро и детерминировано. Сохраняется в БД. Query params: `entity_tables`, `include_related` |
 | `GET` | `/api/v1/schema/tables` | Список таблиц с колонками (включая description из комментариев и enum-значения). Query params: `entity_tables`, `include_related` |
 | `GET` | `/api/v1/schema/history` | Последняя сохранённая генерация схемы по фильтрам |
 | `PATCH` | `/api/v1/schema/{id}` | Обновить markdown сохранённого описания |
@@ -168,6 +169,7 @@ class ChartService:
     async def get_schema_context(table_filter?, include_related=True) -> str  # Включает комментарии и enum-значения
     async def get_tables_info(table_filter?, include_related=True) -> list[dict]  # Включает description из комментариев и enum
     async def get_allowed_tables() -> list[str]  # Включает crm_* и ref_* таблицы
+    async def generate_schema_markdown(table_filter?, include_related=True) -> str  # Генерация markdown из метаданных БД (без AI)
 
     # Выполнение запросов
     async def execute_chart_query(sql: str) -> tuple[list[dict], float]
@@ -446,6 +448,12 @@ GET /api/v1/schema/tables?entity_tables=crm_deals&include_related=true
 GET /api/v1/schema/describe?entity_tables=crm_deals,crm_contacts&include_related=true
 ```
 Вернёт описание для: `crm_deals`, `crm_contacts` + все связанные справочники
+
+**Получить markdown-описание схемы без AI (быстро, из метаданных БД):**
+```bash
+GET /api/v1/schema/describe-raw?entity_tables=crm_deals&include_related=true
+```
+Вернёт markdown с таблицами полей, типов и описаний. Сохраняется в `schema_descriptions`.
 
 **Получить только основные таблицы без справочников:**
 ```bash

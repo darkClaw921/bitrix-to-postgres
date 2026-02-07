@@ -1,5 +1,6 @@
 """Schema description endpoints."""
 
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Body, HTTPException, Path, Query
@@ -54,18 +55,23 @@ async def describe_schema(
         if entity_tables:
             table_filter = [t.strip() for t in entity_tables.split(",") if t.strip()]
 
-        schema_context = await chart_service.get_schema_context(
+        # Run schema context and table info collection in parallel
+        schema_context_task = chart_service.get_schema_context(
             table_filter=table_filter, include_related=include_related
         )
+        tables_raw_task = chart_service.get_tables_info(
+            table_filter=table_filter, include_related=include_related
+        )
+        schema_context, tables_raw = await asyncio.gather(
+            schema_context_task, tables_raw_task
+        )
+
         if not schema_context.strip():
             raise HTTPException(
                 status_code=400,
                 detail="Не найдено CRM-таблиц в базе данных.",
             )
 
-        tables_raw = await chart_service.get_tables_info(
-            table_filter=table_filter, include_related=include_related
-        )
         tables = [
             TableInfo(
                 table_name=t["table_name"],
@@ -97,6 +103,69 @@ async def describe_schema(
     except AIServiceError as e:
         logger.error("AI service error", error=e.message)
         raise HTTPException(status_code=502, detail=e.message) from e
+
+
+@router.get("/describe-raw", response_model=SchemaDescriptionResponse)
+async def describe_schema_raw(
+    entity_tables: Optional[str] = Query(
+        None,
+        description="Comma-separated list of entity tables to include (e.g., 'crm_deals,crm_contacts'). "
+        "Related reference tables will be automatically included.",
+    ),
+    include_related: bool = Query(
+        True,
+        description="If true, automatically include related reference tables for specified entities",
+    ),
+) -> SchemaDescriptionResponse:
+    """Generate markdown description of CRM tables from DB metadata (no AI).
+
+    Creates a simple markdown table with fields, types, and descriptions
+    for each table. Does not use OpenAI — fast and deterministic.
+    The result is saved to schema_descriptions just like AI-generated ones.
+    """
+    table_filter = None
+    if entity_tables:
+        table_filter = [t.strip() for t in entity_tables.split(",") if t.strip()]
+
+    markdown = await chart_service.generate_schema_markdown(
+        table_filter=table_filter, include_related=include_related
+    )
+
+    if not markdown.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Не найдено CRM-таблиц в базе данных.",
+        )
+
+    # Get tables info for the response
+    tables_raw = await chart_service.get_tables_info(
+        table_filter=table_filter, include_related=include_related
+    )
+    tables = [
+        TableInfo(
+            table_name=t["table_name"],
+            columns=[ColumnInfo(**c) for c in t["columns"]],
+            row_count=t.get("row_count"),
+        )
+        for t in tables_raw
+    ]
+
+    # Save the generated description
+    saved = await chart_service.save_schema_description(
+        markdown=markdown,
+        entity_filter=table_filter,
+        include_related=include_related,
+    )
+
+    return SchemaDescriptionResponse(
+        id=saved["id"],
+        tables=tables,
+        markdown=saved["markdown"],
+        entity_filter=saved["entity_filter"],
+        include_related=saved["include_related"],
+        created_at=saved["created_at"],
+        updated_at=saved["updated_at"],
+    )
 
 
 @router.get("/tables", response_model=SchemaTablesResponse)

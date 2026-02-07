@@ -54,11 +54,21 @@ class EntityType:
     CONTACT = "contact"
     LEAD = "lead"
     COMPANY = "company"
+    USER = "user"
+    TASK = "task"
+
+    # CRM entity types (use crm.* API namespace)
+    _CRM_TYPES = {DEAL, CONTACT, LEAD, COMPANY}
 
     @classmethod
     def all(cls) -> list[str]:
         """Return all entity types."""
-        return [cls.DEAL, cls.CONTACT, cls.LEAD, cls.COMPANY]
+        return [cls.DEAL, cls.CONTACT, cls.LEAD, cls.COMPANY, cls.USER, cls.TASK]
+
+    @classmethod
+    def is_crm(cls, entity_type: str) -> bool:
+        """Check if entity type belongs to CRM namespace."""
+        return entity_type in cls._CRM_TYPES
 
     @classmethod
     def get_bitrix_prefix(cls, entity_type: str) -> str:
@@ -68,10 +78,16 @@ class EntityType:
             cls.CONTACT: "crm.contact",
             cls.LEAD: "crm.lead",
             cls.COMPANY: "crm.company",
+            cls.USER: "user",
+            cls.TASK: "tasks.task",
         }
         return prefixes.get(entity_type, f"crm.{entity_type}")
 
     @classmethod
     def get_table_name(cls, entity_type: str) -> str:
         """Get PostgreSQL table name for entity type."""
-        return f"crm_{entity_type}s"
+        table_names = {
+            cls.USER: "bitrix_users",
+            cls.TASK: "bitrix_tasks",
+        }
+        return table_names.get(entity_type, f"crm_{entity_type}s")

@@ -30,6 +30,12 @@
   - `AIServiceError` (502), `ChartServiceError` (400)
   - `DashboardServiceError` (400), `DashboardAuthError` (401)
 
+#### Bitrix24 API клиент
+- **app/infrastructure/bitrix/client.py** — `BitrixClient`: обёртка над fast-bitrix24 с retry/rate limiting
+  - CRM сущности: `crm.{entity}.list`, `crm.{entity}.get`, `crm.{entity}.fields`, `crm.{entity}.userfield.list`
+  - Users: `user.get`, `user.fields` (+ `USER_FIELD_TYPES` mapping для типов полей), `user.userfield.list`
+  - Tasks: `tasks.task.list`, `tasks.task.get`, `tasks.task.getFields` (UF-поля внутри getFields)
+
 #### База данных
 - **app/infrastructure/database/connection.py** — SQLAlchemy async engine (asyncpg/aiomysql), session factory
 - **app/infrastructure/database/models.py** — ORM модели:
@@ -56,7 +62,8 @@
 - **ai_service.py** — `AIService`:
   - `generate_chart_spec(prompt, schema_context)` → JSON спецификация чарта
   - `generate_schema_description(schema_context)` → Markdown документация
-- **sync_service.py** — `SyncService`: полная/инкрементальная синхронизация сущностей
+- **sync_service.py** — `SyncService`: полная/инкрементальная синхронизация сущностей (CRM, users, tasks)
+  - Инкрементальная синхронизация: `DATE_MODIFY` (CRM), `TIMESTAMP_X` (users), `CHANGED_DATE` (tasks)
 - **reference_sync_service.py** — `ReferenceSyncService`: синхронизация справочников
 - **dashboard_service.py** — `DashboardService`:
   - `create_dashboard(title, chart_ids)` → slug + bcrypt password
@@ -67,7 +74,17 @@
   - `remove_chart`, `change_password`, `delete_dashboard`
 
 #### Доменные сущности (`app/domain/entities/`)
-- **bitrix_entity.py** — `EntityType` enum (deal, contact, lead, company)
+- **base.py** — `BitrixEntity` базовый класс, `EntityType` enum (deal, contact, lead, company, user, task)
+  - CRM сущности (deal, contact, lead, company): API namespace `crm.*`, таблицы `crm_{entity}s`
+  - User: API namespace `user.*`, таблица `bitrix_users`
+  - Task: API namespace `tasks.task.*`, таблица `bitrix_tasks`
+  - `is_crm()` — проверка принадлежности к CRM namespace
+- **deal.py** — Pydantic модель сделки (TITLE, STAGE_ID, OPPORTUNITY, etc.)
+- **contact.py** — Pydantic модель контакта (NAME, PHONE, EMAIL, etc.)
+- **lead.py** — Pydantic модель лида (TITLE, STATUS_ID, OPPORTUNITY, etc.)
+- **company.py** — Pydantic модель компании (TITLE, INDUSTRY, REVENUE, etc.)
+- **user.py** — Pydantic модель пользователя (NAME, EMAIL, WORK_POSITION, PERSONAL_*, WORK_*, etc.)
+- **task.py** — Pydantic модель задачи (TITLE, DESCRIPTION, STATUS, PRIORITY, DEADLINE, RESPONSIBLE_ID, etc.)
 - **reference.py** — `ReferenceType` (crm_status, crm_deal_category, crm_currency)
 
 #### API (`app/api/v1/`)

@@ -48,6 +48,10 @@ _ENTITY_RELATED_TABLES = {
         "ref_crm_statuses",
         "ref_enum_values",
     ],
+    "bitrix_users": [],
+    "bitrix_tasks": [
+        "bitrix_users",  # Tasks reference users (RESPONSIBLE_ID, CREATED_BY, etc.)
+    ],
 }
 
 
@@ -203,7 +207,7 @@ class ChartService:
             query = text(
                 "SELECT table_name, column_name, data_type, is_nullable, column_comment "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%') "
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%') "
                 "ORDER BY table_name, ordinal_position"
             )
         else:
@@ -218,7 +222,7 @@ class ChartService:
                     col_description((quote_ident(c.table_schema)||'.'||quote_ident(c.table_name))::regclass::oid, c.ordinal_position) as column_comment
                 FROM information_schema.columns c
                 WHERE c.table_schema = current_schema()
-                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%')
+                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%' OR c.table_name LIKE 'bitrix_%')
                 ORDER BY c.table_name, c.ordinal_position
                 """
             )
@@ -230,11 +234,16 @@ class ChartService:
         # Get enum values for userfields
         enum_values_map = await self._get_enum_values_map()
 
+        # System columns present in every table — excluded from AI context
+        _SYSTEM_COLS = {"record_id", "bitrix_id", "created_at", "updated_at"}
+
         # Group by table
         tables: dict[str, list[tuple[str, str, str, str | None]]] = {}
         for row in rows:
             tbl, col, dtype, nullable, comment = row[0], row[1], row[2], row[3], row[4]
             if effective_filter and tbl not in effective_filter:
+                continue
+            if col in _SYSTEM_COLS:
                 continue
             tables.setdefault(tbl, []).append((col, dtype, nullable, comment))
 
@@ -277,13 +286,13 @@ class ChartService:
             query = text(
                 "SELECT DISTINCT table_name "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%')"
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%')"
             )
         else:
             query = text(
                 "SELECT DISTINCT table_name "
                 "FROM information_schema.columns "
-                "WHERE (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%')"
+                "WHERE (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%')"
             )
 
         async with engine.begin() as conn:
@@ -322,7 +331,7 @@ class ChartService:
             query = text(
                 "SELECT table_name, column_name, data_type, is_nullable, column_default, column_comment "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%') "
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%') "
                 "ORDER BY table_name, ordinal_position"
             )
         else:
@@ -338,7 +347,7 @@ class ChartService:
                     col_description((quote_ident(c.table_schema)||'.'||quote_ident(c.table_name))::regclass::oid, c.ordinal_position) as column_comment
                 FROM information_schema.columns c
                 WHERE c.table_schema = current_schema()
-                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%')
+                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%' OR c.table_name LIKE 'bitrix_%')
                 ORDER BY c.table_name, c.ordinal_position
                 """
             )
@@ -385,22 +394,43 @@ class ChartService:
                 }
             )
 
-        # Get row counts
+        # Get row counts in a single batch query (fast estimate for PG, exact for MySQL)
+        row_counts: dict[str, int | None] = {}
+        table_names = list(tables.keys())
+        if table_names:
+            try:
+                if dialect == "mysql":
+                    # MySQL: TABLE_ROWS from information_schema (approximate)
+                    placeholders = ", ".join([f":t{i}" for i in range(len(table_names))])
+                    count_query = text(
+                        f"SELECT table_name, table_rows FROM information_schema.tables "
+                        f"WHERE table_schema = DATABASE() AND table_name IN ({placeholders})"
+                    )
+                    params = {f"t{i}": name for i, name in enumerate(table_names)}
+                else:
+                    # PostgreSQL: fast estimate from pg_class
+                    placeholders = ", ".join([f":t{i}" for i in range(len(table_names))])
+                    count_query = text(
+                        f"SELECT relname, reltuples::bigint FROM pg_class "
+                        f"WHERE relname IN ({placeholders})"
+                    )
+                    params = {f"t{i}": name for i, name in enumerate(table_names)}
+
+                async with engine.begin() as conn:
+                    count_result = await conn.execute(count_query, params)
+                    for row in count_result.fetchall():
+                        count_val = row[1]
+                        row_counts[row[0]] = max(0, count_val) if count_val is not None else None
+            except Exception:
+                pass
+
         result_list: list[dict[str, Any]] = []
         for tbl, columns in tables.items():
-            try:
-                count_query = text(f"SELECT COUNT(*) FROM {tbl}")  # noqa: S608
-                async with engine.begin() as conn:
-                    count_result = await conn.execute(count_query)
-                    row_count = count_result.scalar()
-            except Exception:
-                row_count = None
-
             result_list.append(
                 {
                     "table_name": tbl,
                     "columns": columns,
-                    "row_count": row_count,
+                    "row_count": row_counts.get(tbl),
                 }
             )
 
@@ -619,6 +649,56 @@ class ChartService:
         if not chart:
             raise ChartServiceError(f"Чарт с id={chart_id} не найден")
         return chart
+
+    # === Schema Markdown Generation (no AI) ===
+
+    async def generate_schema_markdown(
+        self,
+        table_filter: list[str] | None = None,
+        include_related: bool = True,
+    ) -> str:
+        """Generate markdown documentation from DB metadata without AI.
+
+        Builds a markdown string with a table of fields, types, and descriptions
+        for each CRM/reference table found in the database.
+
+        Args:
+            table_filter: Optional list of specific tables to include
+            include_related: If True, automatically include related reference tables
+
+        Returns:
+            Markdown string with schema documentation
+        """
+        tables_raw = await self.get_tables_info(
+            table_filter=table_filter, include_related=include_related
+        )
+
+        if not tables_raw:
+            return ""
+
+        lines: list[str] = ["# Схема базы данных\n"]
+
+        for table in tables_raw:
+            table_name = table["table_name"]
+            columns = table["columns"]
+            row_count = table.get("row_count")
+
+            row_count_str = f" (~{row_count} строк)" if row_count else ""
+            lines.append(f"## {table_name}{row_count_str}\n")
+            lines.append("| Поле | Тип | Описание |")
+            lines.append("|------|-----|----------|")
+
+            for col in columns:
+                name = col["name"]
+                data_type = col["data_type"]
+                description = col.get("description") or ""
+                # Escape pipe characters in description for markdown table
+                description = description.replace("|", "\\|")
+                lines.append(f"| {name} | {data_type} | {description} |")
+
+            lines.append("")
+
+        return "\n".join(lines)
 
     # === Schema Descriptions CRUD ===
 

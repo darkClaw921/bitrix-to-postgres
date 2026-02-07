@@ -411,7 +411,8 @@ class SyncService:
 
         try:
             date_filter = last_modified.strftime("%Y-%m-%dT%H:%M:%S")
-            filter_params = {">DATE_MODIFY": date_filter}
+            date_field = self._DATE_MODIFY_FIELD.get(entity_type, "DATE_MODIFY")
+            filter_params = {f">{date_field}": date_filter}
 
             logger.info(
                 "Fetching modified records",
@@ -574,12 +575,20 @@ class SyncService:
             return row[0]
         return None
 
-    # Mapping of CRM entity types to related reference types
+    # Mapping of entity types to related reference types
     _ENTITY_REFERENCE_MAP: dict[str, list[str]] = {
         "deal": ["crm_status", "crm_deal_category", "crm_currency"],
         "lead": ["crm_status", "crm_currency"],
         "contact": ["crm_currency"],
         "company": ["crm_currency"],
+        "user": [],
+        "task": [],
+    }
+
+    # Date field used for incremental sync filtering per entity type
+    _DATE_MODIFY_FIELD: dict[str, str] = {
+        "user": "TIMESTAMP_X",
+        "task": "CHANGED_DATE",
     }
 
     async def _sync_related_references(self, entity_type: str) -> None:

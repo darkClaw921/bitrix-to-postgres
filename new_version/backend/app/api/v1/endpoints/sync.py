@@ -48,7 +48,9 @@ async def get_sync_config(
         rows = result.fetchall()
 
     entities = []
+    existing_types = set()
     for row in rows:
+        existing_types.add(row[0])
         entities.append(
             SyncConfigItem(
                 entity_type=row[0],
@@ -59,8 +61,9 @@ async def get_sync_config(
             )
         )
 
-    if not entities:
-        for entity_type in EntityType.all():
+    # Add default entries for any entity types missing from DB
+    for entity_type in EntityType.all():
+        if entity_type not in existing_types:
             entities.append(
                 SyncConfigItem(
                     entity_type=entity_type,

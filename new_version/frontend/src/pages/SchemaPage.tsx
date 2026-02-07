@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import {
   useSchemaDescription,
+  useSchemaDescribeRaw,
   useSchemaHistory,
   useUpdateSchemaDescription,
   useSchemaTables,
@@ -9,6 +10,7 @@ import {
 
 export default function SchemaPage() {
   const { data: newDescription, refetch, isFetching, isError, error } = useSchemaDescription()
+  const { data: rawDescription, refetch: refetchRaw, isFetching: isRawFetching } = useSchemaDescribeRaw()
   const { data: history, isLoading: historyLoading } = useSchemaHistory()
   const { data: tablesData, isLoading: tablesLoading } = useSchemaTables()
   const updateMutation = useUpdateSchemaDescription()
@@ -23,11 +25,14 @@ export default function SchemaPage() {
     if (newDescription) {
       setCurrentDescription(newDescription)
       setEditedMarkdown(newDescription.markdown)
+    } else if (rawDescription) {
+      setCurrentDescription(rawDescription)
+      setEditedMarkdown(rawDescription.markdown)
     } else if (history && !currentDescription) {
       setCurrentDescription(history)
       setEditedMarkdown(history.markdown)
     }
-  }, [newDescription, history, currentDescription])
+  }, [newDescription, rawDescription, history, currentDescription])
 
   const handleCopy = async () => {
     if (!currentDescription?.markdown) return
@@ -98,13 +103,22 @@ export default function SchemaPage() {
               </>
             )}
             {!isEditing && (
-              <button
-                onClick={() => refetch()}
-                disabled={isFetching}
-                className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isFetching ? 'Generating...' : 'Regenerate'}
-              </button>
+              <>
+                <button
+                  onClick={() => refetchRaw()}
+                  disabled={isRawFetching || isFetching}
+                  className="btn btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isRawFetching ? 'Generating...' : 'Generate Raw'}
+                </button>
+                <button
+                  onClick={() => refetch()}
+                  disabled={isFetching || isRawFetching}
+                  className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isFetching ? 'Generating...' : 'Regenerate (AI)'}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -138,7 +152,7 @@ export default function SchemaPage() {
           </div>
         ) : (
           <div className="text-center text-gray-400 py-8">
-            Click "Regenerate" to create an AI-powered description of your database schema.
+            Click "Generate Raw" for a fast schema description from DB metadata, or "Regenerate (AI)" for an AI-powered description.
           </div>
         )}
 

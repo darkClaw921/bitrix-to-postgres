@@ -22,15 +22,17 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
   const [pie, setPie] = useState(config.pie ?? { innerRadius: 0, showLabels: true })
   const [indicator, setIndicator] = useState(config.indicator ?? { prefix: '', suffix: '', fontSize: 'lg' as const, color: '#1f2937' })
   const [table, setTable] = useState(config.table ?? { showColumnTotals: false, showRowTotals: false, sortable: true, defaultSortDirection: 'asc' as const, pageSize: 0 })
+  const [funnel, setFunnel] = useState(config.funnel ?? { showLabels: true, labelPosition: 'right' as const })
 
-  const isCartesian = ['bar', 'line', 'area', 'scatter'].includes(chartType)
+  const isCartesian = ['bar', 'line', 'area', 'scatter', 'horizontal_bar'].includes(chartType)
   const isLineOrArea = ['line', 'area'].includes(chartType)
   const isPie = chartType === 'pie'
   const isIndicator = chartType === 'indicator'
   const isTable = chartType === 'table'
+  const isFunnel = chartType === 'funnel'
 
   const handleApply = () => {
-    const patch: Partial<ChartDisplayConfig> = { colors, legend, grid, xAxis, yAxis, line, area, pie, indicator, table }
+    const patch: Partial<ChartDisplayConfig> = { colors, legend, grid, xAxis, yAxis, line, area, pie, indicator, table, funnel }
     onApply(patch)
   }
 
@@ -345,6 +347,23 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                 value={table.pageSize || 0}
                 onChange={(e) => setTable({ ...table, pageSize: Number(e.target.value) })}
               />
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Funnel specific */}
+      {isFunnel && (
+        <div>
+          <h4 className="font-semibold text-gray-700 mb-2">Funnel Settings</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={funnel.showLabels !== false}
+                onChange={(e) => setFunnel({ ...funnel, showLabels: e.target.checked })}
+              />
+              <span>Show values inside</span>
             </label>
           </div>
         </div>

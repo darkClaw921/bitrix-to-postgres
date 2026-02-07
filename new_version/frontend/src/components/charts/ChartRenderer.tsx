@@ -5,6 +5,7 @@ import {
   PieChart, Pie, Cell,
   AreaChart, Area,
   ScatterChart, Scatter,
+  FunnelChart, Funnel, LabelList,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from 'recharts'
@@ -279,6 +280,9 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
     )
   }
 
+  // Funnel display config
+  const funnelCfg = spec.funnel ?? { showLabels: true, labelPosition: 'right' as const }
+
   // Indicator — rendered as plain HTML, no ResponsiveContainer
   if (chart_type === 'indicator') {
     return <IndicatorRenderer spec={spec} data={data} />
@@ -390,6 +394,40 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
           {renderLegend()}
           <Scatter name={spec.title} data={data} fill={palette[0]} />
         </ScatterChart>
+      ) : chart_type === 'funnel' ? (
+        <FunnelChart margin={{ top: 5, right: 120, bottom: 5, left: 5 }}>
+          <Tooltip formatter={tooltipFormatter} />
+          <Funnel dataKey={yKeys[0]} data={data.map((d, i) => ({ ...d, fill: palette[i % palette.length] }))} isAnimationActive>
+            <LabelList
+              position="right"
+              fill="#374151"
+              stroke="none"
+              dataKey={xKey}
+              fontSize={12}
+            />
+            {funnelCfg.showLabels !== false && (
+              <LabelList
+                position="inside"
+                fill="#fff"
+                stroke="none"
+                dataKey={yKeys[0]}
+                fontSize={11}
+                formatter={(v: unknown) => Number(v).toLocaleString()}
+              />
+            )}
+          </Funnel>
+        </FunnelChart>
+      ) : chart_type === 'horizontal_bar' ? (
+        <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 80 }}>
+          {renderGrid()}
+          <XAxis type="number" tickFormatter={yTickFormatter} />
+          <YAxis type="category" dataKey={xKey} width={80} />
+          {renderTooltip()}
+          {renderLegend()}
+          {yKeys.map((key, i) => (
+            <Bar key={key} dataKey={key} fill={palette[i % palette.length]} />
+          ))}
+        </BarChart>
       ) : (
         <BarChart data={data}>
           {renderGrid()}

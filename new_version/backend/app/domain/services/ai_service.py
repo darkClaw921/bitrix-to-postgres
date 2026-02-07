@@ -18,7 +18,7 @@ Available database schema:
 
 Your task: generate a JSON object with the following fields:
 - title (string): short chart title in Russian
-- chart_type (string): one of bar, line, pie, area, scatter, indicator, table
+- chart_type (string): one of bar, line, pie, area, scatter, indicator, table, funnel, horizontal_bar
 - sql_query (string): a SELECT-only SQL query using ONLY the tables listed above
 - data_keys (object): {{x: "column_name", y: "column_name"}} or {{x: "column_name", y: ["col1", "col2"]}} for multi-series
 - colors (array of strings): hex color codes for chart series, e.g. ["#8884d8", "#82ca9d"]
@@ -34,6 +34,8 @@ Rules:
 7. Все сущности из битрикса ты должен обращаться по bitrix_id так как это уникальный идентификатор в битриксе
 8. For chart_type "indicator": SQL must return exactly ONE row with a single aggregate value. data_keys.y is the value column. Used for KPI cards showing a single metric.
 9. For chart_type "table": SQL returns tabular data with all columns displayed. data_keys.x is not required. All columns from the query result will be shown in the table.
+10. For chart_type "funnel": SQL must return stages with names and values, ordered from largest to smallest. data_keys.x is the stage name column, data_keys.y is the value column. Used for sales funnels, conversion funnels.
+11. For chart_type "horizontal_bar": same as "bar" but for scenarios with long category names or rankings. data_keys.x is the category column, data_keys.y is the value column. The bars are rendered horizontally.
 """
 
 SELECTOR_GENERATION_PROMPT = """You are an analytics dashboard configuration expert for a Bitrix24 CRM system.

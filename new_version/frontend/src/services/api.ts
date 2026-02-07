@@ -224,11 +224,15 @@ export interface ChartDisplayConfig {
     pageSize?: number
     columnFormats?: Record<string, 'number' | 'currency' | 'percent' | 'text'>
   }
+  // funnel
+  funnel?: { showLabels?: boolean; labelPosition?: 'right' | 'inside' }
+  // horizontal_bar (uses same settings as bar — grid, xAxis, yAxis)
+  horizontal_bar?: {}
 }
 
 export interface ChartSpec {
   title: string
-  chart_type: 'bar' | 'line' | 'pie' | 'area' | 'scatter' | 'indicator' | 'table'
+  chart_type: 'bar' | 'line' | 'pie' | 'area' | 'scatter' | 'indicator' | 'table' | 'funnel' | 'horizontal_bar'
   sql_query: string
   data_keys: {
     x: string
@@ -246,6 +250,8 @@ export interface ChartSpec {
   pie?: ChartDisplayConfig['pie']
   indicator?: ChartDisplayConfig['indicator']
   table?: ChartDisplayConfig['table']
+  funnel?: ChartDisplayConfig['funnel']
+  horizontal_bar?: ChartDisplayConfig['horizontal_bar']
 }
 
 export interface ChartGenerateRequest {

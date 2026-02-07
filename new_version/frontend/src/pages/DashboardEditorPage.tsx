@@ -383,6 +383,10 @@ function EditorChartCard({
     line: config?.line,
     area: config?.area,
     pie: config?.pie,
+    indicator: config?.indicator,
+    table: config?.table,
+    funnel: config?.funnel,
+    horizontal_bar: config?.horizontal_bar,
   }
 
   // Calculate chart height from grid layout

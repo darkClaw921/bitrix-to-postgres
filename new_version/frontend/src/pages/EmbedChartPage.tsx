@@ -59,6 +59,8 @@ export default function EmbedChartPage() {
     pie: config?.pie,
     indicator: config?.indicator,
     table: config?.table,
+    funnel: config?.funnel,
+    horizontal_bar: config?.horizontal_bar,
   }
 
   return (

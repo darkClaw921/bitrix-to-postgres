@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import { publicApi } from '../services/api'
+import { useTranslation } from '../i18n'
 import type { ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
 
 export default function EmbedChartPage() {
@@ -10,6 +11,7 @@ export default function EmbedChartPage() {
   const [data, setData] = useState<ChartDataResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (!chartId) return
@@ -29,7 +31,7 @@ export default function EmbedChartPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-white">
-        <div className="text-gray-400">Loading chart...</div>
+        <div className="text-gray-400">{t('embed.loadingChart')}</div>
       </div>
     )
   }
@@ -37,7 +39,7 @@ export default function EmbedChartPage() {
   if (error || !meta || !data) {
     return (
       <div className="flex items-center justify-center h-screen bg-white">
-        <div className="text-red-500">{error || 'Chart not found'}</div>
+        <div className="text-red-500">{error || t('embed.chartNotFound')}</div>
       </div>
     )
   }

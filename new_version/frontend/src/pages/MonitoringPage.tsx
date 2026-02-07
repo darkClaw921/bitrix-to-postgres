@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useSyncHistory, useHealth } from '../hooks/useSync'
 import { statusApi } from '../services/api'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from '../i18n'
 
 export default function MonitoringPage() {
+  const { t } = useTranslation()
   const [page, setPage] = useState(1)
   const [entityFilter, setEntityFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -50,12 +52,12 @@ export default function MonitoringPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Monitoring</h1>
+      <h1 className="text-2xl font-bold">{t('monitoring.monitoring')}</h1>
 
       {/* Health Status */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Database</h3>
+          <h3 className="text-sm font-medium text-gray-500 mb-2">{t('monitoring.database')}</h3>
           <div className="flex items-center space-x-2">
             <span
               className={`w-3 h-3 rounded-full ${
@@ -63,13 +65,13 @@ export default function MonitoringPage() {
               }`}
             />
             <span className="font-medium">
-              {health?.database === 'connected' ? 'Connected' : health?.database || 'Unknown'}
+              {health?.database === 'connected' ? t('health.connected') : health?.database || 'Unknown'}
             </span>
           </div>
         </div>
 
         <div className="card">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Scheduler</h3>
+          <h3 className="text-sm font-medium text-gray-500 mb-2">{t('monitoring.scheduler')}</h3>
           <div className="flex items-center space-x-2">
             <span
               className={`w-3 h-3 rounded-full ${
@@ -77,14 +79,14 @@ export default function MonitoringPage() {
               }`}
             />
             <span className="font-medium">
-              {scheduler?.running ? `Running (${scheduler?.job_count} jobs)` : 'Stopped'}
+              {scheduler?.running ? `${t('monitoring.running')} (${scheduler?.job_count} ${t('monitoring.jobs')})` : t('monitoring.stopped')}
             </span>
           </div>
         </div>
 
         <div className="card">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">CRM Tables</h3>
-          <span className="font-medium">{health?.crm_tables?.length ?? 0} tables</span>
+          <h3 className="text-sm font-medium text-gray-500 mb-2">{t('monitoring.crmTables')}</h3>
+          <span className="font-medium">{health?.crm_tables?.length ?? 0} {t('monitoring.tables')}</span>
           {health?.crm_tables && health.crm_tables.length > 0 && (
             <p className="text-xs text-gray-500 mt-1">
               {health.crm_tables.join(', ')}
@@ -96,19 +98,19 @@ export default function MonitoringPage() {
       {/* Scheduled Jobs */}
       {scheduler?.jobs && scheduler.jobs.length > 0 && (
         <div className="card">
-          <h2 className="text-lg font-semibold mb-4">Scheduled Jobs</h2>
+          <h2 className="text-lg font-semibold mb-4">{t('monitoring.scheduledJobs')}</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Job
+                    {t('monitoring.job')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Trigger
+                    {t('monitoring.trigger')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Next Run
+                    {t('monitoring.nextRun')}
                   </th>
                 </tr>
               </thead>
@@ -134,7 +136,7 @@ export default function MonitoringPage() {
 
       {/* Sync History */}
       <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Sync History</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('monitoring.syncHistory')}</h2>
 
         {/* Filters */}
         <div className="flex flex-wrap gap-4 mb-4">
@@ -143,11 +145,11 @@ export default function MonitoringPage() {
             onChange={(e) => { setEntityFilter(e.target.value); setPage(1) }}
             className="input w-40"
           >
-            <option value="">All Entities</option>
-            <option value="deal">Deals</option>
-            <option value="contact">Contacts</option>
-            <option value="lead">Leads</option>
-            <option value="company">Companies</option>
+            <option value="">{t('monitoring.allEntities')}</option>
+            <option value="deal">{t('monitoring.deals')}</option>
+            <option value="contact">{t('monitoring.contacts')}</option>
+            <option value="lead">{t('monitoring.leads')}</option>
+            <option value="company">{t('monitoring.companies')}</option>
           </select>
 
           <select
@@ -155,10 +157,10 @@ export default function MonitoringPage() {
             onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
             className="input w-40"
           >
-            <option value="">All Status</option>
-            <option value="completed">Completed</option>
-            <option value="running">Running</option>
-            <option value="failed">Failed</option>
+            <option value="">{t('monitoring.allStatus')}</option>
+            <option value="completed">{t('monitoring.completed')}</option>
+            <option value="running">{t('monitoring.running')}</option>
+            <option value="failed">{t('monitoring.failed')}</option>
           </select>
 
           <select
@@ -166,15 +168,15 @@ export default function MonitoringPage() {
             onChange={(e) => { setSyncTypeFilter(e.target.value); setPage(1) }}
             className="input w-40"
           >
-            <option value="">All Types</option>
-            <option value="full">Full</option>
-            <option value="incremental">Incremental</option>
-            <option value="webhook">Webhook</option>
+            <option value="">{t('monitoring.allTypes')}</option>
+            <option value="full">{t('monitoring.full')}</option>
+            <option value="incremental">{t('monitoring.incremental')}</option>
+            <option value="webhook">{t('monitoring.webhook')}</option>
           </select>
         </div>
 
         {isLoading ? (
-          <div className="text-center py-8 text-gray-500">Loading...</div>
+          <div className="text-center py-8 text-gray-500">{t('common.loading')}</div>
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -182,22 +184,22 @@ export default function MonitoringPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Entity
+                      {t('dashboard.entity')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Type
+                      {t('monitoring.type')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Status
+                      {t('dashboard.status')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Records
+                      {t('dashboard.records')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Started
+                      {t('monitoring.started')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Duration
+                      {t('monitoring.duration')}
                     </th>
                   </tr>
                 </thead>
@@ -238,8 +240,8 @@ export default function MonitoringPage() {
             {history && history.total > history.per_page && (
               <div className="flex justify-between items-center mt-4">
                 <div className="text-sm text-gray-500">
-                  Showing {(page - 1) * history.per_page + 1} -{' '}
-                  {Math.min(page * history.per_page, history.total)} of {history.total}
+                  {t('monitoring.showing')} {(page - 1) * history.per_page + 1} -{' '}
+                  {Math.min(page * history.per_page, history.total)} {t('monitoring.of')} {history.total}
                 </div>
                 <div className="flex space-x-2">
                   <button
@@ -247,14 +249,14 @@ export default function MonitoringPage() {
                     disabled={page === 1}
                     className="btn btn-secondary disabled:opacity-50"
                   >
-                    Previous
+                    {t('monitoring.previous')}
                   </button>
                   <button
                     onClick={() => setPage(page + 1)}
                     disabled={page * history.per_page >= history.total}
                     className="btn btn-secondary disabled:opacity-50"
                   >
-                    Next
+                    {t('monitoring.next')}
                   </button>
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ChartDisplayConfig } from '../../services/api'
+import { useTranslation } from '../../i18n'
 
 interface ChartSettingsPanelProps {
   chartType: string
@@ -9,6 +10,7 @@ interface ChartSettingsPanelProps {
 }
 
 export default function ChartSettingsPanel({ chartType, config, onApply, isSaving }: ChartSettingsPanelProps) {
+  const { t } = useTranslation()
   const yKeys = Array.isArray(config.y) ? config.y : [config.y]
 
   // All local draft state — initialized from saved config
@@ -40,7 +42,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
     <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4 text-sm">
       {/* Visual settings */}
       <div>
-        <h4 className="font-semibold text-gray-700 mb-2">Visual</h4>
+        <h4 className="font-semibold text-gray-700 mb-2">{t('chartSettings.visual')}</h4>
         <div className="grid grid-cols-2 gap-3">
           <label className="flex items-center gap-2">
             <input
@@ -48,19 +50,19 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
               checked={legend.visible !== false}
               onChange={(e) => setLegend({ ...legend, visible: e.target.checked })}
             />
-            <span>Show legend</span>
+            <span>{t('chartSettings.showLegend')}</span>
           </label>
           <label className="flex items-center gap-2">
-            <span className="text-gray-500">Position:</span>
+            <span className="text-gray-500">{t('chartSettings.position')}</span>
             <select
               className="border rounded px-1 py-0.5 text-xs"
               value={legend.position || 'bottom'}
               onChange={(e) => setLegend({ ...legend, position: e.target.value as 'top' | 'bottom' | 'left' | 'right' })}
             >
-              <option value="top">Top</option>
-              <option value="bottom">Bottom</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
+              <option value="top">{t('chartSettings.top')}</option>
+              <option value="bottom">{t('chartSettings.bottom')}</option>
+              <option value="left">{t('chartSettings.left')}</option>
+              <option value="right">{t('chartSettings.right')}</option>
             </select>
           </label>
 
@@ -71,14 +73,14 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                 checked={grid.visible !== false}
                 onChange={(e) => setGrid({ ...grid, visible: e.target.checked })}
               />
-              <span>Show grid</span>
+              <span>{t('chartSettings.showGrid')}</span>
             </label>
           )}
         </div>
 
         {/* Colors */}
         <div className="mt-3">
-          <span className="text-gray-500">Colors:</span>
+          <span className="text-gray-500">{t('chartSettings.colors')}</span>
           <div className="flex gap-2 mt-1 flex-wrap">
             {(isPie ? Array.from({ length: Math.max(4, yKeys.length) }) : yKeys).map((_, i) => (
               <label key={i} className="flex items-center gap-1">
@@ -102,23 +104,23 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
       {/* Data format settings (cartesian only) */}
       {isCartesian && (
         <div>
-          <h4 className="font-semibold text-gray-700 mb-2">Data Format</h4>
+          <h4 className="font-semibold text-gray-700 mb-2">{t('chartSettings.dataFormat')}</h4>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex items-center gap-2">
-              <span className="text-gray-500">Y-axis format:</span>
+              <span className="text-gray-500">{t('chartSettings.yAxisFormat')}</span>
               <select
                 className="border rounded px-1 py-0.5 text-xs"
                 value={yAxis.format || 'number'}
                 onChange={(e) => setYAxis({ ...yAxis, format: e.target.value as 'number' | 'currency' | 'percent' })}
               >
-                <option value="number">Number</option>
-                <option value="currency">Currency ($)</option>
-                <option value="percent">Percent (%)</option>
+                <option value="number">{t('chartSettings.number')}</option>
+                <option value="currency">{t('chartSettings.currency')}</option>
+                <option value="percent">{t('chartSettings.percent')}</option>
               </select>
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="text-gray-500">X-axis angle:</span>
+              <span className="text-gray-500">{t('chartSettings.xAxisAngle')}</span>
               <select
                 className="border rounded px-1 py-0.5 text-xs"
                 value={xAxis.angle || 0}
@@ -132,7 +134,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">X-axis label:</span>
+              <span className="text-gray-500">{t('chartSettings.xAxisLabel')}</span>
               <input
                 type="text"
                 className="border rounded px-2 py-0.5 text-xs"
@@ -143,7 +145,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Y-axis label:</span>
+              <span className="text-gray-500">{t('chartSettings.yAxisLabel')}</span>
               <input
                 type="text"
                 className="border rounded px-2 py-0.5 text-xs"
@@ -160,11 +162,11 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
       {isLineOrArea && (
         <div>
           <h4 className="font-semibold text-gray-700 mb-2">
-            {chartType === 'line' ? 'Line' : 'Area'} Settings
+            {chartType === 'line' ? t('chartSettings.lineSettings') : t('chartSettings.areaSettings')}
           </h4>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex items-center gap-2">
-              <span className="text-gray-500">Stroke width:</span>
+              <span className="text-gray-500">{t('chartSettings.strokeWidth')}</span>
               <input
                 type="number"
                 min={1}
@@ -176,22 +178,22 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="text-gray-500">Line type:</span>
+              <span className="text-gray-500">{t('chartSettings.lineType')}</span>
               <select
                 className="border rounded px-1 py-0.5 text-xs"
                 value={line.type || 'monotone'}
                 onChange={(e) => setLine({ ...line, type: e.target.value as 'monotone' | 'linear' | 'natural' | 'step' })}
               >
-                <option value="monotone">Monotone</option>
-                <option value="linear">Linear</option>
-                <option value="natural">Natural</option>
-                <option value="step">Step</option>
+                <option value="monotone">{t('chartSettings.monotone')}</option>
+                <option value="linear">{t('chartSettings.linear')}</option>
+                <option value="natural">{t('chartSettings.natural')}</option>
+                <option value="step">{t('chartSettings.step')}</option>
               </select>
             </label>
 
             {chartType === 'area' && (
               <label className="flex items-center gap-2 col-span-2">
-                <span className="text-gray-500">Fill opacity:</span>
+                <span className="text-gray-500">{t('chartSettings.fillOpacity')}</span>
                 <input
                   type="range"
                   min={0.1}
@@ -211,10 +213,10 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
       {/* Pie specific */}
       {isPie && (
         <div>
-          <h4 className="font-semibold text-gray-700 mb-2">Pie Settings</h4>
+          <h4 className="font-semibold text-gray-700 mb-2">{t('chartSettings.pieSettings')}</h4>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex items-center gap-2 col-span-2">
-              <span className="text-gray-500">Inner radius (donut):</span>
+              <span className="text-gray-500">{t('chartSettings.innerRadius')}</span>
               <input
                 type="range"
                 min={0}
@@ -233,7 +235,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                 checked={pie.showLabels !== false}
                 onChange={(e) => setPie({ ...pie, showLabels: e.target.checked })}
               />
-              <span>Show labels</span>
+              <span>{t('chartSettings.showLabels')}</span>
             </label>
           </div>
         </div>
@@ -242,10 +244,10 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
       {/* Indicator specific */}
       {isIndicator && (
         <div>
-          <h4 className="font-semibold text-gray-700 mb-2">Indicator Settings</h4>
+          <h4 className="font-semibold text-gray-700 mb-2">{t('chartSettings.indicatorSettings')}</h4>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Prefix:</span>
+              <span className="text-gray-500">{t('chartSettings.prefix')}</span>
               <input
                 type="text"
                 className="border rounded px-2 py-0.5 text-xs"
@@ -256,7 +258,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-gray-500">Suffix:</span>
+              <span className="text-gray-500">{t('chartSettings.suffix')}</span>
               <input
                 type="text"
                 className="border rounded px-2 py-0.5 text-xs"
@@ -267,21 +269,21 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="text-gray-500">Font size:</span>
+              <span className="text-gray-500">{t('chartSettings.fontSize')}</span>
               <select
                 className="border rounded px-1 py-0.5 text-xs"
                 value={indicator.fontSize || 'lg'}
                 onChange={(e) => setIndicator({ ...indicator, fontSize: e.target.value as 'sm' | 'md' | 'lg' | 'xl' })}
               >
-                <option value="sm">Small</option>
-                <option value="md">Medium</option>
-                <option value="lg">Large</option>
-                <option value="xl">Extra Large</option>
+                <option value="sm">{t('chartSettings.small')}</option>
+                <option value="md">{t('chartSettings.medium')}</option>
+                <option value="lg">{t('chartSettings.large')}</option>
+                <option value="xl">{t('chartSettings.extraLarge')}</option>
               </select>
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="text-gray-500">Color:</span>
+              <span className="text-gray-500">{t('chartSettings.color')}</span>
               <input
                 type="color"
                 value={indicator.color || '#1f2937'}
@@ -296,7 +298,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
       {/* Table specific */}
       {isTable && (
         <div>
-          <h4 className="font-semibold text-gray-700 mb-2">Table Settings</h4>
+          <h4 className="font-semibold text-gray-700 mb-2">{t('chartSettings.tableSettings')}</h4>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex items-center gap-2">
               <input
@@ -304,7 +306,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                 checked={table.showColumnTotals || false}
                 onChange={(e) => setTable({ ...table, showColumnTotals: e.target.checked })}
               />
-              <span>Column totals</span>
+              <span>{t('chartSettings.columnTotals')}</span>
             </label>
 
             <label className="flex items-center gap-2">
@@ -313,7 +315,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                 checked={table.showRowTotals || false}
                 onChange={(e) => setTable({ ...table, showRowTotals: e.target.checked })}
               />
-              <span>Row totals</span>
+              <span>{t('chartSettings.rowTotals')}</span>
             </label>
 
             <label className="flex items-center gap-2">
@@ -322,23 +324,23 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                 checked={table.sortable !== false}
                 onChange={(e) => setTable({ ...table, sortable: e.target.checked })}
               />
-              <span>Sortable columns</span>
+              <span>{t('chartSettings.sortableColumns')}</span>
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="text-gray-500">Sort direction:</span>
+              <span className="text-gray-500">{t('chartSettings.sortDirection')}</span>
               <select
                 className="border rounded px-1 py-0.5 text-xs"
                 value={table.defaultSortDirection || 'asc'}
                 onChange={(e) => setTable({ ...table, defaultSortDirection: e.target.value as 'asc' | 'desc' })}
               >
-                <option value="asc">Ascending</option>
-                <option value="desc">Descending</option>
+                <option value="asc">{t('chartSettings.ascending')}</option>
+                <option value="desc">{t('chartSettings.descending')}</option>
               </select>
             </label>
 
             <label className="flex flex-col gap-1 col-span-2">
-              <span className="text-gray-500">Page size (0 = no pagination):</span>
+              <span className="text-gray-500">{t('chartSettings.pageSize')}</span>
               <input
                 type="number"
                 min={0}
@@ -355,7 +357,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
       {/* Funnel specific */}
       {isFunnel && (
         <div>
-          <h4 className="font-semibold text-gray-700 mb-2">Funnel Settings</h4>
+          <h4 className="font-semibold text-gray-700 mb-2">{t('chartSettings.funnelSettings')}</h4>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex items-center gap-2">
               <input
@@ -363,7 +365,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                 checked={funnel.showLabels !== false}
                 onChange={(e) => setFunnel({ ...funnel, showLabels: e.target.checked })}
               />
-              <span>Show values inside</span>
+              <span>{t('chartSettings.showValuesInside')}</span>
             </label>
           </div>
         </div>
@@ -376,7 +378,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
           disabled={isSaving}
           className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
         >
-          {isSaving ? 'Saving...' : 'Apply'}
+          {isSaving ? t('common.saving') : t('common.apply')}
         </button>
       </div>
     </div>

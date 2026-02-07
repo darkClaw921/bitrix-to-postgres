@@ -4,12 +4,14 @@ import ChartSettingsPanel from './ChartSettingsPanel'
 import IframeCopyButton from './IframeCopyButton'
 import type { SavedChart, ChartDisplayConfig } from '../../services/api'
 import { useChartData, useDeleteChart, useToggleChartPin, useUpdateChartConfig } from '../../hooks/useCharts'
+import { useTranslation } from '../../i18n'
 
 interface ChartCardProps {
   chart: SavedChart
 }
 
 export default function ChartCard({ chart }: ChartCardProps) {
+  const { t } = useTranslation()
   const [showSql, setShowSql] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const { data: freshData, refetch, isFetching } = useChartData(chart.id)
@@ -63,17 +65,17 @@ export default function ChartCard({ chart }: ChartCardProps) {
                 ? 'bg-yellow-100 text-yellow-700'
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             }`}
-            title={chart.is_pinned ? 'Unpin' : 'Pin'}
+            title={chart.is_pinned ? t('charts.unpin') : t('charts.pin')}
           >
-            {chart.is_pinned ? 'Pinned' : 'Pin'}
+            {chart.is_pinned ? t('charts.pinned') : t('charts.pin')}
           </button>
           <button
             onClick={() => refetch()}
             disabled={isFetching}
             className="p-1.5 rounded text-sm bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-50"
-            title="Refresh data"
+            title={t('charts.refreshData')}
           >
-            {isFetching ? '...' : 'Refresh'}
+            {isFetching ? '...' : t('charts.refresh')}
           </button>
           <IframeCopyButton chartId={chart.id} />
           <button
@@ -83,25 +85,25 @@ export default function ChartCard({ chart }: ChartCardProps) {
                 ? 'bg-blue-100 text-blue-700'
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             }`}
-            title="Chart settings"
+            title={t('charts.chartSettings')}
           >
-            Settings
+            {t('charts.settings')}
           </button>
           <button
             onClick={() => setShowSql(!showSql)}
             className="p-1.5 rounded text-sm bg-gray-100 text-gray-500 hover:bg-gray-200"
-            title="Show SQL"
+            title={t('charts.showSql')}
           >
-            SQL
+            {t('charts.sql')}
           </button>
           <button
             onClick={() => {
-              if (confirm('Delete this chart?')) deleteChart.mutate(chart.id)
+              if (confirm(t('editor.confirmDeleteChart'))) deleteChart.mutate(chart.id)
             }}
             className="p-1.5 rounded text-sm bg-red-50 text-red-500 hover:bg-red-100"
-            title="Delete"
+            title={t('common.delete')}
           >
-            Delete
+            {t('common.delete')}
           </button>
         </div>
       </div>
@@ -125,7 +127,7 @@ export default function ChartCard({ chart }: ChartCardProps) {
         <ChartRenderer spec={spec} data={chartData} />
       ) : (
         <div className="flex items-center justify-center h-48 text-gray-400">
-          Click "Refresh" to load chart data
+          {t('charts.emptyChart')}
         </div>
       )}
 
@@ -133,7 +135,7 @@ export default function ChartCard({ chart }: ChartCardProps) {
         <span>Type: {chart.chart_type}</span>
         {freshData && (
           <span>
-            {freshData.row_count} rows | {freshData.execution_time_ms.toFixed(0)}ms
+            {freshData.row_count} {t('charts.rows')} | {freshData.execution_time_ms.toFixed(0)}ms
           </span>
         )}
         <span>{new Date(chart.created_at).toLocaleDateString()}</span>

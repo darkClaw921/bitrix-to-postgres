@@ -1,3 +1,5 @@
+import { useTranslation } from '../../i18n'
+
 interface DateRangeSelectorProps {
   value: { from: string; to: string } | null
   onChange: (value: { from: string; to: string } | null) => void
@@ -5,6 +7,8 @@ interface DateRangeSelectorProps {
 }
 
 export default function DateRangeSelector({ value, onChange, placeholder }: DateRangeSelectorProps) {
+  const { t } = useTranslation()
+
   return (
     <div className="flex items-center space-x-1">
       <input
@@ -14,7 +18,7 @@ export default function DateRangeSelector({ value, onChange, placeholder }: Date
           onChange(e.target.value ? { from: e.target.value, to: value?.to || '' } : null)
         }
         className="px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
-        placeholder={placeholder || 'From'}
+        placeholder={placeholder || t('selectors.from')}
       />
       <span className="text-gray-400 text-xs">—</span>
       <input
@@ -24,7 +28,7 @@ export default function DateRangeSelector({ value, onChange, placeholder }: Date
           onChange(e.target.value ? { from: value?.from || '', to: e.target.value } : null)
         }
         className="px-2 py-1.5 border border-gray-300 rounded text-sm bg-white"
-        placeholder="To"
+        placeholder={t('selectors.to')}
       />
     </div>
   )

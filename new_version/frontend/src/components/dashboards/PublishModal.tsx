@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { SavedChart, DashboardPublishResponse } from '../../services/api'
 import { usePublishDashboard } from '../../hooks/useDashboards'
+import { useTranslation } from '../../i18n'
 
 interface PublishModalProps {
   charts: SavedChart[]
@@ -8,6 +9,7 @@ interface PublishModalProps {
 }
 
 export default function PublishModal({ charts, onClose }: PublishModalProps) {
+  const { t } = useTranslation()
   const [title, setTitle] = useState('My Dashboard')
   const [description, setDescription] = useState('')
   const [refreshInterval, setRefreshInterval] = useState(10)
@@ -63,11 +65,11 @@ export default function PublishModal({ charts, onClose }: PublishModalProps) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-          <h3 className="text-lg font-semibold text-green-700 mb-4">Dashboard Published!</h3>
+          <h3 className="text-lg font-semibold text-green-700 mb-4">{t('publishModal.published')}</h3>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Dashboard URL</label>
+              <label className="block text-sm font-medium text-gray-600 mb-1">{t('publishModal.dashboardUrl')}</label>
               <div className="flex items-center space-x-2">
                 <input
                   type="text"
@@ -79,13 +81,13 @@ export default function PublishModal({ charts, onClose }: PublishModalProps) {
                   onClick={() => copyToClipboard(dashboardUrl, 'url')}
                   className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
                 >
-                  {copiedField === 'url' ? 'Copied!' : 'Copy'}
+                  {copiedField === 'url' ? t('common.copied') : t('common.copy')}
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Password</label>
+              <label className="block text-sm font-medium text-gray-600 mb-1">{t('publishModal.passwordLabel')}</label>
               <div className="flex items-center space-x-2">
                 <input
                   type="text"
@@ -97,18 +99,18 @@ export default function PublishModal({ charts, onClose }: PublishModalProps) {
                   onClick={() => copyToClipboard(result.password, 'password')}
                   className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
                 >
-                  {copiedField === 'password' ? 'Copied!' : 'Copy'}
+                  {copiedField === 'password' ? t('common.copied') : t('common.copy')}
                 </button>
               </div>
               <p className="text-xs text-gray-400 mt-1">
-                Save this password — it won't be shown again
+                {t('publishModal.passwordHelp')}
               </p>
             </div>
           </div>
 
           <div className="mt-6 flex justify-end">
             <button onClick={onClose} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
-              Close
+              {t('common.close')}
             </button>
           </div>
         </div>
@@ -119,57 +121,57 @@ export default function PublishModal({ charts, onClose }: PublishModalProps) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
-        <h3 className="text-lg font-semibold mb-4">Publish Dashboard</h3>
+        <h3 className="text-lg font-semibold mb-4">{t('publishModal.title')}</h3>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('publishModal.formTitle')}</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Dashboard title"
+              placeholder={t('publishModal.dashboardTitle')}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('publishModal.descriptionOptional')}</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               rows={2}
-              placeholder="Brief description"
+              placeholder={t('publishModal.briefDescription')}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Auto-refresh interval</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('publishModal.autoRefreshInterval')}</label>
             <select
               value={refreshInterval}
               onChange={(e) => setRefreshInterval(Number(e.target.value))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value={1}>1 minute</option>
-              <option value={5}>5 minutes</option>
-              <option value={10}>10 minutes</option>
-              <option value={15}>15 minutes</option>
-              <option value={30}>30 minutes</option>
-              <option value={60}>60 minutes</option>
+              <option value={1}>{t('publishModal.minute1')}</option>
+              <option value={5}>{t('publishModal.minutes5')}</option>
+              <option value={10}>{t('publishModal.minutes10')}</option>
+              <option value={15}>{t('publishModal.minutes15')}</option>
+              <option value={30}>{t('publishModal.minutes30')}</option>
+              <option value={60}>{t('publishModal.minutes60')}</option>
             </select>
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-gray-700">
-                Select Charts ({selectedIds.size}/{charts.length})
+                {t('publishModal.selectCharts')} ({selectedIds.size}/{charts.length})
               </label>
               <button
                 onClick={toggleAll}
                 className="text-xs text-blue-600 hover:text-blue-800"
               >
-                {selectedIds.size === charts.length ? 'Deselect All' : 'Select All'}
+                {selectedIds.size === charts.length ? t('publishModal.deselectAll') : t('publishModal.selectAll')}
               </button>
             </div>
 
@@ -197,20 +199,20 @@ export default function PublishModal({ charts, onClose }: PublishModalProps) {
 
         {publishDashboard.isError && (
           <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
-            {(publishDashboard.error as Error).message || 'Failed to publish'}
+            {(publishDashboard.error as Error).message || t('publishModal.failedToPublish')}
           </div>
         )}
 
         <div className="mt-6 flex justify-end space-x-3">
           <button onClick={onClose} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={handlePublish}
             disabled={publishDashboard.isPending || selectedIds.size === 0 || !title.trim()}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {publishDashboard.isPending ? 'Publishing...' : 'Publish'}
+            {publishDashboard.isPending ? t('publishModal.publishing') : t('publishModal.publish')}
           </button>
         </div>
       </div>

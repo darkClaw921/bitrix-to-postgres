@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useTranslation } from '../i18n'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -9,6 +10,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const { login, isAuthenticated } = useAuth()
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   // Redirect if already authenticated
   if (isAuthenticated) {
@@ -25,7 +27,7 @@ export default function LoginPage() {
       await login(email, password)
       navigate('/')
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Login failed')
+      setError(err instanceof Error ? err.message : t('auth.loginFailed'))
     } finally {
       setIsLoading(false)
     }
@@ -37,7 +39,7 @@ export default function LoginPage() {
         <div className="card">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-primary-600">Bitrix24 Sync</h1>
-            <p className="text-gray-600 mt-2">Sign in to your account</p>
+            <p className="text-gray-600 mt-2">{t('auth.signInToAccount')}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -48,7 +50,7 @@ export default function LoginPage() {
             )}
 
             <div>
-              <label htmlFor="email" className="label">Email</label>
+              <label htmlFor="email" className="label">{t('auth.email')}</label>
               <input
                 id="email"
                 type="email"
@@ -61,7 +63,7 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="label">Password</label>
+              <label htmlFor="password" className="label">{t('auth.password')}</label>
               <input
                 id="password"
                 type="password"
@@ -78,7 +80,7 @@ export default function LoginPage() {
               disabled={isLoading}
               className="w-full btn btn-primary disabled:opacity-50"
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isLoading ? t('auth.signingIn') : t('auth.signIn')}
             </button>
           </form>
         </div>

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import PasswordGate from '../components/dashboards/PasswordGate'
 import SelectorBar from '../components/selectors/SelectorBar'
+import { useTranslation } from '../i18n'
 import { publicApi } from '../services/api'
 import type { Dashboard, DashboardChart, DashboardSelector, ChartSpec, ChartDataResponse, ChartDisplayConfig, FilterValue } from '../services/api'
 
@@ -15,6 +16,7 @@ interface TabData {
 
 export default function EmbedDashboardPage() {
   const { slug } = useParams<{ slug: string }>()
+  const { t } = useTranslation()
   const [token, setToken] = useState<string | null>(() => {
     if (!slug) return null
     return sessionStorage.getItem(SESSION_KEY_PREFIX + slug)
@@ -231,7 +233,7 @@ export default function EmbedDashboardPage() {
           sessionStorage.removeItem(SESSION_KEY_PREFIX + slug)
           setToken(null)
         } else {
-          setError('Failed to load dashboard')
+          setError(t('embed.dashboardNotFound'))
         }
       })
       .finally(() => setLoading(false))
@@ -270,7 +272,7 @@ export default function EmbedDashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-gray-400">Loading dashboard...</div>
+        <div className="text-gray-400">{t('embed.loadingDashboard')}</div>
       </div>
     )
   }
@@ -278,7 +280,7 @@ export default function EmbedDashboardPage() {
   if (error || !dashboard) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-red-500">{error || 'Dashboard not found'}</div>
+        <div className="text-red-500">{error || t('embed.dashboardNotFound')}</div>
       </div>
     )
   }
@@ -313,16 +315,16 @@ export default function EmbedDashboardPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                <span>Refreshing...</span>
+                <span>{t('embed.refreshing')}</span>
               </span>
             )}
             {lastUpdatedAt && (
               <span>
-                Updated: {lastUpdatedAt.toLocaleTimeString()}
+                {t('embed.updated')} {lastUpdatedAt.toLocaleTimeString()}
               </span>
             )}
             <span className="text-gray-300">|</span>
-            <span>Auto-refresh: {dashboard.refresh_interval_minutes} min</span>
+            <span>{t('embed.autoRefresh')} {dashboard.refresh_interval_minutes} min</span>
           </div>
         </div>
         {dashboard.description && (
@@ -364,7 +366,7 @@ export default function EmbedDashboardPage() {
 
         {linkedLoading ? (
           <div className="flex items-center justify-center h-64 text-gray-400">
-            Loading tab...
+            {t('embed.loadingTab')}
           </div>
         ) : (
           <div
@@ -417,6 +419,7 @@ function DashboardChartCard({
   dc: DashboardChart
   data: ChartDataResponse | null
 }) {
+  const { t } = useTranslation()
   const title = dc.title_override || dc.chart_title || 'Chart'
   const description = dc.description_override || dc.chart_description
 
@@ -460,7 +463,7 @@ function DashboardChartCard({
           <ChartRenderer spec={spec} data={data.data} height={dc.layout_h * 80} />
         ) : (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-            Loading...
+            {t('embed.loadingChartData')}
           </div>
         )}
       </div>

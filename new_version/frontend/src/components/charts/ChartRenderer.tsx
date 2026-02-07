@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import type { ChartSpec } from '../../services/api'
+import { useTranslation } from '../../i18n'
 
 const DEFAULT_COLORS = [
   '#8884d8', '#82ca9d', '#ffc658', '#ff7300',
@@ -65,6 +66,7 @@ function IndicatorRenderer({ spec, data }: { spec: ChartSpec; data: Record<strin
 }
 
 function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, unknown>[] }) {
+  const { t } = useTranslation()
   const tableCfg = spec.table ?? {}
   const columns = useMemo(() => {
     if (!data.length) return []
@@ -159,7 +161,7 @@ function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, u
                 }`}
                 onClick={() => col !== '__row_total__' && handleSort(col)}
               >
-                {col === '__row_total__' ? 'Total' : col}
+                {col === '__row_total__' ? t('common.total') : col}
                 {sortColumn === col && (
                   <span className="ml-1">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span>
                 )}
@@ -194,7 +196,7 @@ function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, u
               {columns.map((col, i) => (
                 <td key={col} className="border border-gray-200 px-3 py-2">
                   {i === 0 && !numericColumns.has(col)
-                    ? 'Total'
+                    ? t('common.total')
                     : columnTotals[col] != null
                       ? formatTableCell(columnTotals[col], tableCfg.columnFormats?.[col])
                       : ''}
@@ -213,7 +215,7 @@ function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, u
       {pageSize > 0 && totalPages > 1 && (
         <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
           <span>
-            Page {page + 1} of {totalPages} ({sortedData.length} rows)
+            {t('chartRenderer.page')} {page + 1} {t('chartRenderer.ofPages')} {totalPages} ({sortedData.length} {t('chartRenderer.rowsCount')})
           </span>
           <div className="flex gap-1">
             <button
@@ -221,14 +223,14 @@ function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, u
               disabled={page === 0}
               className="px-2 py-1 border rounded disabled:opacity-30 hover:bg-gray-100"
             >
-              Prev
+              {t('chartRenderer.prev')}
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
               className="px-2 py-1 border rounded disabled:opacity-30 hover:bg-gray-100"
             >
-              Next
+              {t('chartRenderer.next')}
             </button>
           </div>
         </div>
@@ -238,6 +240,7 @@ function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, u
 }
 
 export default function ChartRenderer({ spec, data, height = 350 }: ChartRendererProps) {
+  const { t } = useTranslation()
   const { chart_type, data_keys, colors } = spec
   const palette = colors?.length ? colors : DEFAULT_COLORS
   const xKey = data_keys.x
@@ -275,7 +278,7 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
   if (!data.length) {
     return (
       <div className="flex items-center justify-center h-48 text-gray-400">
-        No data to display
+        {t('charts.noData')}
       </div>
     )
   }

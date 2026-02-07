@@ -1,5 +1,6 @@
 import SyncCard from '../components/SyncCard'
 import ReferenceCard from '../components/ReferenceCard'
+import { useTranslation } from '../i18n'
 import {
   useSyncConfig,
   useSyncStatus,
@@ -12,6 +13,7 @@ import {
 } from '../hooks/useSync'
 
 export default function DashboardPage() {
+  const { t } = useTranslation()
   const { data: config, isLoading: configLoading } = useSyncConfig()
   const { data: status } = useSyncStatus()
   const { data: stats } = useSyncStats()
@@ -24,7 +26,7 @@ export default function DashboardPage() {
   if (configLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500">{t('common.loading')}</div>
       </div>
     )
   }
@@ -38,25 +40,25 @@ export default function DashboardPage() {
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="card bg-primary-50 border border-primary-200">
-          <div className="text-sm text-primary-600">Total Records</div>
+          <div className="text-sm text-primary-600">{t('dashboard.totalRecords')}</div>
           <div className="text-2xl font-bold text-primary-800">
             {stats?.total_records.toLocaleString() ?? 0}
           </div>
         </div>
         <div className="card bg-green-50 border border-green-200">
-          <div className="text-sm text-green-600">Entities Enabled</div>
+          <div className="text-sm text-green-600">{t('dashboard.entitiesEnabled')}</div>
           <div className="text-2xl font-bold text-green-800">
             {config?.entities.filter((e) => e.enabled).length ?? 0} / {config?.entities.length ?? 0}
           </div>
         </div>
         <div className="card bg-blue-50 border border-blue-200">
-          <div className="text-sm text-blue-600">Status</div>
+          <div className="text-sm text-blue-600">{t('dashboard.status')}</div>
           <div className="text-2xl font-bold text-blue-800 capitalize">
-            {status?.overall_status ?? 'Idle'}
+            {status?.overall_status ?? t('common.idle')}
           </div>
         </div>
         <div className="card bg-yellow-50 border border-yellow-200">
-          <div className="text-sm text-yellow-600">Tables Synced</div>
+          <div className="text-sm text-yellow-600">{t('dashboard.tablesSynced')}</div>
           <div className="text-2xl font-bold text-yellow-800">
             {Object.values(stats?.entities ?? {}).filter((e) => e.count > 0).length}
           </div>
@@ -88,13 +90,13 @@ export default function DashboardPage() {
       {refStatus && refStatus.references.length > 0 && (
         <div>
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">Reference Data</h2>
+            <h2 className="text-lg font-semibold">{t('dashboard.referenceData')}</h2>
             <button
               onClick={() => startAllRefSync.mutate()}
               disabled={startAllRefSync.isPending}
               className="btn btn-secondary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {startAllRefSync.isPending ? 'Syncing...' : 'Sync All References'}
+              {startAllRefSync.isPending ? t('dashboard.syncing') : t('dashboard.syncAllReferences')}
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -113,22 +115,22 @@ export default function DashboardPage() {
       {/* Stats Table */}
       {stats && (
         <div className="card">
-          <h2 className="text-lg font-semibold mb-4">Detailed Statistics</h2>
+          <h2 className="text-lg font-semibold mb-4">{t('dashboard.detailedStatistics')}</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Entity
+                    {t('dashboard.entity')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Records
+                    {t('dashboard.records')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Last Sync
+                    {t('dashboard.lastSync')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Last Modified
+                    {t('dashboard.lastModified')}
                   </th>
                 </tr>
               </thead>
@@ -144,12 +146,12 @@ export default function DashboardPage() {
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                       {entityStats.last_sync
                         ? new Date(entityStats.last_sync).toLocaleString()
-                        : 'Never'}
+                        : t('common.never')}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                       {entityStats.last_modified
                         ? new Date(entityStats.last_modified).toLocaleString()
-                        : 'N/A'}
+                        : t('dashboard.na')}
                     </td>
                   </tr>
                 ))}

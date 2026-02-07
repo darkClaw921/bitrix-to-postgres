@@ -27,6 +27,7 @@ import {
 } from '../hooks/useSelectors'
 import { useSchemaTables } from '../hooks/useCharts'
 import { chartsApi } from '../services/api'
+import { useTranslation } from '../i18n'
 import type { DashboardChart, DashboardLink, DashboardSelector, SelectorMapping, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
 
 const GRID_COLS = 12
@@ -36,6 +37,7 @@ export default function DashboardEditorPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const dashboardId = Number(id)
+  const { t } = useTranslation()
 
   const { data: dashboard, isLoading, refetch } = useDashboard(dashboardId)
   const { data: allDashboards } = useDashboardList(1, 100)
@@ -142,7 +144,7 @@ export default function DashboardEditorPage() {
   }
 
   const handleRemoveChart = (dcId: number) => {
-    if (!confirm('Remove this chart from the dashboard?')) return
+    if (!confirm(t('editor.confirmRemoveChart'))) return
     removeChart.mutate(
       { dashboardId, dcId },
       { onSuccess: () => refetch() },
@@ -160,11 +162,11 @@ export default function DashboardEditorPage() {
   )
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-64 text-gray-500">Loading...</div>
+    return <div className="flex items-center justify-center h-64 text-gray-500">{t('common.loading')}</div>
   }
 
   if (!dashboard) {
-    return <div className="text-center text-gray-500 py-12">Dashboard not found</div>
+    return <div className="text-center text-gray-500 py-12">{t('embed.dashboardNotFound')}</div>
   }
 
   return (
@@ -186,29 +188,29 @@ export default function DashboardEditorPage() {
                   onChange={(e) => setDescValue(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   rows={2}
-                  placeholder="Description (optional)"
+                  placeholder={t('editor.descriptionOptional')}
                 />
                 <div className="flex items-center space-x-2">
-                  <label className="text-sm text-gray-600">Auto-refresh:</label>
+                  <label className="text-sm text-gray-600">{t('editor.autoRefresh')}</label>
                   <select
                     value={refreshInterval}
                     onChange={(e) => setRefreshInterval(Number(e.target.value))}
                     className="px-2 py-1 border border-gray-300 rounded text-sm"
                   >
-                    <option value={1}>1 min</option>
-                    <option value={5}>5 min</option>
-                    <option value={10}>10 min</option>
-                    <option value={15}>15 min</option>
-                    <option value={30}>30 min</option>
-                    <option value={60}>60 min</option>
+                    <option value={1}>{t('editor.min1')}</option>
+                    <option value={5}>{t('editor.min5')}</option>
+                    <option value={10}>{t('editor.min10')}</option>
+                    <option value={15}>{t('editor.min15')}</option>
+                    <option value={30}>{t('editor.min30')}</option>
+                    <option value={60}>{t('editor.min60')}</option>
                   </select>
                 </div>
                 <div className="flex space-x-2">
                   <button onClick={handleSaveTitle} className="btn btn-primary text-sm">
-                    Save
+                    {t('common.save')}
                   </button>
                   <button onClick={() => setEditingTitle(false)} className="btn btn-secondary text-sm">
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               </div>
@@ -217,7 +219,7 @@ export default function DashboardEditorPage() {
                 <h2
                   className="text-xl font-bold cursor-pointer hover:text-blue-600"
                   onClick={() => setEditingTitle(true)}
-                  title="Click to edit"
+                  title={t('editor.clickToEdit')}
                 >
                   {dashboard.title}
                 </h2>
@@ -225,7 +227,7 @@ export default function DashboardEditorPage() {
                   <p className="text-gray-500 mt-1">{dashboard.description}</p>
                 )}
                 <p className="text-xs text-gray-400 mt-1">
-                  Auto-refresh: {dashboard.refresh_interval_minutes} min
+                  {`${t('editor.autoRefresh')} ${dashboard.refresh_interval_minutes} min`}
                 </p>
               </div>
             )}
@@ -233,14 +235,14 @@ export default function DashboardEditorPage() {
 
           <div className="flex space-x-2 ml-4">
             <button onClick={handleCopyLink} className="btn btn-secondary text-sm">
-              {copiedLink ? 'Copied!' : 'Copy Link'}
+              {copiedLink ? t('common.copied') : t('editor.copyLink')}
             </button>
             <button onClick={handleChangePassword} className="btn btn-secondary text-sm">
-              Change Password
+              {t('editor.changePassword')}
             </button>
             {layoutDirty && (
               <button onClick={handleSaveLayout} className="btn btn-primary text-sm">
-                {updateLayout.isPending ? 'Saving...' : 'Save Layout'}
+                {updateLayout.isPending ? t('common.saving') : t('editor.saveLayout')}
               </button>
             )}
           </div>
@@ -249,15 +251,15 @@ export default function DashboardEditorPage() {
         {newPassword && (
           <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded">
             <p className="text-sm text-green-700">
-              New password: <span className="font-mono font-bold">{newPassword}</span>
+              {t('editor.newPassword')} <span className="font-mono font-bold">{newPassword}</span>
             </p>
-            <p className="text-xs text-green-500 mt-1">Save this — it won't be shown again</p>
+            <p className="text-xs text-green-500 mt-1">{t('editor.newPasswordHelp')}</p>
           </div>
         )}
 
         {dashboard.charts.length > 0 && (
           <p className="mt-3 text-xs text-gray-400">
-            Drag charts to reposition. Resize by dragging the handle at bottom-right corner.
+            {t('editor.dragHelp')}
           </p>
         )}
       </div>
@@ -299,7 +301,7 @@ export default function DashboardEditorPage() {
 
       {dashboard.charts.length === 0 && (
         <div className="card text-center text-gray-400 py-12">
-          No charts in this dashboard. Add charts when publishing.
+          {t('editor.noCharts')}
         </div>
       )}
 
@@ -339,7 +341,7 @@ export default function DashboardEditorPage() {
 
       <div className="flex justify-start">
         <button onClick={() => navigate('/charts')} className="btn btn-secondary">
-          Back to Charts
+          {t('editor.backToCharts')}
         </button>
       </div>
     </div>
@@ -359,6 +361,7 @@ function EditorChartCard({
   onRemove: () => void
   onUpdateOverride: (dcId: number, field: 'title_override' | 'description_override', value: string) => void
 }) {
+  const { t } = useTranslation()
   const [editTitle, setEditTitle] = useState(false)
   const [titleVal, setTitleVal] = useState(dc.title_override || '')
   const [editDesc, setEditDesc] = useState(false)
@@ -403,7 +406,7 @@ function EditorChartCard({
                 value={titleVal}
                 onChange={(e) => setTitleVal(e.target.value)}
                 className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                placeholder="Custom title"
+                placeholder={t('editor.customTitle')}
                 onMouseDown={(e) => e.stopPropagation()}
               />
               <button
@@ -413,17 +416,17 @@ function EditorChartCard({
                 }}
                 className="text-xs text-blue-600 hover:text-blue-800"
               >
-                Save
+                {t('common.save')}
               </button>
               <button onClick={() => setEditTitle(false)} className="text-xs text-gray-400">
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           ) : (
             <h3
               className="text-sm font-semibold cursor-pointer hover:text-blue-600 truncate"
               onClick={() => setEditTitle(true)}
-              title="Click to edit title"
+              title={t('editor.clickToEditTitle')}
             >
               {title}
             </h3>
@@ -436,7 +439,7 @@ function EditorChartCard({
                 value={descVal}
                 onChange={(e) => setDescVal(e.target.value)}
                 className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs"
-                placeholder="Custom description"
+                placeholder={t('editor.customDescription')}
                 onMouseDown={(e) => e.stopPropagation()}
               />
               <button
@@ -446,19 +449,19 @@ function EditorChartCard({
                 }}
                 className="text-xs text-blue-600"
               >
-                Save
+                {t('common.save')}
               </button>
               <button onClick={() => setEditDesc(false)} className="text-xs text-gray-400">
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           ) : (
             <p
               className="text-xs text-gray-500 mt-0.5 cursor-pointer hover:text-blue-500 truncate"
               onClick={() => setEditDesc(true)}
-              title="Click to edit description"
+              title={t('editor.clickToEditDesc')}
             >
-              {description || 'Add description...'}
+              {description || t('editor.addDescription')}
             </p>
           )}
         </div>
@@ -466,9 +469,9 @@ function EditorChartCard({
         <button
           onClick={onRemove}
           className="p-1 rounded text-xs bg-red-50 text-red-500 hover:bg-red-100 ml-2 flex-shrink-0"
-          title="Remove from dashboard"
+          title={t('editor.removeFromDashboard')}
         >
-          Remove
+          {t('editor.removeChart')}
         </button>
       </div>
 
@@ -477,7 +480,7 @@ function EditorChartCard({
           <ChartRenderer spec={spec} data={data.data} height={chartHeight} />
         ) : (
           <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-            Loading chart data...
+            {t('embed.loadingChartData')}
           </div>
         )}
       </div>
@@ -502,6 +505,7 @@ function LinkedDashboardsSection({
   onUpdateOrder: (links: { id: number; sort_order: number }[]) => void
   isAdding: boolean
 }) {
+  const { t } = useTranslation()
   const [selectedId, setSelectedId] = useState<number | ''>('')
   const [labelValue, setLabelValue] = useState('')
 
@@ -540,9 +544,9 @@ function LinkedDashboardsSection({
 
   return (
     <div className="card">
-      <h3 className="text-lg font-semibold mb-3">Linked Dashboards (Tabs)</h3>
+      <h3 className="text-lg font-semibold mb-3">{t('editor.linkedDashboards')}</h3>
       <p className="text-xs text-gray-400 mb-4">
-        Link other dashboards to display as tabs on the public embed page.
+        {t('editor.linkedDescription')}
       </p>
 
       {/* Existing links */}
@@ -567,7 +571,7 @@ function LinkedDashboardsSection({
                   onClick={() => handleMoveUp(index)}
                   disabled={index === 0}
                   className="p-1 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                  title="Move up"
+                  title={t('editor.moveUp')}
                 >
                   &uarr;
                 </button>
@@ -575,16 +579,16 @@ function LinkedDashboardsSection({
                   onClick={() => handleMoveDown(index)}
                   disabled={index >= linkedDashboards.length - 1}
                   className="p-1 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                  title="Move down"
+                  title={t('editor.moveDown')}
                 >
                   &darr;
                 </button>
                 <button
                   onClick={() => onRemoveLink(link.id)}
                   className="p-1 text-xs text-red-500 hover:text-red-700"
-                  title="Remove link"
+                  title={t('editor.removeLink')}
                 >
-                  Remove
+                  {t('common.remove')}
                 </button>
               </div>
             </div>
@@ -596,13 +600,13 @@ function LinkedDashboardsSection({
       {availableDashboards.length > 0 && (
         <div className="flex items-end space-x-2">
           <div className="flex-1">
-            <label className="block text-xs text-gray-500 mb-1">Dashboard</label>
+            <label className="block text-xs text-gray-500 mb-1">{t('editor.dashboard')}</label>
             <select
               value={selectedId}
               onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : '')}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
-              <option value="">Select dashboard...</option>
+              <option value="">{t('editor.selectDashboard')}</option>
               {availableDashboards.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.title}
@@ -611,13 +615,13 @@ function LinkedDashboardsSection({
             </select>
           </div>
           <div className="w-48">
-            <label className="block text-xs text-gray-500 mb-1">Tab label (optional)</label>
+            <label className="block text-xs text-gray-500 mb-1">{t('editor.tabLabel')}</label>
             <input
               type="text"
               value={labelValue}
               onChange={(e) => setLabelValue(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              placeholder="Custom label"
+              placeholder={t('editor.customLabel')}
             />
           </div>
           <button
@@ -625,14 +629,14 @@ function LinkedDashboardsSection({
             disabled={!selectedId || isAdding}
             className="btn btn-primary text-sm"
           >
-            {isAdding ? 'Adding...' : 'Add'}
+            {isAdding ? t('editor.adding') : t('common.add')}
           </button>
         </div>
       )}
 
       {availableDashboards.length === 0 && linkedDashboards.length === 0 && (
         <p className="text-sm text-gray-400">
-          No other published dashboards available to link.
+          {t('editor.noLinkedDashboards')}
         </p>
       )}
     </div>
@@ -672,6 +676,7 @@ function SelectorsSection({
   charts: DashboardChart[]
   onRefetch: () => void
 }) {
+  const { t } = useTranslation()
   const createSelector = useCreateSelector()
   const deleteSelector = useDeleteSelector()
   const addMapping = useAddSelectorMapping()
@@ -752,7 +757,7 @@ function SelectorsSection({
   }
 
   const handleDelete = (selectorId: number) => {
-    if (!confirm('Delete this selector and all its mappings?')) return
+    if (!confirm(t('editor.confirmDeleteSelector'))) return
     deleteSelector.mutate(
       { dashboardId, selectorId },
       { onSuccess: () => onRefetch() },
@@ -806,7 +811,7 @@ function SelectorsSection({
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold">Selectors (Filters)</h3>
+        <h3 className="text-lg font-semibold">{t('editor.selectorsFilters')}</h3>
         <div className="flex space-x-2">
           <button
             onClick={handleGenerate}
@@ -814,23 +819,23 @@ function SelectorsSection({
             className="btn btn-secondary text-sm"
             title="Generate selectors with AI based on chart queries"
           >
-            {generateSelectors.isPending ? 'Generating...' : 'Generate with AI'}
+            {generateSelectors.isPending ? t('common.generating') : t('editor.generateWithAi')}
           </button>
           <button
             onClick={() => setShowForm(!showForm)}
             className="btn btn-primary text-sm"
           >
-            {showForm ? 'Cancel' : 'Add Selector'}
+            {showForm ? t('common.cancel') : t('editor.addSelector')}
           </button>
         </div>
       </div>
       {generateSelectors.isError && (
         <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
-          {(generateSelectors.error as Error)?.message || 'Failed to generate selectors'}
+          {(generateSelectors.error as Error)?.message || t('editor.failedToGenerateSelectors')}
         </div>
       )}
       <p className="text-xs text-gray-400 mb-4">
-        Add filter controls that users can use on the public dashboard to filter chart data.
+        {t('editor.selectorDescription')}
       </p>
 
       {/* Create form */}
@@ -838,7 +843,7 @@ function SelectorsSection({
         <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Internal name</label>
+              <label className="block text-xs text-gray-500 mb-1">{t('editor.internalName')}</label>
               <input
                 type="text"
                 value={formName}
@@ -848,7 +853,7 @@ function SelectorsSection({
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Display label</label>
+              <label className="block text-xs text-gray-500 mb-1">{t('editor.displayLabel')}</label>
               <input
                 type="text"
                 value={formLabel}
@@ -860,21 +865,21 @@ function SelectorsSection({
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Type</label>
+              <label className="block text-xs text-gray-500 mb-1">{t('editor.selectorType')}</label>
               <select
                 value={formType}
                 onChange={(e) => setFormType(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               >
-                {SELECTOR_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
+                {SELECTOR_TYPES.map((st) => (
+                  <option key={st.value} value={st.value}>
+                    {st.label}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Operator</label>
+              <label className="block text-xs text-gray-500 mb-1">{t('editor.operator')}</label>
               <select
                 value={formOperator}
                 onChange={(e) => setFormOperator(e.target.value)}
@@ -895,7 +900,7 @@ function SelectorsSection({
                   onChange={(e) => setFormRequired(e.target.checked)}
                   className="mr-2"
                 />
-                Required
+                {t('common.required')}
               </label>
             </div>
           </div>
@@ -905,7 +910,7 @@ function SelectorsSection({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-gray-500">Source table (for options)</label>
+                  <label className="text-xs text-gray-500">{t('editor.sourceTable')}</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -915,7 +920,7 @@ function SelectorsSection({
                     }}
                     className="text-[10px] text-blue-500 hover:text-blue-700"
                   >
-                    {sourceTableMode === 'select' ? 'type manually' : 'pick from list'}
+                    {sourceTableMode === 'select' ? t('editor.typeManually') : t('editor.pickFromList')}
                   </button>
                 </div>
                 {sourceTableMode === 'manual' ? (
@@ -935,10 +940,10 @@ function SelectorsSection({
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   >
-                    <option value="">Select table...</option>
-                    {(tablesData?.tables || []).map((t) => (
-                      <option key={t.table_name} value={t.table_name}>
-                        {t.table_name}
+                    <option value="">{t('editor.selectTable')}</option>
+                    {(tablesData?.tables || []).map((tbl) => (
+                      <option key={tbl.table_name} value={tbl.table_name}>
+                        {tbl.table_name}
                       </option>
                     ))}
                   </select>
@@ -946,7 +951,7 @@ function SelectorsSection({
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-gray-500">Source column</label>
+                  <label className="text-xs text-gray-500">{t('editor.sourceColumn')}</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -955,7 +960,7 @@ function SelectorsSection({
                     }}
                     className="text-[10px] text-blue-500 hover:text-blue-700"
                   >
-                    {sourceColumnMode === 'select' ? 'type manually' : 'pick from list'}
+                    {sourceColumnMode === 'select' ? t('editor.typeManually') : t('editor.pickFromList')}
                   </button>
                 </div>
                 {sourceColumnMode === 'manual' ? (
@@ -973,10 +978,10 @@ function SelectorsSection({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     disabled={!formSourceTable}
                   >
-                    <option value="">{formSourceTable ? 'Select column...' : 'Select table first...'}</option>
+                    <option value="">{formSourceTable ? t('editor.selectColumn') : t('editor.selectTableFirst')}</option>
                     {formSourceTable &&
                       (tablesData?.tables || [])
-                        .find((t) => t.table_name === formSourceTable)
+                        .find((tbl) => tbl.table_name === formSourceTable)
                         ?.columns.map((col) => (
                           <option key={col.name} value={col.name}>
                             {col.name} ({col.data_type})
@@ -991,7 +996,7 @@ function SelectorsSection({
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-gray-500">Label table (optional)</label>
+                  <label className="text-xs text-gray-500">{t('editor.labelTable')}</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -1002,7 +1007,7 @@ function SelectorsSection({
                     }}
                     className="text-[10px] text-blue-500 hover:text-blue-700"
                   >
-                    {labelTableMode === 'select' ? 'type manually' : 'pick from list'}
+                    {labelTableMode === 'select' ? t('editor.typeManually') : t('editor.pickFromList')}
                   </button>
                 </div>
                 {labelTableMode === 'manual' ? (
@@ -1023,10 +1028,10 @@ function SelectorsSection({
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   >
-                    <option value="">Select table...</option>
-                    {(tablesData?.tables || []).map((t) => (
-                      <option key={t.table_name} value={t.table_name}>
-                        {t.table_name}
+                    <option value="">{t('editor.selectTable')}</option>
+                    {(tablesData?.tables || []).map((tbl) => (
+                      <option key={tbl.table_name} value={tbl.table_name}>
+                        {tbl.table_name}
                       </option>
                     ))}
                   </select>
@@ -1034,7 +1039,7 @@ function SelectorsSection({
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-gray-500">Label column</label>
+                  <label className="text-xs text-gray-500">{t('editor.labelColumn')}</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -1043,7 +1048,7 @@ function SelectorsSection({
                     }}
                     className="text-[10px] text-blue-500 hover:text-blue-700"
                   >
-                    {labelColumnMode === 'select' ? 'type manually' : 'pick from list'}
+                    {labelColumnMode === 'select' ? t('editor.typeManually') : t('editor.pickFromList')}
                   </button>
                 </div>
                 {labelColumnMode === 'manual' ? (
@@ -1061,10 +1066,10 @@ function SelectorsSection({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     disabled={!formLabelTable}
                   >
-                    <option value="">{formLabelTable ? 'Select column...' : 'Select label table first...'}</option>
+                    <option value="">{formLabelTable ? t('editor.selectColumn') : t('editor.selectLabelTableFirst')}</option>
                     {formLabelTable &&
                       (tablesData?.tables || [])
-                        .find((t) => t.table_name === formLabelTable)
+                        .find((tbl) => tbl.table_name === formLabelTable)
                         ?.columns.map((col) => (
                           <option key={col.name} value={col.name}>
                             {col.name} ({col.data_type})
@@ -1075,7 +1080,7 @@ function SelectorsSection({
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-gray-500">Label value column (join key)</label>
+                  <label className="text-xs text-gray-500">{t('editor.labelValueColumn')}</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -1084,7 +1089,7 @@ function SelectorsSection({
                     }}
                     className="text-[10px] text-blue-500 hover:text-blue-700"
                   >
-                    {labelValueColumnMode === 'select' ? 'type manually' : 'pick from list'}
+                    {labelValueColumnMode === 'select' ? t('editor.typeManually') : t('editor.pickFromList')}
                   </button>
                 </div>
                 {labelValueColumnMode === 'manual' ? (
@@ -1102,10 +1107,10 @@ function SelectorsSection({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     disabled={!formLabelTable}
                   >
-                    <option value="">{formLabelTable ? 'Select column...' : 'Select label table first...'}</option>
+                    <option value="">{formLabelTable ? t('editor.selectColumn') : t('editor.selectLabelTableFirst')}</option>
                     {formLabelTable &&
                       (tablesData?.tables || [])
-                        .find((t) => t.table_name === formLabelTable)
+                        .find((tbl) => tbl.table_name === formLabelTable)
                         ?.columns.map((col) => (
                           <option key={col.name} value={col.name}>
                             {col.name} ({col.data_type})
@@ -1123,7 +1128,7 @@ function SelectorsSection({
             disabled={!formName.trim() || !formLabel.trim() || createSelector.isPending}
             className="btn btn-primary text-sm"
           >
-            {createSelector.isPending ? 'Creating...' : 'Create Selector'}
+            {createSelector.isPending ? t('editor.creating') : t('editor.createSelector')}
           </button>
         </div>
       )}
@@ -1138,28 +1143,28 @@ function SelectorsSection({
                   <span className="text-sm font-medium">{sel.label}</span>
                   <span className="text-xs text-gray-400 ml-2">({sel.name})</span>
                   <span className="text-xs text-gray-400 ml-2">
-                    {SELECTOR_TYPES.find((t) => t.value === sel.selector_type)?.label || sel.selector_type}
+                    {SELECTOR_TYPES.find((st) => st.value === sel.selector_type)?.label || sel.selector_type}
                   </span>
                   <span className="text-xs text-gray-400 ml-2">
                     [{OPERATORS.find((o) => o.value === sel.operator)?.label || sel.operator}]
                   </span>
                   {sel.is_required && (
-                    <span className="text-xs text-red-400 ml-2">Required</span>
+                    <span className="text-xs text-red-400 ml-2">{t('common.required')}</span>
                   )}
                 </div>
                 <button
                   onClick={() => handleDelete(sel.id)}
                   className="text-xs text-red-500 hover:text-red-700"
                 >
-                  Delete
+                  {t('editor.deleteSelector')}
                 </button>
               </div>
 
               {/* Mappings */}
               <div className="pl-4 space-y-1">
-                <p className="text-xs text-gray-500 font-medium">Chart Mappings:</p>
+                <p className="text-xs text-gray-500 font-medium">{t('editor.chartMappings')}</p>
                 {sel.mappings.length === 0 && (
-                  <p className="text-xs text-gray-400 italic">No mappings — this selector won't filter any charts</p>
+                  <p className="text-xs text-gray-400 italic">{t('editor.noMappings')}</p>
                 )}
                 {sel.mappings.map((m: SelectorMapping) => {
                   const chart = charts.find((c) => c.id === m.dashboard_chart_id)
@@ -1180,7 +1185,7 @@ function SelectorsSection({
                         onClick={() => handleRemoveMapping(sel.id, m.id)}
                         className="text-red-400 hover:text-red-600"
                       >
-                        Remove
+                        {t('common.remove')}
                       </button>
                     </div>
                   )
@@ -1200,7 +1205,7 @@ function SelectorsSection({
                         }}
                         className="px-2 py-1 border border-gray-300 rounded text-xs"
                       >
-                        <option value="">Select chart...</option>
+                        <option value="">{t('editor.selectChart')}</option>
                         {charts
                           .filter((c) => !sel.mappings.some((m: SelectorMapping) => m.dashboard_chart_id === c.id))
                           .map((c) => (
@@ -1212,7 +1217,7 @@ function SelectorsSection({
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-0.5">
-                        <label className="text-xs text-gray-500">Target column</label>
+                        <label className="text-xs text-gray-500">{t('editor.targetColumn')}</label>
                         <button
                           type="button"
                           onClick={() => {
@@ -1221,7 +1226,7 @@ function SelectorsSection({
                           }}
                           className="text-[10px] text-blue-500 hover:text-blue-700"
                         >
-                          {mappingColumnMode === 'select' ? 'type manually' : 'pick from list'}
+                          {mappingColumnMode === 'select' ? t('editor.typeManually') : t('editor.pickFromList')}
                         </button>
                       </div>
                       {mappingColumnMode === 'manual' ? (
@@ -1246,7 +1251,7 @@ function SelectorsSection({
                       disabled={!mappingChartId || !mappingColumn.trim()}
                       className="text-xs text-blue-600 hover:text-blue-800"
                     >
-                      Add
+                      {t('common.add')}
                     </button>
                     <button
                       onClick={() => {
@@ -1257,7 +1262,7 @@ function SelectorsSection({
                       }}
                       className="text-xs text-gray-400"
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                   </div>
                 ) : (
@@ -1265,7 +1270,7 @@ function SelectorsSection({
                     onClick={() => setAddingMappingFor(sel.id)}
                     className="text-xs text-blue-500 hover:text-blue-700 mt-1"
                   >
-                    + Add mapping
+                    {t('editor.addMapping')}
                   </button>
                 )}
               </div>
@@ -1276,7 +1281,7 @@ function SelectorsSection({
 
       {selectors.length === 0 && !showForm && (
         <p className="text-sm text-gray-400">
-          No selectors configured. Add selectors to enable filtering on the public dashboard.
+          {t('editor.noSelectors')}
         </p>
       )}
     </div>
@@ -1294,13 +1299,14 @@ function ColumnPicker({
   value: string
   onChange: (v: string) => void
 }) {
+  const { t } = useTranslation()
   const { data, isLoading } = useChartColumns(dashboardId, dcId)
   const columns = data?.columns || []
 
   if (!dcId) {
     return (
       <select disabled className="px-2 py-1 border border-gray-300 rounded text-xs w-40 text-gray-400">
-        <option>Select chart first...</option>
+        <option>{t('editor.selectChartFirst')}</option>
       </select>
     )
   }
@@ -1308,7 +1314,7 @@ function ColumnPicker({
   if (isLoading) {
     return (
       <select disabled className="px-2 py-1 border border-gray-300 rounded text-xs w-40 text-gray-400">
-        <option>Loading columns...</option>
+        <option>{t('editor.loadingColumns')}</option>
       </select>
     )
   }
@@ -1331,7 +1337,7 @@ function ColumnPicker({
       onChange={(e) => onChange(e.target.value)}
       className="px-2 py-1 border border-gray-300 rounded text-xs w-40"
     >
-      <option value="">Select column...</option>
+      <option value="">{t('editor.selectColumn')}</option>
       {columns.map((col) => (
         <option key={col} value={col}>
           {col}

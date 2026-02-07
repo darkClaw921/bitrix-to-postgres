@@ -1,4 +1,5 @@
 import { SyncConfigItem, SyncStatusItem } from '../services/api'
+import { useTranslation } from '../i18n'
 
 interface SyncCardProps {
   config: SyncConfigItem
@@ -15,11 +16,12 @@ export default function SyncCard({
   onToggleEnabled,
   isStarting,
 }: SyncCardProps) {
+  const { t } = useTranslation()
   const isRunning = status?.status === 'running'
   const isFailed = status?.status === 'failed'
 
   const formatDate = (date: string | null) => {
-    if (!date) return 'Never'
+    if (!date) return t('common.never')
     return new Date(date).toLocaleString()
   }
 
@@ -31,10 +33,10 @@ export default function SyncCard({
   }
 
   const getStatusText = () => {
-    if (isRunning) return 'Syncing...'
-    if (isFailed) return 'Failed'
-    if (status?.status === 'completed') return 'Completed'
-    return 'Idle'
+    if (isRunning) return t('syncCard.syncing')
+    if (isFailed) return t('syncCard.failed')
+    if (status?.status === 'completed') return t('syncCard.completed')
+    return t('common.idle')
   }
 
   return (
@@ -52,26 +54,26 @@ export default function SyncCard({
             className="sr-only peer"
           />
           <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-          <span className="ml-2 text-sm text-gray-600">Enabled</span>
+          <span className="ml-2 text-sm text-gray-600">{t('common.enabled')}</span>
         </label>
       </div>
 
       <div className="grid grid-cols-2 gap-4 text-sm mb-4">
         <div>
-          <span className="text-gray-500">Last Sync:</span>
+          <span className="text-gray-500">{t('syncCard.lastSync')}</span>
           <p className="font-medium">{formatDate(config.last_sync_at)}</p>
         </div>
         <div>
-          <span className="text-gray-500">Interval:</span>
-          <p className="font-medium">{config.sync_interval_minutes} minutes</p>
+          <span className="text-gray-500">{t('syncCard.interval')}</span>
+          <p className="font-medium">{config.sync_interval_minutes} {t('syncCard.minutes')}</p>
         </div>
         <div>
-          <span className="text-gray-500">Records:</span>
+          <span className="text-gray-500">{t('dashboard.records')}:</span>
           <p className="font-medium">{status?.records_synced ?? 0}</p>
         </div>
         <div>
-          <span className="text-gray-500">Webhooks:</span>
-          <p className="font-medium">{config.webhook_enabled ? 'Enabled' : 'Disabled'}</p>
+          <span className="text-gray-500">{t('syncCard.webhooks')}</span>
+          <p className="font-medium">{config.webhook_enabled ? t('common.enabled') : t('common.disabled')}</p>
         </div>
       </div>
 
@@ -87,14 +89,14 @@ export default function SyncCard({
           disabled={isRunning || isStarting || !config.enabled}
           className="btn btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isRunning ? 'Syncing...' : 'Full Sync'}
+          {isRunning ? t('syncCard.syncing') : t('syncCard.fullSync')}
         </button>
         <button
           onClick={() => onStartSync('incremental')}
           disabled={isRunning || isStarting || !config.enabled}
           className="btn btn-secondary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Incremental
+          {t('monitoring.incremental')}
         </button>
       </div>
     </div>

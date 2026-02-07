@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from '../../i18n'
 
 const getOptValue = (opt: unknown): string =>
   typeof opt === 'object' && opt !== null && 'value' in opt ? String((opt as { value: unknown }).value) : String(opt)
@@ -17,6 +18,7 @@ export default function MultiSelectSelector({ value, onChange, options, placehol
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const selected = value || []
+  const { t } = useTranslation()
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -35,7 +37,7 @@ export default function MultiSelectSelector({ value, onChange, options, placehol
     onChange(next.length > 0 ? next : null)
   }
 
-  const displayText = selected.length > 0 ? `${selected.length} selected` : (placeholder || 'Select...')
+  const displayText = selected.length > 0 ? `${selected.length} ${t('selectors.selected')}` : (placeholder || t('selectors.select'))
 
   return (
     <div className="relative" ref={ref}>
@@ -74,7 +76,7 @@ export default function MultiSelectSelector({ value, onChange, options, placehol
             )
           })}
           {options.length === 0 && (
-            <div className="px-3 py-2 text-sm text-gray-400">No options</div>
+            <div className="px-3 py-2 text-sm text-gray-400">{t('selectors.noOptions')}</div>
           )}
         </div>
       )}

@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useSyncConfig, useUpdateSyncConfig } from '../hooks/useSync'
 import { webhooksApi } from '../services/api'
+import { useTranslation } from '../i18n'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 
 export default function ConfigPage() {
+  const { t } = useTranslation()
   const { data: config, isLoading } = useSyncConfig()
   const updateConfig = useUpdateSyncConfig()
   const [webhookBaseUrl, setWebhookBaseUrl] = useState('')
@@ -32,7 +35,7 @@ export default function ConfigPage() {
         `Registered: ${result.registered.length} events. Failed: ${result.failed.length}`
       )
     } catch (err) {
-      setWebhookStatus('Failed to register webhooks')
+      setWebhookStatus(t('config.failedToRegister'))
     } finally {
       setIsRegisteringWebhooks(false)
     }
@@ -45,7 +48,7 @@ export default function ConfigPage() {
       const result = await webhooksApi.unregister(webhookBaseUrl || undefined)
       setWebhookStatus(`Unregistered: ${result.unregistered.length} events`)
     } catch (err) {
-      setWebhookStatus('Failed to unregister webhooks')
+      setWebhookStatus(t('config.failedToUnregister'))
     } finally {
       setIsRegisteringWebhooks(false)
     }
@@ -54,33 +57,33 @@ export default function ConfigPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500">{t('common.loading')}</div>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Configuration</h1>
+      <h1 className="text-2xl font-bold">{t('config.configuration')}</h1>
 
       {/* Entity Configuration */}
       <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Sync Configuration</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('config.syncConfiguration')}</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Entity
+                  {t('dashboard.entity')}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Enabled
+                  {t('common.enabled')}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Sync Interval
+                  {t('config.syncInterval')}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Webhooks
+                  {t('config.webhooks')}
                 </th>
               </tr>
             </thead>
@@ -114,15 +117,15 @@ export default function ConfigPage() {
                       }
                       className="input w-32"
                     >
-                      <option value={5}>5 min</option>
-                      <option value={10}>10 min</option>
-                      <option value={15}>15 min</option>
-                      <option value={30}>30 min</option>
-                      <option value={60}>1 hour</option>
-                      <option value={120}>2 hours</option>
-                      <option value={360}>6 hours</option>
-                      <option value={720}>12 hours</option>
-                      <option value={1440}>24 hours</option>
+                      <option value={5}>{t('config.min5')}</option>
+                      <option value={10}>{t('config.min10')}</option>
+                      <option value={15}>{t('config.min15')}</option>
+                      <option value={30}>{t('config.min30')}</option>
+                      <option value={60}>{t('config.hour1')}</option>
+                      <option value={120}>{t('config.hours2')}</option>
+                      <option value={360}>{t('config.hours6')}</option>
+                      <option value={720}>{t('config.hours12')}</option>
+                      <option value={1440}>{t('config.hours24')}</option>
                     </select>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
@@ -147,14 +150,14 @@ export default function ConfigPage() {
 
       {/* Webhook Registration */}
       <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Webhook Registration</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('config.webhookRegistration')}</h2>
         <p className="text-sm text-gray-600 mb-4">
-          Register webhook handlers with Bitrix24 to receive real-time updates.
+          {t('config.webhookDescription')}
         </p>
 
         <div className="space-y-4">
           <div>
-            <label className="label">Webhook Handler URL (optional)</label>
+            <label className="label">{t('config.webhookHandlerUrl')}</label>
             <input
               type="url"
               value={webhookBaseUrl}
@@ -163,7 +166,7 @@ export default function ConfigPage() {
               className="input"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Leave empty to use default server URL
+              {t('config.webhookHelperText')}
             </p>
           </div>
 
@@ -179,17 +182,23 @@ export default function ConfigPage() {
               disabled={isRegisteringWebhooks}
               className="btn btn-primary disabled:opacity-50"
             >
-              {isRegisteringWebhooks ? 'Registering...' : 'Register Webhooks'}
+              {isRegisteringWebhooks ? t('config.registering') : t('config.registerWebhooks')}
             </button>
             <button
               onClick={handleUnregisterWebhooks}
               disabled={isRegisteringWebhooks}
               className="btn btn-danger disabled:opacity-50"
             >
-              {isRegisteringWebhooks ? 'Processing...' : 'Unregister All'}
+              {isRegisteringWebhooks ? t('config.processing') : t('config.unregisterAll')}
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Language */}
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-4">{t('config.language')}</h2>
+        <LanguageSwitcher />
       </div>
     </div>
   )

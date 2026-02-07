@@ -5,9 +5,11 @@ import DashboardCard from '../components/dashboards/DashboardCard'
 import PublishModal from '../components/dashboards/PublishModal'
 import { useGenerateChart, useSaveChart, useSavedCharts } from '../hooks/useCharts'
 import { useDashboardList } from '../hooks/useDashboards'
+import { useTranslation } from '../i18n'
 import type { ChartGenerateResponse } from '../services/api'
 
 export default function ChartsPage() {
+  const { t } = useTranslation()
   const [prompt, setPrompt] = useState('')
   const [preview, setPreview] = useState<ChartGenerateResponse | null>(null)
   const [showPublishModal, setShowPublishModal] = useState(false)
@@ -56,14 +58,14 @@ export default function ChartsPage() {
     <div className="space-y-6">
       {/* Generation Section */}
       <div className="card">
-        <h2 className="text-lg font-semibold mb-4">AI Chart Generator</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('charts.aiGenerator')}</h2>
         <div className="flex space-x-3">
           <input
             type="text"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-            placeholder="Describe the chart you want, e.g. 'Show deals count by stage as a bar chart'"
+            placeholder={t('charts.generatePlaceholder')}
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
           <button
@@ -71,13 +73,13 @@ export default function ChartsPage() {
             disabled={generateChart.isPending || !prompt.trim()}
             className="btn btn-primary px-6 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {generateChart.isPending ? 'Generating...' : 'Generate'}
+            {generateChart.isPending ? t('common.generating') : t('common.generate')}
           </button>
         </div>
 
         {generateChart.isError && (
           <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-            {(generateChart.error as Error).message || 'Failed to generate chart'}
+            {(generateChart.error as Error).message || t('charts.failedToGenerate')}
           </div>
         )}
       </div>
@@ -98,10 +100,10 @@ export default function ChartsPage() {
                 disabled={saveChart.isPending}
                 className="btn btn-primary disabled:opacity-50"
               >
-                {saveChart.isPending ? 'Saving...' : 'Save'}
+                {saveChart.isPending ? t('common.saving') : t('common.save')}
               </button>
               <button onClick={handleDiscard} className="btn btn-secondary">
-                Discard
+                {t('charts.discard')}
               </button>
             </div>
           </div>
@@ -110,14 +112,14 @@ export default function ChartsPage() {
 
           <div className="mt-3 flex justify-between text-xs text-gray-400">
             <span>
-              {preview.row_count} rows | {preview.execution_time_ms.toFixed(0)}ms
+              {preview.row_count} {t('charts.rows')} | {preview.execution_time_ms.toFixed(0)}ms
             </span>
             <span>Type: {preview.chart.chart_type}</span>
           </div>
 
           <details className="mt-3">
             <summary className="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
-              Show SQL Query
+              {t('charts.showSqlQuery')}
             </summary>
             <pre className="mt-2 p-3 bg-gray-50 rounded text-xs overflow-x-auto">
               {preview.chart.sql_query}
@@ -130,23 +132,23 @@ export default function ChartsPage() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">
-            Saved Charts {savedData ? `(${savedData.total})` : ''}
+            {t('charts.savedCharts')} {savedData ? `(${savedData.total})` : ''}
           </h2>
           {savedData && savedData.charts.length > 0 && (
             <button
               onClick={() => setShowPublishModal(true)}
               className="btn btn-primary text-sm"
             >
-              Publish Dashboard
+              {t('charts.publishDashboard')}
             </button>
           )}
         </div>
 
         {savedLoading ? (
-          <div className="flex items-center justify-center h-32 text-gray-500">Loading...</div>
+          <div className="flex items-center justify-center h-32 text-gray-500">{t('common.loading')}</div>
         ) : !savedData?.charts.length ? (
           <div className="card text-center text-gray-400 py-12">
-            No saved charts yet. Generate and save your first chart above.
+            {t('charts.noSavedCharts')}
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -161,7 +163,7 @@ export default function ChartsPage() {
       {dashboardsData && dashboardsData.dashboards.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-4">
-            Published Dashboards ({dashboardsData.total})
+            {t('charts.publishedDashboards')} ({dashboardsData.total})
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {dashboardsData.dashboards.map((d) => (

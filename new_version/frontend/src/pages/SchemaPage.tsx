@@ -7,8 +7,10 @@ import {
   useUpdateSchemaDescription,
   useSchemaTables,
 } from '../hooks/useCharts'
+import { useTranslation } from '../i18n'
 
 export default function SchemaPage() {
+  const { t } = useTranslation()
   const { data: newDescription, refetch, isFetching, isError, error } = useSchemaDescription()
   const { data: rawDescription, refetch: refetchRaw, isFetching: isRawFetching } = useSchemaDescribeRaw()
   const { data: history, isLoading: historyLoading } = useSchemaHistory()
@@ -73,18 +75,18 @@ export default function SchemaPage() {
       {/* AI Description Section */}
       <div className="card">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">AI Schema Description</h2>
+          <h2 className="text-lg font-semibold">{t('schema.aiDescription')}</h2>
           <div className="flex gap-2">
             {currentDescription && !isEditing && (
               <>
                 <button onClick={handleEdit} className="btn btn-secondary">
-                  Edit
+                  {t('common.edit')}
                 </button>
                 <button
                   onClick={handleCopy}
                   className={`btn ${copySuccess ? 'btn-success' : 'btn-secondary'}`}
                 >
-                  {copySuccess ? '✓ Copied!' : 'Copy All'}
+                  {copySuccess ? `✓ ${t('common.copied')}` : t('schema.copyAll')}
                 </button>
               </>
             )}
@@ -95,10 +97,10 @@ export default function SchemaPage() {
                   disabled={updateMutation.isPending}
                   className="btn btn-primary disabled:opacity-50"
                 >
-                  {updateMutation.isPending ? 'Saving...' : 'Save'}
+                  {updateMutation.isPending ? t('common.saving') : t('common.save')}
                 </button>
                 <button onClick={handleCancel} className="btn btn-secondary">
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </>
             )}
@@ -109,14 +111,14 @@ export default function SchemaPage() {
                   disabled={isRawFetching || isFetching}
                   className="btn btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isRawFetching ? 'Generating...' : 'Generate Raw'}
+                  {isRawFetching ? t('common.generating') : t('schema.generateRaw')}
                 </button>
                 <button
                   onClick={() => refetch()}
                   disabled={isFetching || isRawFetching}
                   className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isFetching ? 'Generating...' : 'Regenerate (AI)'}
+                  {isFetching ? t('common.generating') : t('schema.regenerateAi')}
                 </button>
               </>
             )}
@@ -125,26 +127,26 @@ export default function SchemaPage() {
 
         {isError && (
           <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-            {(error as Error).message || 'Failed to generate description'}
+            {(error as Error).message || t('schema.failedToGenerate')}
           </div>
         )}
 
         {updateMutation.isError && (
           <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700 mb-4">
-            Failed to save changes
+            {t('schema.failedToSave')}
           </div>
         )}
 
         {historyLoading && !currentDescription ? (
           <div className="flex items-center justify-center h-32 text-gray-500">
-            Loading last description...
+            {t('schema.loadingLast')}
           </div>
         ) : isEditing ? (
           <textarea
             value={editedMarkdown}
             onChange={(e) => setEditedMarkdown(e.target.value)}
             className="w-full h-96 p-4 border border-gray-300 rounded font-mono text-sm"
-            placeholder="Edit markdown here..."
+            placeholder={t('schema.editPlaceholder')}
           />
         ) : currentDescription?.markdown ? (
           <div className="prose prose-sm max-w-none">
@@ -152,26 +154,26 @@ export default function SchemaPage() {
           </div>
         ) : (
           <div className="text-center text-gray-400 py-8">
-            Click "Generate Raw" for a fast schema description from DB metadata, or "Regenerate (AI)" for an AI-powered description.
+            {t('schema.emptyState')}
           </div>
         )}
 
         {currentDescription && (
           <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
-            Last updated: {new Date(currentDescription.updated_at).toLocaleString()}
+            {t('schema.lastUpdated')} {new Date(currentDescription.updated_at).toLocaleString()}
           </div>
         )}
       </div>
 
       {/* Raw Schema Section */}
       <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Database Tables</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('schema.databaseTables')}</h2>
 
         {tablesLoading ? (
-          <div className="flex items-center justify-center h-32 text-gray-500">Loading...</div>
+          <div className="flex items-center justify-center h-32 text-gray-500">{t('common.loading')}</div>
         ) : !tablesData?.tables.length ? (
           <div className="text-center text-gray-400 py-8">
-            No CRM tables found. Run a sync first.
+            {t('schema.noTablesFound')}
           </div>
         ) : (
           <div className="space-y-4">
@@ -189,16 +191,16 @@ export default function SchemaPage() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          Column
+                          {t('schema.column')}
                         </th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          Type
+                          {t('monitoring.type')}
                         </th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          Nullable
+                          {t('schema.nullable')}
                         </th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                          Default
+                          {t('schema.default')}
                         </th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           Description
@@ -214,7 +216,7 @@ export default function SchemaPage() {
                             <span
                               className={`text-xs ${col.is_nullable ? 'text-yellow-600' : 'text-green-600'}`}
                             >
-                              {col.is_nullable ? 'YES' : 'NO'}
+                              {col.is_nullable ? t('common.yes') : t('common.no')}
                             </span>
                           </td>
                           <td className="px-3 py-2 text-gray-400 text-xs">{col.column_default || '-'}</td>

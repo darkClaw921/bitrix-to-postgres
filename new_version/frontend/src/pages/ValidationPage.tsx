@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
+import { useTranslation } from '../i18n'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -26,6 +27,7 @@ interface ValidationResponse {
 const ENTITY_TYPES = ['deal', 'contact', 'lead', 'company']
 
 export default function ValidationPage() {
+  const { t } = useTranslation()
   const [selectedEntity, setSelectedEntity] = useState('deal')
 
   const { data, isLoading, error, refetch } = useQuery<ValidationResponse>({
@@ -45,16 +47,15 @@ export default function ValidationPage() {
     <div className="space-y-6">
       <div className="card">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">
-          Field Validation Checker
+          {t('validation.title')}
         </h1>
         <p className="text-gray-600 mb-6">
-          Test field type conversion from Bitrix24 to PostgreSQL. This helps identify
-          fields that fail validation before running a full sync.
+          {t('validation.description')}
         </p>
 
         <div className="flex gap-4 items-end">
           <div className="flex-1">
-            <label className="label">Entity Type</label>
+            <label className="label">{t('validation.entityType')}</label>
             <select
               value={selectedEntity}
               onChange={(e) => setSelectedEntity(e.target.value)}
@@ -72,14 +73,14 @@ export default function ValidationPage() {
             disabled={isLoading}
             className="btn btn-primary disabled:opacity-50"
           >
-            {isLoading ? 'Validating...' : 'Run Validation'}
+            {isLoading ? t('validation.validating') : t('validation.runValidation')}
           </button>
         </div>
       </div>
 
       {error && (
         <div className="card bg-red-50 border border-red-200">
-          <h3 className="text-red-800 font-semibold mb-2">Error</h3>
+          <h3 className="text-red-800 font-semibold mb-2">{t('common.error')}</h3>
           <p className="text-red-700">{(error as Error).message}</p>
         </div>
       )}
@@ -89,13 +90,13 @@ export default function ValidationPage() {
           {/* Summary */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="card bg-blue-50 border border-blue-200">
-              <div className="text-sm text-blue-600">Records Tested</div>
+              <div className="text-sm text-blue-600">{t('validation.recordsTested')}</div>
               <div className="text-2xl font-bold text-blue-800">
                 {data.records_tested}
               </div>
             </div>
             <div className="card bg-gray-50 border border-gray-200">
-              <div className="text-sm text-gray-600">Total Fields</div>
+              <div className="text-sm text-gray-600">{t('validation.totalFields')}</div>
               <div className="text-2xl font-bold text-gray-800">
                 {data.total_fields}
               </div>
@@ -108,7 +109,7 @@ export default function ValidationPage() {
               <div className={`text-sm ${
                 data.failed_fields > 0 ? 'text-red-600' : 'text-green-600'
               }`}>
-                Failed Fields
+                {t('validation.failedFields')}
               </div>
               <div className={`text-2xl font-bold ${
                 data.failed_fields > 0 ? 'text-red-800' : 'text-green-800'
@@ -117,7 +118,7 @@ export default function ValidationPage() {
               </div>
             </div>
             <div className="card bg-primary-50 border border-primary-200">
-              <div className="text-sm text-primary-600">Success Rate</div>
+              <div className="text-sm text-primary-600">{t('validation.successRate')}</div>
               <div className="text-2xl font-bold text-primary-800">
                 {data.success_rate}
               </div>
@@ -126,12 +127,12 @@ export default function ValidationPage() {
 
           {/* Validation Results */}
           <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Field Validation Results</h2>
+            <h2 className="text-lg font-semibold mb-4">{t('validation.fieldValidationResults')}</h2>
 
             {data.failed_fields > 0 && (
               <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
                 <p className="text-yellow-800 text-sm">
-                  ⚠️ {data.failed_fields} field(s) failed validation. Review errors below and update field type conversion logic if needed.
+                  ⚠️ {data.failed_fields} {t('validation.failedWarning')}
                 </p>
               </div>
             )}
@@ -141,19 +142,19 @@ export default function ValidationPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Field Name
+                      {t('validation.fieldName')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Status
+                      {t('dashboard.status')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Valid / Invalid
+                      {t('validation.validInvalid')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Sample Values
+                      {t('validation.sampleValues')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Errors
+                      {t('validation.errors')}
                     </th>
                   </tr>
                 </thead>
@@ -174,11 +175,11 @@ export default function ValidationPage() {
                       <td className="px-4 py-3 whitespace-nowrap">
                         {field.invalid_count > 0 ? (
                           <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                            Failed
+                            {t('monitoring.failed')}
                           </span>
                         ) : (
                           <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                            OK
+                            {t('validation.ok')}
                           </span>
                         )}
                       </td>
@@ -225,7 +226,7 @@ export default function ValidationPage() {
       {!data && !isLoading && !error && (
         <div className="card text-center py-12">
           <p className="text-gray-500">
-            Select an entity type and click "Run Validation" to test field conversion
+            {t('validation.emptyState')}
           </p>
         </div>
       )}

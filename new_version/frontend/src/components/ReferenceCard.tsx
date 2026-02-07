@@ -1,11 +1,5 @@
 import { ReferenceStatusItem } from '../services/api'
-
-const REF_DISPLAY_NAMES: Record<string, string> = {
-  crm_status: 'Statuses & Stages',
-  crm_deal_category: 'Deal Pipelines',
-  crm_currency: 'Currencies',
-  enum_values: 'Enum Field Values',
-}
+import { useTranslation } from '../i18n'
 
 interface ReferenceCardProps {
   reference: ReferenceStatusItem
@@ -18,12 +12,24 @@ export default function ReferenceCard({
   onSync,
   isSyncing,
 }: ReferenceCardProps) {
+  const { t } = useTranslation()
+
   const isRunning = reference.status === 'running'
   const isFailed = reference.status === 'failed'
   const isAutoOnly = reference.auto_only === true
 
+  const getDisplayName = (name: string) => {
+    const map: Record<string, string> = {
+      crm_status: t('referenceCard.statuses'),
+      crm_deal_category: t('referenceCard.pipelines'),
+      crm_currency: t('referenceCard.currencies'),
+      enum_values: t('referenceCard.enumValues'),
+    }
+    return map[name] || name
+  }
+
   const formatDate = (date: string | null) => {
-    if (!date) return 'Never'
+    if (!date) return t('common.never')
     return new Date(date).toLocaleString()
   }
 
@@ -35,13 +41,13 @@ export default function ReferenceCard({
   }
 
   const getStatusText = () => {
-    if (isRunning) return 'Syncing...'
-    if (isFailed) return 'Failed'
-    if (reference.status === 'completed') return 'Completed'
-    return 'Idle'
+    if (isRunning) return t('syncCard.syncing')
+    if (isFailed) return t('syncCard.failed')
+    if (reference.status === 'completed') return t('syncCard.completed')
+    return t('common.idle')
   }
 
-  const displayName = REF_DISPLAY_NAMES[reference.name] || reference.name
+  const displayName = getDisplayName(reference.name)
 
   return (
     <div className="card">
@@ -51,26 +57,26 @@ export default function ReferenceCard({
           <span className={`text-sm ${getStatusColor()}`}>{getStatusText()}</span>
         </div>
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isAutoOnly ? 'bg-gray-100 text-gray-600' : 'bg-purple-100 text-purple-800'}`}>
-          {isAutoOnly ? 'Auto' : 'Reference'}
+          {isAutoOnly ? t('referenceCard.auto') : t('referenceCard.reference')}
         </span>
       </div>
 
       <div className="grid grid-cols-2 gap-4 text-sm mb-4">
         <div>
-          <span className="text-gray-500">Last Sync:</span>
+          <span className="text-gray-500">{t('syncCard.lastSync')}</span>
           <p className="font-medium">{formatDate(reference.last_sync_at)}</p>
         </div>
         <div>
-          <span className="text-gray-500">Table:</span>
-          <p className="font-medium">{reference.table_exists ? reference.table_name : 'Not created'}</p>
+          <span className="text-gray-500">{t('referenceCard.table')}</span>
+          <p className="font-medium">{reference.table_exists ? reference.table_name : t('referenceCard.notCreated')}</p>
         </div>
         <div>
-          <span className="text-gray-500">Records:</span>
+          <span className="text-gray-500">{t('dashboard.records')}:</span>
           <p className="font-medium">{reference.record_count}</p>
         </div>
         <div>
-          <span className="text-gray-500">Last Synced:</span>
-          <p className="font-medium">{reference.records_synced ?? 0} records</p>
+          <span className="text-gray-500">{t('referenceCard.lastSynced')}</span>
+          <p className="font-medium">{reference.records_synced ?? 0} {t('referenceCard.recordsSuffix')}</p>
         </div>
       </div>
 
@@ -83,7 +89,7 @@ export default function ReferenceCard({
       <div className="flex space-x-2">
         {isAutoOnly ? (
           <span className="text-xs text-gray-400 flex-1 text-center py-2">
-            Syncs automatically during full sync
+            {t('referenceCard.autoSyncText')}
           </span>
         ) : (
           <button
@@ -91,7 +97,7 @@ export default function ReferenceCard({
             disabled={isRunning || isSyncing}
             className="btn btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isRunning ? 'Syncing...' : 'Sync'}
+            {isRunning ? t('syncCard.syncing') : t('referenceCard.sync')}
           </button>
         )}
       </div>

@@ -1,20 +1,23 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useHealth } from '../hooks/useSync'
+import { useTranslation } from '../i18n'
+import LanguageSwitcher from './LanguageSwitcher'
 
 export default function Layout() {
   const location = useLocation()
   const logout = useAuthStore((state) => state.logout)
   const user = useAuthStore((state) => state.user)
   const { data: health } = useHealth()
+  const { t } = useTranslation()
 
   const navigation = [
-    { name: 'Dashboard', href: '/' },
-    { name: 'AI Charts', href: '/charts' },
-    { name: 'Configuration', href: '/config' },
-    { name: 'Monitoring', href: '/monitoring' },
-    { name: 'Validation', href: '/validation' },
-    { name: 'Schema', href: '/schema' },
+    { name: t('nav.dashboard'), href: '/' },
+    { name: t('nav.aiCharts'), href: '/charts' },
+    { name: t('nav.configuration'), href: '/config' },
+    { name: t('nav.monitoring'), href: '/monitoring' },
+    { name: t('nav.validation'), href: '/validation' },
+    { name: t('nav.schema'), href: '/schema' },
   ]
 
   const isActive = (href: string) => {
@@ -35,7 +38,7 @@ export default function Layout() {
               <nav className="ml-6 flex space-x-4">
                 {navigation.map((item) => (
                   <Link
-                    key={item.name}
+                    key={item.href}
                     to={item.href}
                     className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                       isActive(item.href)
@@ -49,6 +52,7 @@ export default function Layout() {
               </nav>
             </div>
             <div className="flex items-center space-x-4">
+              <LanguageSwitcher />
               {/* Health indicator */}
               <div className="flex items-center space-x-2">
                 <span
@@ -57,7 +61,7 @@ export default function Layout() {
                   }`}
                 />
                 <span className="text-sm text-gray-500">
-                  {health?.status === 'healthy' ? 'Connected' : 'Disconnected'}
+                  {health?.status === 'healthy' ? t('health.connected') : t('health.disconnected')}
                 </span>
               </div>
               {/* User info */}
@@ -66,7 +70,7 @@ export default function Layout() {
                 onClick={() => logout()}
                 className="btn btn-secondary text-sm"
               >
-                Logout
+                {t('auth.logout')}
               </button>
             </div>
           </div>

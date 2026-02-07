@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { DashboardSelector } from '../../services/api'
 import { publicApi } from '../../services/api'
+import { useTranslation } from '../../i18n'
 import DateRangeSelector from './DateRangeSelector'
 import SingleDateSelector from './SingleDateSelector'
 import DropdownSelector from './DropdownSelector'
@@ -25,6 +26,7 @@ export default function SelectorBar({
   token,
 }: SelectorBarProps) {
   const [optionsCache, setOptionsCache] = useState<Record<number, unknown[]>>({})
+  const { t } = useTranslation()
 
   // Load dropdown options for selectors that need them
   useEffect(() => {
@@ -135,14 +137,14 @@ export default function SelectorBar({
           onClick={onApply}
           className="px-3 py-1.5 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
         >
-          Apply
+          {t('common.apply')}
         </button>
         {hasActiveFilters && (
           <button
             onClick={handleReset}
             className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded hover:bg-gray-200 transition-colors"
           >
-            Reset
+            {t('common.reset')}
           </button>
         )}
       </div>

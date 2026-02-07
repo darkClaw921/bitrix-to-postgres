@@ -362,7 +362,7 @@ services:
 | `title` | VARCHAR(255) | Название чарта |
 | `description` | TEXT (nullable) | Описание |
 | `user_prompt` | TEXT | Исходный промпт пользователя |
-| `chart_type` | VARCHAR(50) | Тип чарта (bar/line/pie/area/scatter) |
+| `chart_type` | VARCHAR(50) | Тип чарта (bar/line/pie/area/scatter/indicator/table) |
 | `chart_config` | JSON | Конфигурация чарта |
 | `sql_query` | TEXT | SQL-запрос для получения данных |
 | `is_pinned` | BOOLEAN | Флаг закрепления |
@@ -428,7 +428,7 @@ frontend/src/
 │   ├── SyncCard.tsx           # Карточка синхронизации CRM-сущности
 │   ├── ReferenceCard.tsx      # Карточка справочника (статусы, воронки, валюты)
 │   └── charts/
-│       ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter через Recharts)
+│       ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter через Recharts, indicator — KPI-карточка, table — таблица с итогами и сортировкой)
 │       └── ChartCard.tsx      # Карточка сохранённого чарта с действиями
 ├── pages/
 │   ├── DashboardPage.tsx      # Обзор синхронизации

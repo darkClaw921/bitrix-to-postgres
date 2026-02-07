@@ -20,13 +20,17 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
   const [line, setLine] = useState(config.line ?? { strokeWidth: 2, type: 'monotone' as const })
   const [area, setArea] = useState(config.area ?? { fillOpacity: 0.3 })
   const [pie, setPie] = useState(config.pie ?? { innerRadius: 0, showLabels: true })
+  const [indicator, setIndicator] = useState(config.indicator ?? { prefix: '', suffix: '', fontSize: 'lg' as const, color: '#1f2937' })
+  const [table, setTable] = useState(config.table ?? { showColumnTotals: false, showRowTotals: false, sortable: true, defaultSortDirection: 'asc' as const, pageSize: 0 })
 
   const isCartesian = ['bar', 'line', 'area', 'scatter'].includes(chartType)
   const isLineOrArea = ['line', 'area'].includes(chartType)
   const isPie = chartType === 'pie'
+  const isIndicator = chartType === 'indicator'
+  const isTable = chartType === 'table'
 
   const handleApply = () => {
-    const patch: Partial<ChartDisplayConfig> = { colors, legend, grid, xAxis, yAxis, line, area, pie }
+    const patch: Partial<ChartDisplayConfig> = { colors, legend, grid, xAxis, yAxis, line, area, pie, indicator, table }
     onApply(patch)
   }
 
@@ -228,6 +232,119 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                 onChange={(e) => setPie({ ...pie, showLabels: e.target.checked })}
               />
               <span>Show labels</span>
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Indicator specific */}
+      {isIndicator && (
+        <div>
+          <h4 className="font-semibold text-gray-700 mb-2">Indicator Settings</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-gray-500">Prefix:</span>
+              <input
+                type="text"
+                className="border rounded px-2 py-0.5 text-xs"
+                placeholder="e.g. $, ₽"
+                value={indicator.prefix || ''}
+                onChange={(e) => setIndicator({ ...indicator, prefix: e.target.value })}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-gray-500">Suffix:</span>
+              <input
+                type="text"
+                className="border rounded px-2 py-0.5 text-xs"
+                placeholder="e.g. %, шт."
+                value={indicator.suffix || ''}
+                onChange={(e) => setIndicator({ ...indicator, suffix: e.target.value })}
+              />
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="text-gray-500">Font size:</span>
+              <select
+                className="border rounded px-1 py-0.5 text-xs"
+                value={indicator.fontSize || 'lg'}
+                onChange={(e) => setIndicator({ ...indicator, fontSize: e.target.value as 'sm' | 'md' | 'lg' | 'xl' })}
+              >
+                <option value="sm">Small</option>
+                <option value="md">Medium</option>
+                <option value="lg">Large</option>
+                <option value="xl">Extra Large</option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="text-gray-500">Color:</span>
+              <input
+                type="color"
+                value={indicator.color || '#1f2937'}
+                onChange={(e) => setIndicator({ ...indicator, color: e.target.value })}
+                className="w-7 h-7 border rounded cursor-pointer"
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Table specific */}
+      {isTable && (
+        <div>
+          <h4 className="font-semibold text-gray-700 mb-2">Table Settings</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={table.showColumnTotals || false}
+                onChange={(e) => setTable({ ...table, showColumnTotals: e.target.checked })}
+              />
+              <span>Column totals</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={table.showRowTotals || false}
+                onChange={(e) => setTable({ ...table, showRowTotals: e.target.checked })}
+              />
+              <span>Row totals</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={table.sortable !== false}
+                onChange={(e) => setTable({ ...table, sortable: e.target.checked })}
+              />
+              <span>Sortable columns</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="text-gray-500">Sort direction:</span>
+              <select
+                className="border rounded px-1 py-0.5 text-xs"
+                value={table.defaultSortDirection || 'asc'}
+                onChange={(e) => setTable({ ...table, defaultSortDirection: e.target.value as 'asc' | 'desc' })}
+              >
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 col-span-2">
+              <span className="text-gray-500">Page size (0 = no pagination):</span>
+              <input
+                type="number"
+                min={0}
+                max={1000}
+                className="border rounded px-2 py-0.5 text-xs w-24"
+                value={table.pageSize || 0}
+                onChange={(e) => setTable({ ...table, pageSize: Number(e.target.value) })}
+              />
             </label>
           </div>
         </div>

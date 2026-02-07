@@ -207,11 +207,28 @@ export interface ChartDisplayConfig {
   area?: { fillOpacity?: number }
   // pie
   pie?: { innerRadius?: number; showLabels?: boolean }
+  // indicator
+  indicator?: {
+    prefix?: string
+    suffix?: string
+    fontSize?: 'sm' | 'md' | 'lg' | 'xl'
+    color?: string
+  }
+  // table
+  table?: {
+    showColumnTotals?: boolean
+    showRowTotals?: boolean
+    sortable?: boolean
+    defaultSortColumn?: string
+    defaultSortDirection?: 'asc' | 'desc'
+    pageSize?: number
+    columnFormats?: Record<string, 'number' | 'currency' | 'percent' | 'text'>
+  }
 }
 
 export interface ChartSpec {
   title: string
-  chart_type: 'bar' | 'line' | 'pie' | 'area' | 'scatter'
+  chart_type: 'bar' | 'line' | 'pie' | 'area' | 'scatter' | 'indicator' | 'table'
   sql_query: string
   data_keys: {
     x: string
@@ -227,6 +244,8 @@ export interface ChartSpec {
   line?: ChartDisplayConfig['line']
   area?: ChartDisplayConfig['area']
   pie?: ChartDisplayConfig['pie']
+  indicator?: ChartDisplayConfig['indicator']
+  table?: ChartDisplayConfig['table']
 }
 
 export interface ChartGenerateRequest {

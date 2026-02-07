@@ -21,7 +21,7 @@ export default function ChartCard({ chart }: ChartCardProps) {
 
   const spec = {
     title: chart.title,
-    chart_type: chart.chart_type as 'bar' | 'line' | 'pie' | 'area' | 'scatter',
+    chart_type: chart.chart_type as 'bar' | 'line' | 'pie' | 'area' | 'scatter' | 'indicator' | 'table',
     sql_query: chart.sql_query,
     data_keys: { x: config.x || 'x', y: config.y || 'y' },
     colors: config.colors,
@@ -33,6 +33,8 @@ export default function ChartCard({ chart }: ChartCardProps) {
     line: config.line,
     area: config.area,
     pie: config.pie,
+    indicator: config.indicator,
+    table: config.table,
   }
 
   const chartData = freshData?.data

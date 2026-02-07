@@ -204,6 +204,8 @@ function DashboardChartCard({
     line: config?.line,
     area: config?.area,
     pie: config?.pie,
+    indicator: config?.indicator,
+    table: config?.table,
   }
 
   return (

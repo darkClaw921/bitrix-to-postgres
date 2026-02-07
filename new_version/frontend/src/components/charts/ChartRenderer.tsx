@@ -1,3 +1,4 @@
+import { useState, useMemo, useEffect } from 'react'
 import {
   BarChart, Bar,
   LineChart, Line,
@@ -24,6 +25,215 @@ function formatValue(value: number, format?: 'number' | 'currency' | 'percent'):
   if (format === 'currency') return `$${value.toLocaleString()}`
   if (format === 'percent') return `${value}%`
   return value.toLocaleString()
+}
+
+function formatTableCell(value: unknown, format?: 'number' | 'currency' | 'percent' | 'text'): string {
+  if (value == null) return ''
+  if (format === 'text' || typeof value === 'string') return String(value)
+  const num = Number(value)
+  if (isNaN(num)) return String(value)
+  if (format === 'currency') return `$${num.toLocaleString()}`
+  if (format === 'percent') return `${num}%`
+  return num.toLocaleString()
+}
+
+function IndicatorRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, unknown>[] }) {
+  const indicatorCfg = spec.indicator ?? {}
+  const yKeys = Array.isArray(spec.data_keys.y) ? spec.data_keys.y : [spec.data_keys.y]
+  const valueKey = yKeys[0]
+  const row = data[0] || {}
+  const rawValue = row[valueKey]
+  const numValue = Number(rawValue)
+  const displayValue = isNaN(numValue) ? String(rawValue ?? '') : numValue.toLocaleString()
+
+  const fontSizeMap = { sm: '1.5rem', md: '2.5rem', lg: '3.5rem', xl: '5rem' }
+  const fontSize = fontSizeMap[indicatorCfg.fontSize || 'lg'] || '3.5rem'
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full py-8">
+      <div
+        className="font-bold leading-tight"
+        style={{ fontSize, color: indicatorCfg.color || '#1f2937' }}
+      >
+        {indicatorCfg.prefix && <span>{indicatorCfg.prefix} </span>}
+        {displayValue}
+        {indicatorCfg.suffix && <span> {indicatorCfg.suffix}</span>}
+      </div>
+    </div>
+  )
+}
+
+function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, unknown>[] }) {
+  const tableCfg = spec.table ?? {}
+  const columns = useMemo(() => {
+    if (!data.length) return []
+    return Object.keys(data[0])
+  }, [data])
+
+  const [sortColumn, setSortColumn] = useState<string | null>(tableCfg.defaultSortColumn || null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(tableCfg.defaultSortDirection || 'asc')
+  const [page, setPage] = useState(0)
+  const pageSize = tableCfg.pageSize || 0
+
+  useEffect(() => {
+    setSortDir(tableCfg.defaultSortDirection || 'asc')
+  }, [tableCfg.defaultSortDirection])
+
+  useEffect(() => {
+    setSortColumn(tableCfg.defaultSortColumn || null)
+  }, [tableCfg.defaultSortColumn])
+
+  const numericColumns = useMemo(() => {
+    const set = new Set<string>()
+    for (const col of columns) {
+      const format = tableCfg.columnFormats?.[col]
+      if (format === 'text') continue
+      const allNumeric = data.every((row) => {
+        const v = row[col]
+        return v == null || !isNaN(Number(v))
+      })
+      if (allNumeric) set.add(col)
+    }
+    return set
+  }, [columns, data, tableCfg.columnFormats])
+
+  const sortedData = useMemo(() => {
+    if (!sortColumn) return data
+    return [...data].sort((a, b) => {
+      const av = a[sortColumn]
+      const bv = b[sortColumn]
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      if (numericColumns.has(sortColumn)) {
+        const diff = Number(av) - Number(bv)
+        return sortDir === 'asc' ? diff : -diff
+      }
+      const cmp = String(av).localeCompare(String(bv))
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [data, sortColumn, sortDir, numericColumns])
+
+  const pagedData = useMemo(() => {
+    if (!pageSize) return sortedData
+    const start = page * pageSize
+    return sortedData.slice(start, start + pageSize)
+  }, [sortedData, page, pageSize])
+
+  const totalPages = pageSize ? Math.ceil(sortedData.length / pageSize) : 1
+
+  const columnTotals = useMemo(() => {
+    if (!tableCfg.showColumnTotals) return null
+    const totals: Record<string, number> = {}
+    for (const col of columns) {
+      if (numericColumns.has(col)) {
+        totals[col] = data.reduce((sum, row) => sum + (Number(row[col]) || 0), 0)
+      }
+    }
+    return totals
+  }, [tableCfg.showColumnTotals, columns, data, numericColumns])
+
+  const handleSort = (col: string) => {
+    if (!tableCfg.sortable) return
+    if (sortColumn === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortColumn(col)
+      setSortDir('asc')
+    }
+  }
+
+  const displayColumns = tableCfg.showRowTotals ? [...columns, '__row_total__'] : columns
+
+  return (
+    <div className="overflow-auto">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="bg-gray-100">
+            {displayColumns.map((col) => (
+              <th
+                key={col}
+                className={`border border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 ${
+                  tableCfg.sortable ? 'cursor-pointer hover:bg-gray-200 select-none' : ''
+                }`}
+                onClick={() => col !== '__row_total__' && handleSort(col)}
+              >
+                {col === '__row_total__' ? 'Total' : col}
+                {sortColumn === col && (
+                  <span className="ml-1">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span>
+                )}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {pagedData.map((row, ri) => {
+            const rowTotal = tableCfg.showRowTotals
+              ? columns.reduce((sum, col) => sum + (numericColumns.has(col) ? (Number(row[col]) || 0) : 0), 0)
+              : 0
+            return (
+              <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                {columns.map((col) => (
+                  <td key={col} className="border border-gray-200 px-3 py-1.5">
+                    {formatTableCell(row[col], tableCfg.columnFormats?.[col])}
+                  </td>
+                ))}
+                {tableCfg.showRowTotals && (
+                  <td className="border border-gray-200 px-3 py-1.5 font-semibold bg-blue-50">
+                    {rowTotal.toLocaleString()}
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+        {columnTotals && (
+          <tfoot>
+            <tr className="bg-gray-100 font-semibold">
+              {columns.map((col, i) => (
+                <td key={col} className="border border-gray-200 px-3 py-2">
+                  {i === 0 && !numericColumns.has(col)
+                    ? 'Total'
+                    : columnTotals[col] != null
+                      ? formatTableCell(columnTotals[col], tableCfg.columnFormats?.[col])
+                      : ''}
+                </td>
+              ))}
+              {tableCfg.showRowTotals && (
+                <td className="border border-gray-200 px-3 py-2 bg-blue-50">
+                  {Object.values(columnTotals).reduce((a, b) => a + b, 0).toLocaleString()}
+                </td>
+              )}
+            </tr>
+          </tfoot>
+        )}
+      </table>
+
+      {pageSize > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+          <span>
+            Page {page + 1} of {totalPages} ({sortedData.length} rows)
+          </span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="px-2 py-1 border rounded disabled:opacity-30 hover:bg-gray-100"
+            >
+              Prev
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+              className="px-2 py-1 border rounded disabled:opacity-30 hover:bg-gray-100"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function ChartRenderer({ spec, data, height = 350 }: ChartRendererProps) {
@@ -67,6 +277,16 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
         No data to display
       </div>
     )
+  }
+
+  // Indicator — rendered as plain HTML, no ResponsiveContainer
+  if (chart_type === 'indicator') {
+    return <IndicatorRenderer spec={spec} data={data} />
+  }
+
+  // Table — rendered as plain HTML, no ResponsiveContainer
+  if (chart_type === 'table') {
+    return <TableRenderer spec={spec} data={data} />
   }
 
   const renderGrid = () =>

@@ -31,6 +31,7 @@ Rules:
 4. Use standard SQL compatible with both PostgreSQL and MySQL
 5. For aggregations, always use GROUP BY
 6. Return valid JSON only
+7. Все сущности из битрикса ты должен обращаться по bitrix_id так как это уникальный идентификатор в битриксе
 """
 
 SCHEMA_DESCRIPTION_PROMPT = """You are a database documentation specialist for a Bitrix24 CRM system.

@@ -5,6 +5,9 @@ from fastapi import APIRouter, HTTPException, Query
 from app.api.v1.schemas.dashboards import (
     ChartOverrideUpdateRequest,
     DashboardLayoutUpdateRequest,
+    DashboardLinkRequest,
+    DashboardLinkResponse,
+    DashboardLinkUpdateRequest,
     DashboardListItem,
     DashboardListResponse,
     DashboardPublishRequest,
@@ -164,3 +167,51 @@ async def get_iframe_code(request: IframeCodeRequest) -> IframeCodeResponse:
         })
 
     return IframeCodeResponse(iframes=iframes)
+
+
+# === Dashboard Links ===
+
+
+@router.post("/{dashboard_id}/links", response_model=DashboardLinkResponse)
+async def add_dashboard_link(
+    dashboard_id: int, request: DashboardLinkRequest
+) -> DashboardLinkResponse:
+    """Add a linked dashboard (tab)."""
+    try:
+        link = await dashboard_service.add_link(
+            dashboard_id,
+            request.linked_dashboard_id,
+            label=request.label,
+            sort_order=request.sort_order,
+        )
+        return DashboardLinkResponse(**link)
+    except DashboardServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
+    except Exception as e:
+        if "uq_dashboard_linked" in str(e).lower() or "unique" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Эта связь уже существует") from e
+        logger.error("Failed to add dashboard link", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}") from e
+
+
+@router.delete("/{dashboard_id}/links/{link_id}")
+async def remove_dashboard_link(dashboard_id: int, link_id: int) -> dict:
+    """Remove a linked dashboard."""
+    deleted = await dashboard_service.remove_link(link_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Связь не найдена")
+    return {"deleted": True}
+
+
+@router.put("/{dashboard_id}/links", response_model=list[DashboardLinkResponse])
+async def update_dashboard_links(
+    dashboard_id: int, request: DashboardLinkUpdateRequest
+) -> list[DashboardLinkResponse]:
+    """Update link order."""
+    try:
+        links = await dashboard_service.update_link_order(
+            dashboard_id, [item.model_dump() for item in request.links]
+        )
+        return [DashboardLinkResponse(**link) for link in links]
+    except DashboardServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e

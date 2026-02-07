@@ -51,6 +51,27 @@ class ChartOverrideUpdateRequest(BaseModel):
     description_override: Optional[str] = None
 
 
+class DashboardLinkRequest(BaseModel):
+    """Request to add a linked dashboard."""
+
+    linked_dashboard_id: int
+    label: Optional[str] = Field(None, max_length=255)
+    sort_order: int = 0
+
+
+class DashboardLinkOrderItem(BaseModel):
+    """Single link order update."""
+
+    id: int
+    sort_order: int = 0
+
+
+class DashboardLinkUpdateRequest(BaseModel):
+    """Request to update link order."""
+
+    links: list[DashboardLinkOrderItem]
+
+
 class DashboardAuthRequest(BaseModel):
     """Request to authenticate a dashboard."""
 
@@ -97,6 +118,18 @@ class DashboardChartResponse(BaseModel):
         return v
 
 
+class DashboardLinkResponse(BaseModel):
+    """Linked dashboard info."""
+
+    id: int
+    dashboard_id: int
+    linked_dashboard_id: int
+    sort_order: int = 0
+    label: Optional[str] = None
+    linked_title: Optional[str] = None
+    linked_slug: Optional[str] = None
+
+
 class DashboardResponse(BaseModel):
     """Dashboard detail response."""
 
@@ -107,6 +140,7 @@ class DashboardResponse(BaseModel):
     is_active: bool = True
     refresh_interval_minutes: int = 10
     charts: list[DashboardChartResponse] = []
+    linked_dashboards: list[DashboardLinkResponse] = []
     created_at: datetime
     updated_at: datetime
 

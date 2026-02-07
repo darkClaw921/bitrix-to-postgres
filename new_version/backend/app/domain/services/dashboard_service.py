@@ -167,6 +167,7 @@ class DashboardService:
 
         dashboard = dict(zip(list(result.keys()), row))
         dashboard["charts"] = await self._get_dashboard_charts(dashboard_id)
+        dashboard["linked_dashboards"] = await self.get_links(dashboard_id)
         return dashboard
 
     async def get_dashboard_by_slug(self, slug: str) -> dict[str, Any] | None:
@@ -186,6 +187,7 @@ class DashboardService:
 
         dashboard = dict(zip(list(result.keys()), row))
         dashboard["charts"] = await self._get_dashboard_charts(dashboard["id"])
+        dashboard["linked_dashboards"] = await self.get_links(dashboard["id"])
         return dashboard
 
     async def _get_dashboard_charts(self, dashboard_id: int) -> list[dict[str, Any]]:
@@ -385,3 +387,119 @@ class DashboardService:
             result = await conn.execute(query, {"id": dashboard_id})
 
         return result.rowcount > 0
+
+    # === Dashboard Links ===
+
+    async def add_link(
+        self,
+        dashboard_id: int,
+        linked_dashboard_id: int,
+        label: str | None = None,
+        sort_order: int = 0,
+    ) -> dict[str, Any]:
+        if dashboard_id == linked_dashboard_id:
+            raise DashboardServiceError("Нельзя связать дашборд с самим собой")
+
+        engine = get_engine()
+        dialect = get_dialect()
+
+        params = {
+            "dashboard_id": dashboard_id,
+            "linked_dashboard_id": linked_dashboard_id,
+            "label": label,
+            "sort_order": sort_order,
+        }
+
+        if dialect == "mysql":
+            query = text(
+                "INSERT INTO dashboard_links (dashboard_id, linked_dashboard_id, label, sort_order) "
+                "VALUES (:dashboard_id, :linked_dashboard_id, :label, :sort_order)"
+            )
+            async with engine.begin() as conn:
+                result = await conn.execute(query, params)
+                link_id = result.lastrowid
+        else:
+            query = text(
+                "INSERT INTO dashboard_links (dashboard_id, linked_dashboard_id, label, sort_order) "
+                "VALUES (:dashboard_id, :linked_dashboard_id, :label, :sort_order) "
+                "RETURNING id"
+            )
+            async with engine.begin() as conn:
+                result = await conn.execute(query, params)
+                link_id = result.scalar()
+
+        logger.info("Dashboard link added", dashboard_id=dashboard_id, linked_id=linked_dashboard_id)
+
+        # Return the created link with joined info
+        links = await self.get_links(dashboard_id)
+        for link in links:
+            if link["id"] == link_id:
+                return link
+        return {"id": link_id, **params}
+
+    async def remove_link(self, link_id: int) -> bool:
+        engine = get_engine()
+        query = text("DELETE FROM dashboard_links WHERE id = :id")
+
+        async with engine.begin() as conn:
+            result = await conn.execute(query, {"id": link_id})
+
+        return result.rowcount > 0
+
+    async def get_links(self, dashboard_id: int) -> list[dict[str, Any]]:
+        engine = get_engine()
+
+        query = text(
+            "SELECT dl.id, dl.dashboard_id, dl.linked_dashboard_id, dl.sort_order, dl.label, "
+            "pd.title as linked_title, pd.slug as linked_slug "
+            "FROM dashboard_links dl "
+            "JOIN published_dashboards pd ON pd.id = dl.linked_dashboard_id "
+            "WHERE dl.dashboard_id = :dashboard_id "
+            "ORDER BY dl.sort_order, dl.id"
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(query, {"dashboard_id": dashboard_id})
+            columns = list(result.keys())
+            links = [dict(zip(columns, row)) for row in result.fetchall()]
+
+        return links
+
+    async def update_link_order(
+        self, dashboard_id: int, links: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        engine = get_engine()
+
+        for item in links:
+            query = text(
+                "UPDATE dashboard_links SET sort_order = :sort_order "
+                "WHERE id = :id AND dashboard_id = :dashboard_id"
+            )
+            async with engine.begin() as conn:
+                await conn.execute(query, {
+                    "id": item["id"],
+                    "sort_order": item.get("sort_order", 0),
+                    "dashboard_id": dashboard_id,
+                })
+
+        logger.info("Dashboard link order updated", dashboard_id=dashboard_id, items=len(links))
+        return await self.get_links(dashboard_id)
+
+    async def verify_linked_access(self, main_slug: str, linked_slug: str) -> bool:
+        """Verify that linked_slug is linked to main_slug and both are active."""
+        engine = get_engine()
+
+        query = text(
+            "SELECT 1 FROM dashboard_links dl "
+            "JOIN published_dashboards main_d ON main_d.id = dl.dashboard_id "
+            "JOIN published_dashboards linked_d ON linked_d.id = dl.linked_dashboard_id "
+            "WHERE main_d.slug = :main_slug AND linked_d.slug = :linked_slug "
+            "AND main_d.is_active = true AND linked_d.is_active = true"
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(query, {
+                "main_slug": main_slug,
+                "linked_slug": linked_slug,
+            })
+            return result.fetchone() is not None

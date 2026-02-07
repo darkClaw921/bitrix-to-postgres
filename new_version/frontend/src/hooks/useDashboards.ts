@@ -113,3 +113,51 @@ export function useIframeCode() {
     mutationFn: (data: IframeCodeRequest) => dashboardsApi.getIframeCode(data),
   })
 }
+
+export function useAddDashboardLink() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      dashboardId,
+      data,
+    }: {
+      dashboardId: number
+      data: { linked_dashboard_id: number; label?: string; sort_order?: number }
+    }) => dashboardsApi.addLink(dashboardId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboards'] })
+    },
+  })
+}
+
+export function useRemoveDashboardLink() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ dashboardId, linkId }: { dashboardId: number; linkId: number }) =>
+      dashboardsApi.removeLink(dashboardId, linkId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboards'] })
+    },
+  })
+}
+
+export function useUpdateDashboardLinks() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      dashboardId,
+      links,
+    }: {
+      dashboardId: number
+      links: { id: number; sort_order: number }[]
+    }) => dashboardsApi.updateLinks(dashboardId, links),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}

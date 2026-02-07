@@ -45,6 +45,7 @@
   - `AIChart` — сохранённые AI-чарты
   - `PublishedDashboard` — опубликованные дашборды (slug, password_hash, is_active, refresh_interval_minutes)
   - `DashboardChart` — чарты в дашборде (layout позиции, title/description override)
+  - `DashboardLink` — связи между дашбордами для табов (dashboard_id → linked_dashboard_id, sort_order, label)
 
 #### Миграции (`alembic/versions/`)
 - **001_create_system_tables.py** — sync_config, sync_logs, sync_state + default config
@@ -52,6 +53,7 @@
 - **003_create_schema_descriptions_table.py** — schema_descriptions
 - **004_create_dashboards_tables.py** — published_dashboards, dashboard_charts (FK cascade)
 - **005_add_refresh_interval.py** — добавление refresh_interval_minutes в published_dashboards
+- **006_create_dashboard_links_table.py** — dashboard_links (FK → published_dashboards CASCADE, unique constraint)
 
 #### Доменные сервисы (`app/domain/services/`)
 - **chart_service.py** — `ChartService`:
@@ -73,6 +75,9 @@
   - `generate_token(slug)` / `verify_token(token)` → JWT (HS256, python-jose)
   - `update_dashboard`, `update_layout`, `update_chart_override`
   - `remove_chart`, `change_password`, `delete_dashboard`
+  - `add_link(dashboard_id, linked_dashboard_id, label?, sort_order?)` — связывание дашбордов для табов
+  - `remove_link(link_id)`, `get_links(dashboard_id)`, `update_link_order(dashboard_id, links)`
+  - `verify_linked_access(main_slug, linked_slug)` — проверка связи + активности обоих дашбордов
 
 #### Доменные сущности (`app/domain/entities/`)
 - **base.py** — `BitrixEntity` базовый класс, `EntityType` enum (deal, contact, lead, company, user, task)
@@ -94,7 +99,7 @@
 ##### Схемы (`app/api/v1/schemas/`)
 - **common.py** — `HealthResponse`, `ErrorResponse`, `SuccessResponse`, `PaginationParams`
 - **charts.py** — `ChartGenerateRequest`, `ChartConfigUpdateRequest`, `ChartSpec`, `ChartGenerateResponse`, `ChartResponse`, `ChartListResponse`, `ChartDataResponse`
-- **dashboards.py** — `DashboardPublishRequest`, `DashboardUpdateRequest`, `LayoutItem`, `DashboardLayoutUpdateRequest`, `ChartOverrideUpdateRequest`, `DashboardAuthRequest`, `IframeCodeRequest`, `DashboardChartResponse`, `DashboardResponse`, `DashboardListResponse`, `DashboardPublishResponse`, `DashboardAuthResponse`, `PasswordChangeResponse`, `IframeCodeResponse`
+- **dashboards.py** — `DashboardPublishRequest`, `DashboardUpdateRequest`, `LayoutItem`, `DashboardLayoutUpdateRequest`, `ChartOverrideUpdateRequest`, `DashboardAuthRequest`, `IframeCodeRequest`, `DashboardLinkRequest`, `DashboardLinkOrderItem`, `DashboardLinkUpdateRequest`, `DashboardChartResponse`, `DashboardLinkResponse`, `DashboardResponse` (с `linked_dashboards`), `DashboardListResponse`, `DashboardPublishResponse`, `DashboardAuthResponse`, `PasswordChangeResponse`, `IframeCodeResponse`
 - **schema_description.py** — `ColumnInfo`, `TableInfo`, `SchemaTablesResponse`, `SchemaDescriptionResponse`
 - **sync.py** — `SyncConfigItem`, `SyncStartRequest/Response`, `SyncStatusItem/Response`, `SyncHistoryResponse`
 - **webhooks.py** — `WebhookEventData`, `WebhookResponse`, `WebhookRegistration`
@@ -105,9 +110,12 @@
   - POST `/publish`, GET `/list`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}`
   - PUT `/{id}/layout`, PUT `/{id}/charts/{dc_id}`, DELETE `/{id}/charts/{dc_id}`
   - POST `/{id}/change-password`, POST `/iframe-code`
+  - POST `/{id}/links`, DELETE `/{id}/links/{link_id}`, PUT `/{id}/links` — управление связями дашбордов
 - **public.py** (no app auth):
   - GET `/chart/{id}/meta`, GET `/chart/{id}/data`
   - POST `/dashboard/{slug}/auth`, GET `/dashboard/{slug}`, GET `/dashboard/{slug}/chart/{dc_id}/data`
+  - GET `/dashboard/{slug}/linked/{linked_slug}` — получение связанного дашборда (JWT главного)
+  - GET `/dashboard/{slug}/linked/{linked_slug}/chart/{dc_id}/data` — данные чарта связанного дашборда
 - **schema_description.py** — GET `/describe`, GET `/tables`, GET `/history`, PATCH `/{id}`, GET `/list`
 - **sync.py** — GET `/config`, PUT `/config`, POST `/start/{entity}`, GET `/status`, GET `/running`
 - **webhooks.py** — POST `/register`, DELETE `/unregister`, GET `/registered`
@@ -128,11 +136,11 @@ React 18 + TypeScript + Vite + Tailwind CSS
 #### Сервисы и хуки
 - **src/services/api.ts** — axios HTTP клиент, все типы и API объекты:
   - `syncApi`, `statusApi`, `webhooksApi`, `referencesApi`, `chartsApi` (с `updateConfig` для PATCH), `schemaApi`
-  - `dashboardsApi` — publish, list, get, update, delete, updateLayout, updateChartOverride, removeChart, changePassword, getIframeCode
-  - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData
+  - `dashboardsApi` — publish, list, get, update, delete, updateLayout, updateChartOverride, removeChart, changePassword, getIframeCode, addLink, removeLink, updateLinks
+  - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData, getLinkedDashboard, getLinkedDashboardChartData
 - **src/hooks/useSync.ts** — хуки синхронизации и справочников
 - **src/hooks/useCharts.ts** — хуки чартов (`useUpdateChartConfig` для PATCH config) и описаний схемы
-- **src/hooks/useDashboards.ts** — `usePublishDashboard`, `useDashboardList`, `useDashboard`, `useUpdateDashboard`, `useDeleteDashboard`, `useUpdateDashboardLayout`, `useUpdateChartOverride`, `useRemoveChartFromDashboard`, `useChangeDashboardPassword`, `useIframeCode`
+- **src/hooks/useDashboards.ts** — `usePublishDashboard`, `useDashboardList`, `useDashboard`, `useUpdateDashboard`, `useDeleteDashboard`, `useUpdateDashboardLayout`, `useUpdateChartOverride`, `useRemoveChartFromDashboard`, `useChangeDashboardPassword`, `useIframeCode`, `useAddDashboardLink`, `useRemoveDashboardLink`, `useUpdateDashboardLinks`
 - **src/hooks/useAuth.ts** — хук авторизации
 
 #### Страницы (`src/pages/`)
@@ -144,8 +152,8 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **SchemaPage.tsx** — браузер схемы БД с AI описанием
 - **LoginPage.tsx** — авторизация
 - **EmbedChartPage.tsx** — standalone embed одного чарта (без навигации, публичный)
-- **EmbedDashboardPage.tsx** — публичный дашборд с password gate, JWT в sessionStorage, grid чартов, auto-refresh по интервалу (setInterval), индикатор обновления и "last updated"
-- **DashboardEditorPage.tsx** — редактор дашборда: drag & drop + resize чартов (react-grid-layout v2), inline редактирование title/description, удаление чартов, смена пароля, копирование ссылки
+- **EmbedDashboardPage.tsx** — публичный дашборд с password gate, JWT в sessionStorage, grid чартов, auto-refresh по интервалу (setInterval), индикатор обновления и "last updated", табы для связанных дашбордов (кеширование загруженных табов, auto-refresh для активного таба)
+- **DashboardEditorPage.tsx** — редактор дашборда: drag & drop + resize чартов (react-grid-layout v2), inline редактирование title/description, удаление чартов, смена пароля, копирование ссылки, секция "Linked Dashboards" (добавление/удаление/перестановка связей)
 
 #### Компоненты (`src/components/`)
 - **Layout.tsx** — навигация, health индикатор, outlet

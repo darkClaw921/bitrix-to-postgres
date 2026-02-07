@@ -411,6 +411,16 @@ export interface DashboardChart {
   created_at?: string
 }
 
+export interface DashboardLink {
+  id: number
+  dashboard_id: number
+  linked_dashboard_id: number
+  sort_order: number
+  label?: string
+  linked_title?: string
+  linked_slug?: string
+}
+
 export interface Dashboard {
   id: number
   slug: string
@@ -419,6 +429,7 @@ export interface Dashboard {
   is_active: boolean
   refresh_interval_minutes: number
   charts: DashboardChart[]
+  linked_dashboards?: DashboardLink[]
   created_at: string
   updated_at: string
 }
@@ -534,6 +545,15 @@ export const dashboardsApi = {
 
   getIframeCode: (data: IframeCodeRequest) =>
     api.post<IframeCodeResponse>('/dashboards/iframe-code', data).then((r) => r.data),
+
+  addLink: (dashboardId: number, data: { linked_dashboard_id: number; label?: string; sort_order?: number }) =>
+    api.post<DashboardLink>(`/dashboards/${dashboardId}/links`, data).then((r) => r.data),
+
+  removeLink: (dashboardId: number, linkId: number) =>
+    api.delete(`/dashboards/${dashboardId}/links/${linkId}`).then((r) => r.data),
+
+  updateLinks: (dashboardId: number, links: { id: number; sort_order: number }[]) =>
+    api.put<DashboardLink[]>(`/dashboards/${dashboardId}/links`, { links }).then((r) => r.data),
 }
 
 // === Public API (no auth interceptor) ===
@@ -560,6 +580,16 @@ export const publicApi = {
 
   getDashboardChartData: (slug: string, dcId: number, token: string) =>
     publicAxios.get<ChartDataResponse>(`/public/dashboard/${slug}/chart/${dcId}/data`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data),
+
+  getLinkedDashboard: (slug: string, linkedSlug: string, token: string) =>
+    publicAxios.get<Dashboard>(`/public/dashboard/${slug}/linked/${linkedSlug}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data),
+
+  getLinkedDashboardChartData: (slug: string, linkedSlug: string, dcId: number, token: string) =>
+    publicAxios.get<ChartDataResponse>(`/public/dashboard/${slug}/linked/${linkedSlug}/chart/${dcId}/data`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then((r) => r.data),
 }

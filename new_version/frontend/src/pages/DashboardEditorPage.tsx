@@ -7,14 +7,18 @@ import 'react-resizable/css/styles.css'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import {
   useDashboard,
+  useDashboardList,
   useUpdateDashboard,
   useUpdateDashboardLayout,
   useUpdateChartOverride,
   useRemoveChartFromDashboard,
   useChangeDashboardPassword,
+  useAddDashboardLink,
+  useRemoveDashboardLink,
+  useUpdateDashboardLinks,
 } from '../hooks/useDashboards'
 import { chartsApi } from '../services/api'
-import type { DashboardChart, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
+import type { DashboardChart, DashboardLink, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
 
 const GRID_COLS = 12
 const ROW_HEIGHT = 120
@@ -25,11 +29,15 @@ export default function DashboardEditorPage() {
   const dashboardId = Number(id)
 
   const { data: dashboard, isLoading, refetch } = useDashboard(dashboardId)
+  const { data: allDashboards } = useDashboardList(1, 100)
   const updateDashboard = useUpdateDashboard()
   const updateLayout = useUpdateDashboardLayout()
   const updateOverride = useUpdateChartOverride()
   const removeChart = useRemoveChartFromDashboard()
   const changePassword = useChangeDashboardPassword()
+  const addLink = useAddDashboardLink()
+  const removeLink = useRemoveDashboardLink()
+  const updateLinks = useUpdateDashboardLinks()
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState('')
@@ -286,6 +294,32 @@ export default function DashboardEditorPage() {
         </div>
       )}
 
+      {/* Linked Dashboards Section */}
+      <LinkedDashboardsSection
+        dashboardId={dashboardId}
+        linkedDashboards={dashboard.linked_dashboards || []}
+        allDashboards={allDashboards?.dashboards || []}
+        onAddLink={(linkedId, label) => {
+          addLink.mutate(
+            { dashboardId, data: { linked_dashboard_id: linkedId, label } },
+            { onSuccess: () => refetch() },
+          )
+        }}
+        onRemoveLink={(linkId) => {
+          removeLink.mutate(
+            { dashboardId, linkId },
+            { onSuccess: () => refetch() },
+          )
+        }}
+        onUpdateOrder={(links) => {
+          updateLinks.mutate(
+            { dashboardId, links },
+            { onSuccess: () => refetch() },
+          )
+        }}
+        isAdding={addLink.isPending}
+      />
+
       <div className="flex justify-start">
         <button onClick={() => navigate('/charts')} className="btn btn-secondary">
           Back to Charts
@@ -426,6 +460,160 @@ function EditorChartCard({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function LinkedDashboardsSection({
+  dashboardId,
+  linkedDashboards,
+  allDashboards,
+  onAddLink,
+  onRemoveLink,
+  onUpdateOrder,
+  isAdding,
+}: {
+  dashboardId: number
+  linkedDashboards: DashboardLink[]
+  allDashboards: { id: number; title: string; slug: string }[]
+  onAddLink: (linkedId: number, label?: string) => void
+  onRemoveLink: (linkId: number) => void
+  onUpdateOrder: (links: { id: number; sort_order: number }[]) => void
+  isAdding: boolean
+}) {
+  const [selectedId, setSelectedId] = useState<number | ''>('')
+  const [labelValue, setLabelValue] = useState('')
+
+  // Filter out self + already linked dashboards
+  const linkedIds = new Set(linkedDashboards.map((l) => l.linked_dashboard_id))
+  const availableDashboards = allDashboards.filter(
+    (d) => d.id !== dashboardId && !linkedIds.has(d.id),
+  )
+
+  const handleAdd = () => {
+    if (!selectedId) return
+    onAddLink(selectedId as number, labelValue.trim() || undefined)
+    setSelectedId('')
+    setLabelValue('')
+  }
+
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return
+    const newLinks = [...linkedDashboards]
+    const updated = newLinks.map((link, i) => ({
+      id: link.id,
+      sort_order: i === index ? index - 1 : i === index - 1 ? index : i,
+    }))
+    onUpdateOrder(updated)
+  }
+
+  const handleMoveDown = (index: number) => {
+    if (index >= linkedDashboards.length - 1) return
+    const newLinks = [...linkedDashboards]
+    const updated = newLinks.map((link, i) => ({
+      id: link.id,
+      sort_order: i === index ? index + 1 : i === index + 1 ? index : i,
+    }))
+    onUpdateOrder(updated)
+  }
+
+  return (
+    <div className="card">
+      <h3 className="text-lg font-semibold mb-3">Linked Dashboards (Tabs)</h3>
+      <p className="text-xs text-gray-400 mb-4">
+        Link other dashboards to display as tabs on the public embed page.
+      </p>
+
+      {/* Existing links */}
+      {linkedDashboards.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {linkedDashboards.map((link, index) => (
+            <div
+              key={link.id}
+              className="flex items-center justify-between bg-gray-50 rounded px-3 py-2"
+            >
+              <div className="flex items-center space-x-3">
+                <span className="text-xs text-gray-400 w-6">{index + 1}.</span>
+                <span className="text-sm font-medium">
+                  {link.label || link.linked_title || 'Untitled'}
+                </span>
+                {link.label && link.linked_title && (
+                  <span className="text-xs text-gray-400">({link.linked_title})</span>
+                )}
+              </div>
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => handleMoveUp(index)}
+                  disabled={index === 0}
+                  className="p-1 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                  title="Move up"
+                >
+                  &uarr;
+                </button>
+                <button
+                  onClick={() => handleMoveDown(index)}
+                  disabled={index >= linkedDashboards.length - 1}
+                  className="p-1 text-xs text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                  title="Move down"
+                >
+                  &darr;
+                </button>
+                <button
+                  onClick={() => onRemoveLink(link.id)}
+                  className="p-1 text-xs text-red-500 hover:text-red-700"
+                  title="Remove link"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new link */}
+      {availableDashboards.length > 0 && (
+        <div className="flex items-end space-x-2">
+          <div className="flex-1">
+            <label className="block text-xs text-gray-500 mb-1">Dashboard</label>
+            <select
+              value={selectedId}
+              onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : '')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="">Select dashboard...</option>
+              {availableDashboards.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="w-48">
+            <label className="block text-xs text-gray-500 mb-1">Tab label (optional)</label>
+            <input
+              type="text"
+              value={labelValue}
+              onChange={(e) => setLabelValue(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              placeholder="Custom label"
+            />
+          </div>
+          <button
+            onClick={handleAdd}
+            disabled={!selectedId || isAdding}
+            className="btn btn-primary text-sm"
+          >
+            {isAdding ? 'Adding...' : 'Add'}
+          </button>
+        </div>
+      )}
+
+      {availableDashboards.length === 0 && linkedDashboards.length === 0 && (
+        <p className="text-sm text-gray-400">
+          No other published dashboards available to link.
+        </p>
+      )}
     </div>
   )
 }

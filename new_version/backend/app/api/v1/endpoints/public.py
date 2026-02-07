@@ -153,3 +153,75 @@ async def get_dashboard_chart_data(
         )
     except ChartServiceError as e:
         raise HTTPException(status_code=400, detail=e.message) from e
+
+
+# === Linked Dashboard Endpoints ===
+
+
+@router.get("/dashboard/{slug}/linked/{linked_slug}", response_model=DashboardResponse)
+async def get_linked_dashboard(
+    slug: str,
+    linked_slug: str,
+    authorization: Optional[str] = Header(None),
+) -> DashboardResponse:
+    """Get a linked dashboard detail (requires JWT for main slug)."""
+    _verify_dashboard_token(authorization, slug)
+
+    # Verify the link exists and both dashboards are active
+    is_linked = await dashboard_service.verify_linked_access(slug, linked_slug)
+    if not is_linked:
+        raise HTTPException(status_code=403, detail="Связанный дашборд не найден или не активен")
+
+    dashboard = await dashboard_service.get_dashboard_by_slug(linked_slug)
+    if not dashboard:
+        raise HTTPException(status_code=404, detail="Дашборд не найден")
+
+    return DashboardResponse(**dashboard)
+
+
+@router.get(
+    "/dashboard/{slug}/linked/{linked_slug}/chart/{dc_id}/data",
+    response_model=ChartDataResponse,
+)
+async def get_linked_dashboard_chart_data(
+    slug: str,
+    linked_slug: str,
+    dc_id: int,
+    authorization: Optional[str] = Header(None),
+) -> ChartDataResponse:
+    """Get chart data from a linked dashboard (requires JWT for main slug)."""
+    _verify_dashboard_token(authorization, slug)
+    settings = get_settings()
+
+    # Verify the link
+    is_linked = await dashboard_service.verify_linked_access(slug, linked_slug)
+    if not is_linked:
+        raise HTTPException(status_code=403, detail="Связанный дашборд не найден или не активен")
+
+    dashboard = await dashboard_service.get_dashboard_by_slug(linked_slug)
+    if not dashboard:
+        raise HTTPException(status_code=404, detail="Дашборд не найден")
+
+    # Find chart in linked dashboard
+    dc_chart = None
+    for c in dashboard.get("charts", []):
+        if c["id"] == dc_id:
+            dc_chart = c
+            break
+
+    if not dc_chart:
+        raise HTTPException(status_code=404, detail="Чарт не найден в дашборде")
+
+    try:
+        sql = dc_chart["sql_query"]
+        chart_service.validate_sql_query(sql)
+        sql = chart_service.ensure_limit(sql, settings.chart_max_rows)
+        data, exec_time = await chart_service.execute_chart_query(sql)
+
+        return ChartDataResponse(
+            data=data,
+            row_count=len(data),
+            execution_time_ms=round(exec_time, 2),
+        )
+    except ChartServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e

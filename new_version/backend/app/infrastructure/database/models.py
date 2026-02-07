@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.connection import Base
@@ -131,6 +131,28 @@ class DashboardChart(Base):
     layout_w: Mapped[int] = mapped_column(Integer, default=6, server_default="6")
     layout_h: Mapped[int] = mapped_column(Integer, default=4, server_default="4")
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+
+class DashboardLink(Base):
+    """Link between dashboards for tab navigation."""
+
+    __tablename__ = "dashboard_links"
+    __table_args__ = (
+        UniqueConstraint("dashboard_id", "linked_dashboard_id", name="uq_dashboard_linked"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    dashboard_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("published_dashboards.id", ondelete="CASCADE"), nullable=False
+    )
+    linked_dashboard_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("published_dashboards.id", ondelete="CASCADE"), nullable=False
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

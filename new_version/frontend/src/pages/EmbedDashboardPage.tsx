@@ -7,6 +7,11 @@ import type { Dashboard, DashboardChart, ChartSpec, ChartDataResponse, ChartDisp
 
 const SESSION_KEY_PREFIX = 'dashboard_token_'
 
+interface TabData {
+  dashboard: Dashboard
+  chartData: Record<number, ChartDataResponse>
+}
+
 export default function EmbedDashboardPage() {
   const { slug } = useParams<{ slug: string }>()
   const [token, setToken] = useState<string | null>(() => {
@@ -20,6 +25,11 @@ export default function EmbedDashboardPage() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const refreshingRef = useRef(false)
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<string>('main')
+  const [linkedCache, setLinkedCache] = useState<Record<string, TabData>>({})
+  const [linkedLoading, setLinkedLoading] = useState(false)
 
   const handleAuth = useCallback(
     async (password: string): Promise<string> => {
@@ -76,6 +86,66 @@ export default function EmbedDashboardPage() {
     [slug],
   )
 
+  const fetchLinkedChartData = useCallback(
+    async (linkedSlug: string, dash: Dashboard, authToken: string): Promise<Record<number, ChartDataResponse>> => {
+      if (!slug) return {}
+
+      const promises = dash.charts.map((c) =>
+        publicApi
+          .getLinkedDashboardChartData(slug, linkedSlug, c.id, authToken)
+          .then((data) => ({ dcId: c.id, data }))
+          .catch((err) => {
+            const axiosErr = err as { response?: { status?: number } }
+            if (axiosErr?.response?.status === 401) {
+              throw err
+            }
+            return { dcId: c.id, data: null }
+          }),
+      )
+      const results = await Promise.all(promises)
+      const dataMap: Record<number, ChartDataResponse> = {}
+      for (const r of results) {
+        if (r.data) dataMap[r.dcId] = r.data
+      }
+      return dataMap
+    },
+    [slug],
+  )
+
+  const handleTabClick = useCallback(
+    async (tabSlug: string) => {
+      if (tabSlug === activeTab) return
+      setActiveTab(tabSlug)
+
+      // Main tab: data already loaded
+      if (tabSlug === 'main') return
+
+      // Already cached
+      if (linkedCache[tabSlug]) return
+
+      // Fetch linked dashboard
+      if (!slug || !token) return
+      setLinkedLoading(true)
+      try {
+        const linkedDash = await publicApi.getLinkedDashboard(slug, tabSlug, token)
+        const linkedData = await fetchLinkedChartData(tabSlug, linkedDash, token)
+        setLinkedCache((prev) => ({
+          ...prev,
+          [tabSlug]: { dashboard: linkedDash, chartData: linkedData },
+        }))
+      } catch (err) {
+        const axiosErr = err as { response?: { status?: number } }
+        if (axiosErr?.response?.status === 401) {
+          sessionStorage.removeItem(SESSION_KEY_PREFIX + slug)
+          setToken(null)
+        }
+      } finally {
+        setLinkedLoading(false)
+      }
+    },
+    [activeTab, linkedCache, slug, token, fetchLinkedChartData],
+  )
+
   // Load dashboard once authenticated
   useEffect(() => {
     if (!slug || !token) return
@@ -99,17 +169,31 @@ export default function EmbedDashboardPage() {
       .finally(() => setLoading(false))
   }, [slug, token, fetchAllChartData])
 
-  // Auto-refresh interval
+  // Auto-refresh interval — refreshes active tab's charts
   useEffect(() => {
     if (!dashboard || !token || !slug) return
 
     const intervalMs = dashboard.refresh_interval_minutes * 60 * 1000
-    const timer = setInterval(() => {
-      fetchAllChartData(dashboard, token)
+    const timer = setInterval(async () => {
+      if (activeTab === 'main') {
+        fetchAllChartData(dashboard, token)
+      } else {
+        const cached = linkedCache[activeTab]
+        if (cached) {
+          try {
+            const freshData = await fetchLinkedChartData(activeTab, cached.dashboard, token)
+            setLinkedCache((prev) => ({
+              ...prev,
+              [activeTab]: { ...prev[activeTab], chartData: freshData },
+            }))
+            setLastUpdatedAt(new Date())
+          } catch {}
+        }
+      }
     }, intervalMs)
 
     return () => clearInterval(timer)
-  }, [dashboard, token, slug, fetchAllChartData])
+  }, [dashboard, token, slug, activeTab, linkedCache, fetchAllChartData, fetchLinkedChartData])
 
   if (!token) {
     return <PasswordGate onAuthenticated={handleAuthenticated} onSubmit={handleAuth} />
@@ -129,6 +213,17 @@ export default function EmbedDashboardPage() {
         <div className="text-red-500">{error || 'Dashboard not found'}</div>
       </div>
     )
+  }
+
+  const linkedDashboards = dashboard.linked_dashboards || []
+  const hasTabs = linkedDashboards.length > 0
+
+  // Determine active charts to display
+  let activeCharts: DashboardChart[] = dashboard.charts
+  let activeChartData: Record<number, ChartDataResponse> = chartData
+  if (activeTab !== 'main' && linkedCache[activeTab]) {
+    activeCharts = linkedCache[activeTab].dashboard.charts
+    activeChartData = linkedCache[activeTab].chartData
   }
 
   return (
@@ -156,25 +251,75 @@ export default function EmbedDashboardPage() {
           </div>
         </div>
         {dashboard.description && (
-          <p className="text-gray-500 mb-6">{dashboard.description}</p>
+          <p className="text-gray-500 mb-4">{dashboard.description}</p>
         )}
 
-        <div
-          className="grid gap-4"
-          style={{
-            gridTemplateColumns: 'repeat(12, 1fr)',
-          }}
-        >
-          {dashboard.charts.map((dc) => (
-            <DashboardChartCard
-              key={dc.id}
-              dc={dc}
-              data={chartData[dc.id] || null}
+        {/* Tab bar */}
+        {hasTabs && (
+          <div className="flex space-x-1 border-b border-gray-200 mb-6">
+            <TabButton
+              label={dashboard.title}
+              isActive={activeTab === 'main'}
+              onClick={() => handleTabClick('main')}
             />
-          ))}
-        </div>
+            {linkedDashboards.map((link) => (
+              <TabButton
+                key={link.id}
+                label={link.label || link.linked_title || 'Tab'}
+                isActive={activeTab === link.linked_slug}
+                onClick={() => link.linked_slug && handleTabClick(link.linked_slug)}
+              />
+            ))}
+          </div>
+        )}
+
+        {!hasTabs && <div className="mb-6" />}
+
+        {linkedLoading ? (
+          <div className="flex items-center justify-center h-64 text-gray-400">
+            Loading tab...
+          </div>
+        ) : (
+          <div
+            className="grid gap-4"
+            style={{
+              gridTemplateColumns: 'repeat(12, 1fr)',
+            }}
+          >
+            {activeCharts.map((dc) => (
+              <DashboardChartCard
+                key={dc.id}
+                dc={dc}
+                data={activeChartData[dc.id] || null}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
+  )
+}
+
+function TabButton({
+  label,
+  isActive,
+  onClick,
+}: {
+  label: string
+  isActive: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+        isActive
+          ? 'border-blue-500 text-blue-600'
+          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+      }`}
+    >
+      {label}
+    </button>
   )
 }
 

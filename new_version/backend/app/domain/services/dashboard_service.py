@@ -12,9 +12,12 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.core.exceptions import DashboardAuthError, DashboardServiceError
 from app.core.logging import get_logger
+from app.domain.services.selector_service import SelectorService
 from app.infrastructure.database.connection import get_dialect, get_engine
 
 logger = get_logger(__name__)
+
+_selector_service = SelectorService()
 
 
 class DashboardService:
@@ -168,6 +171,7 @@ class DashboardService:
         dashboard = dict(zip(list(result.keys()), row))
         dashboard["charts"] = await self._get_dashboard_charts(dashboard_id)
         dashboard["linked_dashboards"] = await self.get_links(dashboard_id)
+        dashboard["selectors"] = await _selector_service.get_selectors_for_dashboard(dashboard_id)
         return dashboard
 
     async def get_dashboard_by_slug(self, slug: str) -> dict[str, Any] | None:
@@ -188,6 +192,7 @@ class DashboardService:
         dashboard = dict(zip(list(result.keys()), row))
         dashboard["charts"] = await self._get_dashboard_charts(dashboard["id"])
         dashboard["linked_dashboards"] = await self.get_links(dashboard["id"])
+        dashboard["selectors"] = await _selector_service.get_selectors_for_dashboard(dashboard["id"])
         return dashboard
 
     async def _get_dashboard_charts(self, dashboard_id: int) -> list[dict[str, Any]]:

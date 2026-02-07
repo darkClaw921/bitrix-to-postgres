@@ -67,19 +67,24 @@ Bitrix24 Sync Service — микросервис для односторонне
 ```
 app/api/
 ├── v1/
-│   ├── __init__.py          # Роутер версии API (sync, webhooks, status, charts, schema, references)
+│   ├── __init__.py          # Роутер версии API (sync, webhooks, status, charts, schema, references, dashboards, selectors, public)
 │   ├── endpoints/
 │   │   ├── sync.py          # Эндпоинты синхронизации
 │   │   ├── webhooks.py      # Обработка webhooks от Bitrix24
 │   │   ├── status.py        # Статус и health checks
 │   │   ├── charts.py        # AI-генерация и CRUD чартов
 │   │   ├── schema_description.py  # AI-описание и raw-описание схемы БД
-│   │   └── references.py    # Синхронизация справочных данных (статусы, воронки, валюты)
+│   │   ├── references.py    # Синхронизация справочных данных (статусы, воронки, валюты)
+│   │   ├── dashboards.py    # CRUD дашбордов, layout, ссылки, пароли
+│   │   ├── selectors.py     # CRUD селекторов (фильтров) дашбордов и маппингов
+│   │   └── public.py        # Публичные эндпоинты: чарты, дашборды, аутентификация, фильтрованные данные
 │   └── schemas/
 │       ├── sync.py          # Pydantic схемы для sync
 │       ├── webhooks.py      # Схемы webhooks
 │       ├── common.py        # Общие схемы
 │       ├── charts.py        # Схемы чартов (ChartSpec, ChartGenerateRequest/Response и др.)
+│       ├── dashboards.py    # Схемы дашбордов (DashboardResponse включает selectors)
+│       ├── selectors.py     # Схемы селекторов (SelectorCreateRequest, SelectorResponse, FilterValue и др.)
 │       └── schema_description.py  # Схемы описания схемы (TableInfo, ColumnInfo и др.)
 ```
 
@@ -109,6 +114,19 @@ app/api/
 | `GET` | `/api/v1/references/status` | Статус синхронизации справочников |
 | `POST` | `/api/v1/references/sync/{ref_name}` | Синхронизация конкретного справочника |
 | `POST` | `/api/v1/references/sync-all` | Синхронизация всех справочников |
+| `POST` | `/api/v1/dashboards/{id}/selectors` | Создание селектора (фильтра) для дашборда |
+| `GET` | `/api/v1/dashboards/{id}/selectors` | Список селекторов дашборда |
+| `PUT` | `/api/v1/dashboards/{id}/selectors/{sid}` | Обновление селектора |
+| `DELETE` | `/api/v1/dashboards/{id}/selectors/{sid}` | Удаление селектора |
+| `POST` | `/api/v1/dashboards/{id}/selectors/{sid}/mappings` | Добавление маппинга (селектор → чарт + колонка) |
+| `DELETE` | `/api/v1/dashboards/{id}/selectors/{sid}/mappings/{mid}` | Удаление маппинга |
+| `GET` | `/api/v1/dashboards/{id}/selectors/{sid}/options` | Получение опций для dropdown/multi_select |
+| `POST` | `/api/v1/dashboards/{id}/selectors/generate` | AI-генерация селекторов на основе SQL-запросов чартов |
+| `GET` | `/api/v1/dashboards/{id}/charts/{dc_id}/columns` | Получение списка колонок из SQL-запроса чарта |
+| `POST` | `/api/v1/public/dashboard/{slug}/chart/{dc_id}/data` | Данные чарта с фильтрами (POST + JWT) |
+| `POST` | `/api/v1/public/dashboard/{slug}/linked/{ls}/chart/{dc_id}/data` | Данные чарта из связанного дашборда с фильтрами |
+| `GET` | `/api/v1/public/dashboard/{slug}/selectors` | Селекторы публичного дашборда (JWT) |
+| `GET` | `/api/v1/public/dashboard/{slug}/selector/{sid}/options` | Опции селектора (JWT) |
 | `GET` | `/health` | Health check |
 
 ### 2. Domain Layer (`app/domain/`)
@@ -128,7 +146,9 @@ app/domain/
 │   ├── reference_sync_service.py  # Синхронизация справочных таблиц (статусы, воронки, валюты)
 │   ├── field_mapper.py      # Маппинг полей Bitrix → DB (кросс-БД совместимый)
 │   ├── ai_service.py        # Взаимодействие с OpenAI API (генерация чартов, описание схемы)
-│   └── chart_service.py     # SQL-валидация, выполнение запросов, CRUD чартов
+│   ├── chart_service.py     # SQL-валидация, выполнение запросов, CRUD чартов, apply_filters()
+│   ├── dashboard_service.py # CRUD дашбордов, JWT-аутентификация, layout, ссылки (загружает selectors)
+│   └── selector_service.py  # CRUD селекторов и маппингов, build_filters_for_chart(), get_selector_options() (поддержка JOIN с label-таблицей)
 └── interfaces/              # Абстракции (для DI)
 ```
 
@@ -148,6 +168,7 @@ class SyncService:
 class AIService:
     async def generate_chart_spec(prompt: str, schema_context: str) -> dict
     async def generate_schema_description(schema_context: str) -> str
+    async def generate_selectors(charts_context: str, schema_context: str) -> list[dict]  # AI-генерация селекторов
 ```
 
 #### ChartService — управление чартами:
@@ -172,8 +193,14 @@ class ChartService:
     async def get_allowed_tables() -> list[str]  # Включает crm_* и ref_* таблицы
     async def generate_schema_markdown(table_filter?, include_related=True) -> str  # Генерация markdown из метаданных БД (без AI)
 
+    # Извлечение колонок из SQL
+    async def get_chart_columns(sql: str) -> list[str]  # Выполняет SQL с LIMIT 0, возвращает имена колонок
+
+    # Применение фильтров (WHERE injection)
+    @staticmethod def apply_filters(sql: str, filters: list[dict]) -> tuple[str, dict]  # Инъекция WHERE/AND условий с bind-параметрами
+
     # Выполнение запросов
-    async def execute_chart_query(sql: str) -> tuple[list[dict], float]
+    async def execute_chart_query(sql: str, bind_params?: dict) -> tuple[list[dict], float]
 
     # CRUD чартов
     async def save_chart(data: dict) -> dict
@@ -229,6 +256,39 @@ class ReferenceSyncService:
 
 При `full_sync` CRM-сущности автоматически синхронизируются связанные справочники и значения enumeration-полей пользовательских полей (best-effort).
 
+#### SelectorService — селекторы (фильтры) дашбордов:
+
+```python
+class SelectorService:
+    # CRUD селекторов
+    async def create_selector(dashboard_id, name, label, selector_type, operator, config?, mappings?) -> dict
+    async def get_selector_by_id(selector_id) -> dict
+    async def get_selectors_for_dashboard(dashboard_id) -> list[dict]
+    async def update_selector(selector_id, **kwargs) -> dict
+    async def delete_selector(selector_id) -> bool
+
+    # CRUD маппингов (селектор → чарт + колонка)
+    async def add_mapping(selector_id, dashboard_chart_id, target_column, target_table?, operator_override?) -> dict
+    async def remove_mapping(mapping_id) -> bool
+
+    # Построение фильтров для apply_filters()
+    async def build_filters_for_chart(dashboard_id, dc_id, filter_values) -> list[dict]
+
+    # Опции для dropdown/multi_select
+    async def get_selector_options(selector_id) -> list  # SELECT DISTINCT или static_options; если config содержит label_table/label_column/label_value_column — LEFT JOIN с label-таблицей, возвращает [{value, label}]
+```
+
+**Типы селекторов:** `date_range`, `single_date`, `dropdown`, `multi_select`, `text`
+
+**Операторы:** `equals`, `not_equals`, `in`, `not_in`, `between`, `gt`, `lt`, `gte`, `lte`, `like`, `not_like`
+
+**Механизм фильтрации (Approach A: WHERE Clause Injection):**
+1. Пользователь на публичном дашборде выбирает значения в селекторах и нажимает "Apply"
+2. Frontend отправляет `POST /public/dashboard/{slug}/chart/{dc_id}/data` с массивом фильтров
+3. Backend через `SelectorService.build_filters_for_chart()` находит маппинги для данного чарта
+4. `ChartService.apply_filters()` инъектирует `WHERE`/`AND` условия в SQL с bind-параметрами
+5. Модифицированный SQL выполняется через `execute_chart_query(sql, bind_params)`
+
 #### Сущность Call (Телефония)
 
 Синхронизация истории звонков из Bitrix24 Voximplant:
@@ -251,7 +311,7 @@ app/infrastructure/
 │   └── client.py            # BitrixClient с retry и rate limiting
 ├── database/
 │   ├── connection.py        # AsyncEngine, get_session, get_dialect()
-│   ├── models.py            # SQLAlchemy модели (SyncConfig, SyncLog, SyncState, AIChart, SchemaDescription)
+│   ├── models.py            # SQLAlchemy модели (SyncConfig, SyncLog, SyncState, AIChart, SchemaDescription, PublishedDashboard, DashboardChart, DashboardLink, DashboardSelector, SelectorChartMapping)
 │   └── dynamic_table.py     # Динамическое создание таблиц (кросс-БД, с комментариями полей)
 └── scheduler/
     └── scheduler.py         # APScheduler для периодической синхронизации
@@ -261,7 +321,11 @@ alembic/
 └── versions/
     ├── 001_create_system_tables.py  # Initial migration (кросс-БД)
     ├── 002_create_ai_charts_table.py  # Таблица ai_charts для сохранённых чартов
-    └── 003_create_schema_descriptions_table.py  # Таблица schema_descriptions для истории генерации схем
+    ├── 003_create_schema_descriptions_table.py  # Таблица schema_descriptions для истории генерации схем
+    ├── 004_create_dashboards_tables.py  # Таблицы published_dashboards, dashboard_charts
+    ├── 005_add_refresh_interval.py  # Добавление refresh_interval_minutes в published_dashboards
+    ├── 006_create_dashboard_links_table.py  # Таблица dashboard_links (связи между дашбордами)
+    └── 007_create_dashboard_selectors_tables.py  # Таблицы dashboard_selectors, selector_chart_mappings
 ```
 
 #### connection.py — ключевые функции:
@@ -370,6 +434,41 @@ services:
 | `created_at` | TIMESTAMP | Дата создания |
 | `updated_at` | TIMESTAMP | Дата последнего обновления |
 
+### dashboard_selectors
+
+Таблица селекторов (фильтров) дашбордов:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | BIGINT (PK) | Уникальный идентификатор |
+| `dashboard_id` | BIGINT (FK → published_dashboards) | Дашборд-владелец |
+| `name` | VARCHAR(100) | Внутреннее имя (unique per dashboard) |
+| `label` | VARCHAR(255) | Отображаемое название |
+| `selector_type` | VARCHAR(30) | Тип: date_range / single_date / dropdown / multi_select / text |
+| `operator` | VARCHAR(30) | Оператор по умолчанию: equals / between / in / like и др. |
+| `config` | JSON (nullable) | Конфигурация: source_table, source_column, static_options, default_value, placeholder |
+| `sort_order` | INTEGER | Порядок отображения |
+| `is_required` | BOOLEAN | Обязательность фильтра |
+| `created_at` | TIMESTAMP | Дата создания |
+
+**UNIQUE** constraint: `(dashboard_id, name)`
+
+### selector_chart_mappings
+
+Маппинг селекторов на колонки чартов:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | BIGINT (PK) | Уникальный идентификатор |
+| `selector_id` | BIGINT (FK → dashboard_selectors) | Родительский селектор |
+| `dashboard_chart_id` | BIGINT (FK → dashboard_charts) | Целевой чарт на дашборде |
+| `target_column` | VARCHAR(255) | Колонка в SQL чарта (date_create, closedate и др.) |
+| `target_table` | VARCHAR(255) (nullable) | Таблица для disambiguation в JOIN |
+| `operator_override` | VARCHAR(30) (nullable) | Переопределение оператора для этого чарта |
+| `created_at` | TIMESTAMP | Дата создания |
+
+**UNIQUE** constraint: `(selector_id, dashboard_chart_id)` — один маппинг на пару селектор-чарт
+
 ## Маппинг типов Bitrix24 → Database
 
 | Bitrix24 Type | SQLAlchemy Type | SQL Type |
@@ -427,22 +526,37 @@ frontend/src/
 │   ├── Layout.tsx             # Навигация (Dashboard, AI Charts, Configuration, Monitoring, Validation, Schema)
 │   ├── SyncCard.tsx           # Карточка синхронизации CRM-сущности
 │   ├── ReferenceCard.tsx      # Карточка справочника (статусы, воронки, валюты)
-│   └── charts/
-│       ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter через Recharts, indicator — KPI-карточка, table — таблица с итогами и сортировкой)
-│       └── ChartCard.tsx      # Карточка сохранённого чарта с действиями
+│   ├── charts/
+│   │   ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter через Recharts, indicator — KPI-карточка, table — таблица с итогами и сортировкой)
+│   │   └── ChartCard.tsx      # Карточка сохранённого чарта с действиями
+│   ├── dashboards/
+│   │   ├── DashboardCard.tsx  # Карточка дашборда в списке
+│   │   ├── PasswordGate.tsx   # Форма ввода пароля для публичного дашборда
+│   │   └── PublishModal.tsx   # Модальное окно публикации дашборда
+│   └── selectors/
+│       ├── SelectorBar.tsx        # Панель фильтров: рендерит селекторы, кнопки Apply/Reset, загружает опции
+│       ├── DateRangeSelector.tsx  # Два input[date] (from/to)
+│       ├── SingleDateSelector.tsx # Один input[date]
+│       ├── DropdownSelector.tsx   # select с опциями из API или static
+│       ├── MultiSelectSelector.tsx # Multi-select с чекбоксами и dropdown
+│       └── TextSelector.tsx       # input[text] с placeholder
 ├── pages/
 │   ├── DashboardPage.tsx      # Обзор синхронизации
 │   ├── ChartsPage.tsx         # AI-генерация чартов + список сохранённых
 │   ├── SchemaPage.tsx         # AI-описание схемы + редактирование + копирование + сырая структура таблиц с описаниями
 │   ├── ConfigPage.tsx         # Настройки синхронизации
 │   ├── MonitoringPage.tsx     # Мониторинг
-│   └── ValidationPage.tsx     # Валидация данных
+│   ├── ValidationPage.tsx     # Валидация данных
+│   ├── EmbedDashboardPage.tsx # Публичный дашборд: аутентификация, вкладки, авто-обновление, SelectorBar + фильтры
+│   └── DashboardEditorPage.tsx # Редактор дашборда: grid-layout, override, ссылки, SelectorsSection (CRUD фильтров + маппинги)
 ├── hooks/
 │   ├── useSync.ts             # React Query хуки для синхронизации и справочников
 │   ├── useCharts.ts           # React Query хуки для чартов, схемы и истории генерации
+│   ├── useDashboards.ts       # React Query хуки для CRUD дашбордов, layout, ссылок, паролей
+│   ├── useSelectors.ts        # React Query хуки для CRUD селекторов, маппингов, опций, AI-генерации, колонок чартов
 │   └── useAuth.ts             # Хук авторизации
 ├── services/
-│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi)
+│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi, dashboardsApi, publicApi) + типы DashboardSelector, SelectorMapping, FilterValue
 └── store/
     ├── authStore.ts           # Zustand store авторизации
     └── syncStore.ts           # Zustand store синхронизации

@@ -156,3 +156,50 @@ class DashboardLink(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
+
+
+class DashboardSelector(Base):
+    """Selector (filter control) on a dashboard."""
+
+    __tablename__ = "dashboard_selectors"
+    __table_args__ = (
+        UniqueConstraint("dashboard_id", "name", name="uq_dashboard_selector_name"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    dashboard_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("published_dashboards.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    selector_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    operator: Mapped[str] = mapped_column(String(30), nullable=False, server_default="equals")
+    config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+
+class SelectorChartMapping(Base):
+    """Mapping between a selector and a chart on the dashboard."""
+
+    __tablename__ = "selector_chart_mappings"
+    __table_args__ = (
+        UniqueConstraint("selector_id", "dashboard_chart_id", name="uq_selector_chart_mapping"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    selector_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("dashboard_selectors.id", ondelete="CASCADE"), nullable=False
+    )
+    dashboard_chart_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("dashboard_charts.id", ondelete="CASCADE"), nullable=False
+    )
+    target_column: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_table: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    operator_override: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )

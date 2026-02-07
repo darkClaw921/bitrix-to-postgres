@@ -17,8 +17,17 @@ import {
   useRemoveDashboardLink,
   useUpdateDashboardLinks,
 } from '../hooks/useDashboards'
+import {
+  useCreateSelector,
+  useDeleteSelector,
+  useAddSelectorMapping,
+  useRemoveSelectorMapping,
+  useChartColumns,
+  useGenerateSelectors,
+} from '../hooks/useSelectors'
+import { useSchemaTables } from '../hooks/useCharts'
 import { chartsApi } from '../services/api'
-import type { DashboardChart, DashboardLink, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
+import type { DashboardChart, DashboardLink, DashboardSelector, SelectorMapping, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
 
 const GRID_COLS = 12
 const ROW_HEIGHT = 120
@@ -293,6 +302,14 @@ export default function DashboardEditorPage() {
           No charts in this dashboard. Add charts when publishing.
         </div>
       )}
+
+      {/* Selectors Section */}
+      <SelectorsSection
+        dashboardId={dashboardId}
+        selectors={dashboard.selectors || []}
+        charts={dashboard.charts}
+        onRefetch={refetch}
+      />
 
       {/* Linked Dashboards Section */}
       <LinkedDashboardsSection
@@ -615,5 +632,707 @@ function LinkedDashboardsSection({
         </p>
       )}
     </div>
+  )
+}
+
+const SELECTOR_TYPES = [
+  { value: 'date_range', label: 'Date Range' },
+  { value: 'single_date', label: 'Single Date' },
+  { value: 'dropdown', label: 'Dropdown' },
+  { value: 'multi_select', label: 'Multi Select' },
+  { value: 'text', label: 'Text' },
+]
+
+const OPERATORS = [
+  { value: 'equals', label: '=' },
+  { value: 'not_equals', label: '!=' },
+  { value: 'in', label: 'IN' },
+  { value: 'not_in', label: 'NOT IN' },
+  { value: 'between', label: 'BETWEEN' },
+  { value: 'gt', label: '>' },
+  { value: 'lt', label: '<' },
+  { value: 'gte', label: '>=' },
+  { value: 'lte', label: '<=' },
+  { value: 'like', label: 'LIKE' },
+  { value: 'not_like', label: 'NOT LIKE' },
+]
+
+function SelectorsSection({
+  dashboardId,
+  selectors,
+  charts,
+  onRefetch,
+}: {
+  dashboardId: number
+  selectors: DashboardSelector[]
+  charts: DashboardChart[]
+  onRefetch: () => void
+}) {
+  const createSelector = useCreateSelector()
+  const deleteSelector = useDeleteSelector()
+  const addMapping = useAddSelectorMapping()
+  const removeMapping = useRemoveSelectorMapping()
+  const generateSelectors = useGenerateSelectors()
+  const { data: tablesData } = useSchemaTables()
+
+  // New selector form
+  const [showForm, setShowForm] = useState(false)
+  const [formName, setFormName] = useState('')
+  const [formLabel, setFormLabel] = useState('')
+  const [formType, setFormType] = useState('date_range')
+  const [formOperator, setFormOperator] = useState('between')
+  const [formSourceTable, setFormSourceTable] = useState('')
+  const [formSourceColumn, setFormSourceColumn] = useState('')
+  const [formRequired, setFormRequired] = useState(false)
+  const [sourceTableMode, setSourceTableMode] = useState<'select' | 'manual'>('select')
+  const [sourceColumnMode, setSourceColumnMode] = useState<'select' | 'manual'>('select')
+
+  // Label join config
+  const [formLabelTable, setFormLabelTable] = useState('')
+  const [formLabelColumn, setFormLabelColumn] = useState('')
+  const [formLabelValueColumn, setFormLabelValueColumn] = useState('')
+  const [labelTableMode, setLabelTableMode] = useState<'select' | 'manual'>('select')
+  const [labelColumnMode, setLabelColumnMode] = useState<'select' | 'manual'>('select')
+  const [labelValueColumnMode, setLabelValueColumnMode] = useState<'select' | 'manual'>('select')
+
+  // Mapping form state
+  const [addingMappingFor, setAddingMappingFor] = useState<number | null>(null)
+  const [mappingChartId, setMappingChartId] = useState<number | ''>('')
+  const [mappingColumn, setMappingColumn] = useState('')
+  const [mappingColumnMode, setMappingColumnMode] = useState<'select' | 'manual'>('select')
+
+  const handleCreate = () => {
+    if (!formName.trim() || !formLabel.trim()) return
+
+    const config: Record<string, unknown> = {}
+    if (formSourceTable.trim()) config.source_table = formSourceTable.trim()
+    if (formSourceColumn.trim()) config.source_column = formSourceColumn.trim()
+    if (formLabelTable.trim()) config.label_table = formLabelTable.trim()
+    if (formLabelColumn.trim()) config.label_column = formLabelColumn.trim()
+    if (formLabelValueColumn.trim()) config.label_value_column = formLabelValueColumn.trim()
+
+    createSelector.mutate(
+      {
+        dashboardId,
+        data: {
+          name: formName.trim(),
+          label: formLabel.trim(),
+          selector_type: formType,
+          operator: formOperator,
+          config: Object.keys(config).length > 0 ? config : undefined,
+          is_required: formRequired,
+        },
+      },
+      {
+        onSuccess: () => {
+          setShowForm(false)
+          setFormName('')
+          setFormLabel('')
+          setFormType('date_range')
+          setFormOperator('between')
+          setFormSourceTable('')
+          setFormSourceColumn('')
+          setFormRequired(false)
+          setSourceTableMode('select')
+          setSourceColumnMode('select')
+          setFormLabelTable('')
+          setFormLabelColumn('')
+          setFormLabelValueColumn('')
+          setLabelTableMode('select')
+          setLabelColumnMode('select')
+          setLabelValueColumnMode('select')
+          onRefetch()
+        },
+      },
+    )
+  }
+
+  const handleDelete = (selectorId: number) => {
+    if (!confirm('Delete this selector and all its mappings?')) return
+    deleteSelector.mutate(
+      { dashboardId, selectorId },
+      { onSuccess: () => onRefetch() },
+    )
+  }
+
+  const handleAddMapping = (selectorId: number) => {
+    if (!mappingChartId || !mappingColumn.trim()) return
+    addMapping.mutate(
+      {
+        dashboardId,
+        selectorId,
+        data: {
+          dashboard_chart_id: mappingChartId as number,
+          target_column: mappingColumn.trim(),
+        },
+      },
+      {
+        onSuccess: () => {
+          setAddingMappingFor(null)
+          setMappingChartId('')
+          setMappingColumn('')
+          onRefetch()
+        },
+      },
+    )
+  }
+
+  const handleRemoveMapping = (selectorId: number, mappingId: number) => {
+    removeMapping.mutate(
+      { dashboardId, selectorId, mappingId },
+      { onSuccess: () => onRefetch() },
+    )
+  }
+
+  const handleGenerate = () => {
+    generateSelectors.mutate(dashboardId, {
+      onSuccess: () => onRefetch(),
+    })
+  }
+
+  // Auto-set operator based on selector type
+  useEffect(() => {
+    if (formType === 'date_range') setFormOperator('between')
+    else if (formType === 'multi_select') setFormOperator('in')
+    else if (formType === 'dropdown') setFormOperator('equals')
+    else if (formType === 'text') setFormOperator('like')
+    else if (formType === 'single_date') setFormOperator('equals')
+  }, [formType])
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold">Selectors (Filters)</h3>
+        <div className="flex space-x-2">
+          <button
+            onClick={handleGenerate}
+            disabled={generateSelectors.isPending || charts.length === 0}
+            className="btn btn-secondary text-sm"
+            title="Generate selectors with AI based on chart queries"
+          >
+            {generateSelectors.isPending ? 'Generating...' : 'Generate with AI'}
+          </button>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="btn btn-primary text-sm"
+          >
+            {showForm ? 'Cancel' : 'Add Selector'}
+          </button>
+        </div>
+      </div>
+      {generateSelectors.isError && (
+        <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
+          {(generateSelectors.error as Error)?.message || 'Failed to generate selectors'}
+        </div>
+      )}
+      <p className="text-xs text-gray-400 mb-4">
+        Add filter controls that users can use on the public dashboard to filter chart data.
+      </p>
+
+      {/* Create form */}
+      {showForm && (
+        <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Internal name</label>
+              <input
+                type="text"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                placeholder="e.g. date_filter"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Display label</label>
+              <input
+                type="text"
+                value={formLabel}
+                onChange={(e) => setFormLabel(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                placeholder="e.g. Period"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Type</label>
+              <select
+                value={formType}
+                onChange={(e) => setFormType(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                {SELECTOR_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Operator</label>
+              <select
+                value={formOperator}
+                onChange={(e) => setFormOperator(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                {OPERATORS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={formRequired}
+                  onChange={(e) => setFormRequired(e.target.checked)}
+                  className="mr-2"
+                />
+                Required
+              </label>
+            </div>
+          </div>
+
+          {(formType === 'dropdown' || formType === 'multi_select') && (
+            <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-500">Source table (for options)</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSourceTableMode(sourceTableMode === 'select' ? 'manual' : 'select')
+                      setFormSourceTable('')
+                      setFormSourceColumn('')
+                    }}
+                    className="text-[10px] text-blue-500 hover:text-blue-700"
+                  >
+                    {sourceTableMode === 'select' ? 'type manually' : 'pick from list'}
+                  </button>
+                </div>
+                {sourceTableMode === 'manual' ? (
+                  <input
+                    type="text"
+                    value={formSourceTable}
+                    onChange={(e) => setFormSourceTable(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="e.g. crm_deals"
+                  />
+                ) : (
+                  <select
+                    value={formSourceTable}
+                    onChange={(e) => {
+                      setFormSourceTable(e.target.value)
+                      setFormSourceColumn('')
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="">Select table...</option>
+                    {(tablesData?.tables || []).map((t) => (
+                      <option key={t.table_name} value={t.table_name}>
+                        {t.table_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-500">Source column</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSourceColumnMode(sourceColumnMode === 'select' ? 'manual' : 'select')
+                      setFormSourceColumn('')
+                    }}
+                    className="text-[10px] text-blue-500 hover:text-blue-700"
+                  >
+                    {sourceColumnMode === 'select' ? 'type manually' : 'pick from list'}
+                  </button>
+                </div>
+                {sourceColumnMode === 'manual' ? (
+                  <input
+                    type="text"
+                    value={formSourceColumn}
+                    onChange={(e) => setFormSourceColumn(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="e.g. stage_id"
+                  />
+                ) : (
+                  <select
+                    value={formSourceColumn}
+                    onChange={(e) => setFormSourceColumn(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    disabled={!formSourceTable}
+                  >
+                    <option value="">{formSourceTable ? 'Select column...' : 'Select table first...'}</option>
+                    {formSourceTable &&
+                      (tablesData?.tables || [])
+                        .find((t) => t.table_name === formSourceTable)
+                        ?.columns.map((col) => (
+                          <option key={col.name} value={col.name}>
+                            {col.name} ({col.data_type})
+                          </option>
+                        ))}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            {/* Label join config (optional) */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-500">Label table (optional)</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLabelTableMode(labelTableMode === 'select' ? 'manual' : 'select')
+                      setFormLabelTable('')
+                      setFormLabelColumn('')
+                      setFormLabelValueColumn('')
+                    }}
+                    className="text-[10px] text-blue-500 hover:text-blue-700"
+                  >
+                    {labelTableMode === 'select' ? 'type manually' : 'pick from list'}
+                  </button>
+                </div>
+                {labelTableMode === 'manual' ? (
+                  <input
+                    type="text"
+                    value={formLabelTable}
+                    onChange={(e) => setFormLabelTable(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="e.g. ref_crm_statuses"
+                  />
+                ) : (
+                  <select
+                    value={formLabelTable}
+                    onChange={(e) => {
+                      setFormLabelTable(e.target.value)
+                      setFormLabelColumn('')
+                      setFormLabelValueColumn('')
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="">Select table...</option>
+                    {(tablesData?.tables || []).map((t) => (
+                      <option key={t.table_name} value={t.table_name}>
+                        {t.table_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-500">Label column</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLabelColumnMode(labelColumnMode === 'select' ? 'manual' : 'select')
+                      setFormLabelColumn('')
+                    }}
+                    className="text-[10px] text-blue-500 hover:text-blue-700"
+                  >
+                    {labelColumnMode === 'select' ? 'type manually' : 'pick from list'}
+                  </button>
+                </div>
+                {labelColumnMode === 'manual' ? (
+                  <input
+                    type="text"
+                    value={formLabelColumn}
+                    onChange={(e) => setFormLabelColumn(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="e.g. name"
+                  />
+                ) : (
+                  <select
+                    value={formLabelColumn}
+                    onChange={(e) => setFormLabelColumn(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    disabled={!formLabelTable}
+                  >
+                    <option value="">{formLabelTable ? 'Select column...' : 'Select label table first...'}</option>
+                    {formLabelTable &&
+                      (tablesData?.tables || [])
+                        .find((t) => t.table_name === formLabelTable)
+                        ?.columns.map((col) => (
+                          <option key={col.name} value={col.name}>
+                            {col.name} ({col.data_type})
+                          </option>
+                        ))}
+                  </select>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-500">Label value column (join key)</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLabelValueColumnMode(labelValueColumnMode === 'select' ? 'manual' : 'select')
+                      setFormLabelValueColumn('')
+                    }}
+                    className="text-[10px] text-blue-500 hover:text-blue-700"
+                  >
+                    {labelValueColumnMode === 'select' ? 'type manually' : 'pick from list'}
+                  </button>
+                </div>
+                {labelValueColumnMode === 'manual' ? (
+                  <input
+                    type="text"
+                    value={formLabelValueColumn}
+                    onChange={(e) => setFormLabelValueColumn(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="e.g. status_id"
+                  />
+                ) : (
+                  <select
+                    value={formLabelValueColumn}
+                    onChange={(e) => setFormLabelValueColumn(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    disabled={!formLabelTable}
+                  >
+                    <option value="">{formLabelTable ? 'Select column...' : 'Select label table first...'}</option>
+                    {formLabelTable &&
+                      (tablesData?.tables || [])
+                        .find((t) => t.table_name === formLabelTable)
+                        ?.columns.map((col) => (
+                          <option key={col.name} value={col.name}>
+                            {col.name} ({col.data_type})
+                          </option>
+                        ))}
+                  </select>
+                )}
+              </div>
+            </div>
+            </>
+          )}
+
+          <button
+            onClick={handleCreate}
+            disabled={!formName.trim() || !formLabel.trim() || createSelector.isPending}
+            className="btn btn-primary text-sm"
+          >
+            {createSelector.isPending ? 'Creating...' : 'Create Selector'}
+          </button>
+        </div>
+      )}
+
+      {/* Existing selectors */}
+      {selectors.length > 0 && (
+        <div className="space-y-3">
+          {selectors.map((sel) => (
+            <div key={sel.id} className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <span className="text-sm font-medium">{sel.label}</span>
+                  <span className="text-xs text-gray-400 ml-2">({sel.name})</span>
+                  <span className="text-xs text-gray-400 ml-2">
+                    {SELECTOR_TYPES.find((t) => t.value === sel.selector_type)?.label || sel.selector_type}
+                  </span>
+                  <span className="text-xs text-gray-400 ml-2">
+                    [{OPERATORS.find((o) => o.value === sel.operator)?.label || sel.operator}]
+                  </span>
+                  {sel.is_required && (
+                    <span className="text-xs text-red-400 ml-2">Required</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleDelete(sel.id)}
+                  className="text-xs text-red-500 hover:text-red-700"
+                >
+                  Delete
+                </button>
+              </div>
+
+              {/* Mappings */}
+              <div className="pl-4 space-y-1">
+                <p className="text-xs text-gray-500 font-medium">Chart Mappings:</p>
+                {sel.mappings.length === 0 && (
+                  <p className="text-xs text-gray-400 italic">No mappings — this selector won't filter any charts</p>
+                )}
+                {sel.mappings.map((m: SelectorMapping) => {
+                  const chart = charts.find((c) => c.id === m.dashboard_chart_id)
+                  const chartName = chart
+                    ? chart.title_override || chart.chart_title || `Chart #${chart.chart_id}`
+                    : `DC #${m.dashboard_chart_id}`
+                  return (
+                    <div key={m.id} className="flex items-center justify-between text-xs">
+                      <span>
+                        <span className="text-gray-700">{chartName}</span>
+                        <span className="text-gray-400"> → </span>
+                        <span className="font-mono text-blue-600">{m.target_column}</span>
+                        {m.target_table && (
+                          <span className="text-gray-400"> ({m.target_table})</span>
+                        )}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveMapping(sel.id, m.id)}
+                        className="text-red-400 hover:text-red-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )
+                })}
+
+                {/* Add mapping */}
+                {addingMappingFor === sel.id ? (
+                  <div className="flex items-end space-x-2 mt-2 flex-wrap gap-y-2">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-0.5">Chart</label>
+                      <select
+                        value={mappingChartId}
+                        onChange={(e) => {
+                          setMappingChartId(e.target.value ? Number(e.target.value) : '')
+                          setMappingColumn('')
+                          setMappingColumnMode('select')
+                        }}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs"
+                      >
+                        <option value="">Select chart...</option>
+                        {charts
+                          .filter((c) => !sel.mappings.some((m: SelectorMapping) => m.dashboard_chart_id === c.id))
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.title_override || c.chart_title || `Chart #${c.chart_id}`}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label className="text-xs text-gray-500">Target column</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMappingColumnMode(mappingColumnMode === 'select' ? 'manual' : 'select')
+                            setMappingColumn('')
+                          }}
+                          className="text-[10px] text-blue-500 hover:text-blue-700"
+                        >
+                          {mappingColumnMode === 'select' ? 'type manually' : 'pick from list'}
+                        </button>
+                      </div>
+                      {mappingColumnMode === 'manual' ? (
+                        <input
+                          type="text"
+                          value={mappingColumn}
+                          onChange={(e) => setMappingColumn(e.target.value)}
+                          className="px-2 py-1 border border-gray-300 rounded text-xs w-40"
+                          placeholder="e.g. date_create"
+                        />
+                      ) : (
+                        <ColumnPicker
+                          dashboardId={dashboardId}
+                          dcId={mappingChartId as number}
+                          value={mappingColumn}
+                          onChange={setMappingColumn}
+                        />
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleAddMapping(sel.id)}
+                      disabled={!mappingChartId || !mappingColumn.trim()}
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAddingMappingFor(null)
+                        setMappingChartId('')
+                        setMappingColumn('')
+                        setMappingColumnMode('select')
+                      }}
+                      className="text-xs text-gray-400"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setAddingMappingFor(sel.id)}
+                    className="text-xs text-blue-500 hover:text-blue-700 mt-1"
+                  >
+                    + Add mapping
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selectors.length === 0 && !showForm && (
+        <p className="text-sm text-gray-400">
+          No selectors configured. Add selectors to enable filtering on the public dashboard.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ColumnPicker({
+  dashboardId,
+  dcId,
+  value,
+  onChange,
+}: {
+  dashboardId: number
+  dcId: number
+  value: string
+  onChange: (v: string) => void
+}) {
+  const { data, isLoading } = useChartColumns(dashboardId, dcId)
+  const columns = data?.columns || []
+
+  if (!dcId) {
+    return (
+      <select disabled className="px-2 py-1 border border-gray-300 rounded text-xs w-40 text-gray-400">
+        <option>Select chart first...</option>
+      </select>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <select disabled className="px-2 py-1 border border-gray-300 rounded text-xs w-40 text-gray-400">
+        <option>Loading columns...</option>
+      </select>
+    )
+  }
+
+  if (columns.length === 0) {
+    return (
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="px-2 py-1 border border-gray-300 rounded text-xs w-40"
+        placeholder="e.g. date_create"
+      />
+    )
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="px-2 py-1 border border-gray-300 rounded text-xs w-40"
+    >
+      <option value="">Select column...</option>
+      {columns.map((col) => (
+        <option key={col} value={col}>
+          {col}
+        </option>
+      ))}
+    </select>
   )
 }

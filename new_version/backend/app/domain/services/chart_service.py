@@ -28,6 +28,13 @@ _TABLE_PATTERN = re.compile(
 # Detect existing LIMIT clause
 _LIMIT_PATTERN = re.compile(r"\bLIMIT\s+(\d+)", re.IGNORECASE)
 
+# Pattern to find WHERE clause or insertion point for WHERE
+_WHERE_PATTERN = re.compile(r"\bWHERE\b", re.IGNORECASE)
+_INSERT_BEFORE_PATTERN = re.compile(
+    r"\b(GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|UNION|INTERSECT|EXCEPT)\b",
+    re.IGNORECASE,
+)
+
 # Mapping of entity tables to their related reference tables
 _ENTITY_RELATED_TABLES = {
     "crm_deals": [
@@ -436,10 +443,135 @@ class ChartService:
 
         return result_list
 
+    # === Filter Application ===
+
+    @staticmethod
+    def apply_filters(
+        sql: str,
+        filters: list[dict[str, Any]],
+    ) -> tuple[str, dict[str, Any]]:
+        """Inject WHERE/AND conditions into SQL based on filter definitions.
+
+        Each filter dict has:
+            - column: str — target column name
+            - operator: str — equals|not_equals|in|not_in|between|gt|lt|gte|lte|like|not_like
+            - value: Any — the filter value(s)
+            - table: str|None — optional table qualifier for disambiguation
+            - param_prefix: str — unique prefix for bind params (e.g. "p0")
+
+        Returns (modified_sql, bind_params).
+        """
+        if not filters:
+            return sql, {}
+
+        conditions: list[str] = []
+        bind_params: dict[str, Any] = {}
+
+        for f in filters:
+            col = f["column"]
+            op = f["operator"]
+            value = f["value"]
+            table = f.get("table")
+            prefix = f["param_prefix"]
+
+            # Column reference with optional table qualifier
+            col_ref = f"{table}.{col}" if table else col
+
+            if op == "equals":
+                conditions.append(f"{col_ref} = :{prefix}")
+                bind_params[prefix] = value
+            elif op == "not_equals":
+                conditions.append(f"{col_ref} != :{prefix}")
+                bind_params[prefix] = value
+            elif op == "in":
+                if isinstance(value, list) and value:
+                    placeholders = ", ".join(
+                        f":{prefix}_{i}" for i in range(len(value))
+                    )
+                    conditions.append(f"{col_ref} IN ({placeholders})")
+                    for i, v in enumerate(value):
+                        bind_params[f"{prefix}_{i}"] = v
+            elif op == "not_in":
+                if isinstance(value, list) and value:
+                    placeholders = ", ".join(
+                        f":{prefix}_{i}" for i in range(len(value))
+                    )
+                    conditions.append(f"{col_ref} NOT IN ({placeholders})")
+                    for i, v in enumerate(value):
+                        bind_params[f"{prefix}_{i}"] = v
+            elif op == "between":
+                conditions.append(
+                    f"{col_ref} BETWEEN :{prefix}_from AND :{prefix}_to"
+                )
+                bind_params[f"{prefix}_from"] = value["from"]
+                bind_params[f"{prefix}_to"] = value["to"]
+            elif op == "gt":
+                conditions.append(f"{col_ref} > :{prefix}")
+                bind_params[prefix] = value
+            elif op == "lt":
+                conditions.append(f"{col_ref} < :{prefix}")
+                bind_params[prefix] = value
+            elif op == "gte":
+                conditions.append(f"{col_ref} >= :{prefix}")
+                bind_params[prefix] = value
+            elif op == "lte":
+                conditions.append(f"{col_ref} <= :{prefix}")
+                bind_params[prefix] = value
+            elif op == "like":
+                conditions.append(f"{col_ref} LIKE :{prefix}")
+                bind_params[prefix] = f"%{value}%"
+            elif op == "not_like":
+                conditions.append(f"{col_ref} NOT LIKE :{prefix}")
+                bind_params[prefix] = f"%{value}%"
+
+        if not conditions:
+            return sql, {}
+
+        where_clause = " AND ".join(conditions)
+
+        # Check if WHERE already exists
+        where_match = _WHERE_PATTERN.search(sql)
+        if where_match:
+            # Append AND after existing WHERE conditions
+            # Find the end of existing WHERE clause (before GROUP BY, ORDER BY, etc.)
+            insert_match = _INSERT_BEFORE_PATTERN.search(sql, where_match.end())
+            if insert_match:
+                insert_pos = insert_match.start()
+                modified_sql = (
+                    sql[:insert_pos].rstrip()
+                    + f" AND {where_clause} "
+                    + sql[insert_pos:]
+                )
+            else:
+                # No GROUP BY/ORDER BY — append at the end
+                modified_sql = sql.rstrip().rstrip(";") + f" AND {where_clause}"
+        else:
+            # No WHERE — insert before GROUP BY/ORDER BY/LIMIT or at end
+            insert_match = _INSERT_BEFORE_PATTERN.search(sql)
+            if insert_match:
+                insert_pos = insert_match.start()
+                modified_sql = (
+                    sql[:insert_pos].rstrip()
+                    + f" WHERE {where_clause} "
+                    + sql[insert_pos:]
+                )
+            else:
+                modified_sql = (
+                    sql.rstrip().rstrip(";") + f" WHERE {where_clause}"
+                )
+
+        return modified_sql, bind_params
+
     # === Query Execution ===
 
-    async def execute_chart_query(self, sql: str) -> tuple[list[dict[str, Any]], float]:
+    async def execute_chart_query(
+        self, sql: str, bind_params: dict[str, Any] | None = None
+    ) -> tuple[list[dict[str, Any]], float]:
         """Execute a validated SQL query with timeout protection.
+
+        Args:
+            sql: The SQL query to execute
+            bind_params: Optional bind parameters for parameterized queries
 
         Returns (rows_as_dicts, execution_time_ms).
         """
@@ -450,20 +582,24 @@ class ChartService:
 
         start = time.monotonic()
 
+        stmt = text(sql)
+        if bind_params:
+            stmt = stmt.bindparams(**bind_params)
+
         try:
             if dialect == "postgresql":
                 async with engine.begin() as conn:
                     await conn.execute(
                         text(f"SET LOCAL statement_timeout = '{timeout * 1000}'")
                     )
-                    result = await conn.execute(text(sql))
+                    result = await conn.execute(stmt)
                     columns = list(result.keys())
                     rows = [dict(zip(columns, row)) for row in result.fetchall()]
             else:
                 # MySQL: use asyncio timeout
                 async with engine.begin() as conn:
                     result = await asyncio.wait_for(
-                        conn.execute(text(sql)),
+                        conn.execute(stmt),
                         timeout=timeout,
                     )
                     columns = list(result.keys())
@@ -649,6 +785,39 @@ class ChartService:
         if not chart:
             raise ChartServiceError(f"Чарт с id={chart_id} не найден")
         return chart
+
+    # === Chart Column Extraction ===
+
+    async def get_chart_columns(self, sql: str) -> list[str]:
+        """Extract column names from a chart's SQL by executing with LIMIT 0.
+
+        Args:
+            sql: The chart's SQL query.
+
+        Returns:
+            List of column names from the query result.
+        """
+        engine = get_engine()
+        dialect = get_dialect()
+
+        # Strip LIMIT and add LIMIT 0
+        stripped = _LIMIT_PATTERN.sub("", sql).rstrip().rstrip(";")
+        probe_sql = f"{stripped} LIMIT 0"
+
+        try:
+            stmt = text(probe_sql)
+            if dialect == "postgresql":
+                async with engine.begin() as conn:
+                    await conn.execute(text("SET LOCAL statement_timeout = '5000'"))
+                    result = await conn.execute(stmt)
+                    return list(result.keys())
+            else:
+                async with engine.begin() as conn:
+                    result = await conn.execute(stmt)
+                    return list(result.keys())
+        except Exception as e:
+            logger.warning("Failed to extract chart columns", error=str(e))
+            return []
 
     # === Schema Markdown Generation (no AI) ===
 

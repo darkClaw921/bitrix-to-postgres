@@ -4,3 +4,10 @@ v1.0.1
 - добавлена возможность обновлять опубликованные дашборды автоматически каждые 10 минут или любое настраиваемое время
 - добавлены селекторы для чартов
 - добавлена мультиязычность 
+
+v1.0.2
+- добавлена синхронизация истории движения сделок и лидов по стадиям (stage_history)
+  - новые типы сущностей: stage_history_deal, stage_history_lead
+  - API метод: crm.stagehistory.list
+  - поддержка full sync и incremental sync по полю CREATED_TIME
+  - таблицы: stage_history_deals, stage_history_leads

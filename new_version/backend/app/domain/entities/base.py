@@ -57,6 +57,8 @@ class EntityType:
     USER = "user"
     TASK = "task"
     CALL = "call"
+    STAGE_HISTORY_DEAL = "stage_history_deal"
+    STAGE_HISTORY_LEAD = "stage_history_lead"
 
     # CRM entity types (use crm.* API namespace)
     _CRM_TYPES = {DEAL, CONTACT, LEAD, COMPANY}
@@ -64,7 +66,17 @@ class EntityType:
     @classmethod
     def all(cls) -> list[str]:
         """Return all entity types."""
-        return [cls.DEAL, cls.CONTACT, cls.LEAD, cls.COMPANY, cls.USER, cls.TASK, cls.CALL]
+        return [
+            cls.DEAL,
+            cls.CONTACT,
+            cls.LEAD,
+            cls.COMPANY,
+            cls.USER,
+            cls.TASK,
+            cls.CALL,
+            cls.STAGE_HISTORY_DEAL,
+            cls.STAGE_HISTORY_LEAD,
+        ]
 
     @classmethod
     def is_crm(cls, entity_type: str) -> bool:
@@ -82,12 +94,18 @@ class EntityType:
             cls.USER: "user",
             cls.TASK: "tasks.task",
             cls.CALL: "voximplant.statistic",
+            cls.STAGE_HISTORY_DEAL: "crm.stagehistory",
+            cls.STAGE_HISTORY_LEAD: "crm.stagehistory",
         }
         return prefixes.get(entity_type, f"crm.{entity_type}")
 
     @classmethod
     def get_table_name(cls, entity_type: str) -> str:
         """Get PostgreSQL table name for entity type."""
+        # stage_history types already include prefix in name
+        if entity_type.startswith("stage_history_"):
+            return entity_type + "s"
+
         table_names = {
             cls.USER: "bitrix_users",
             cls.TASK: "bitrix_tasks",

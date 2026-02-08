@@ -584,6 +584,8 @@ class SyncService:
         "user": [],
         "task": [],
         "call": [],
+        "stage_history_deal": [],
+        "stage_history_lead": [],
     }
 
     # Date field used for incremental sync filtering per entity type
@@ -591,6 +593,8 @@ class SyncService:
         "user": "TIMESTAMP_X",
         "task": "CHANGED_DATE",
         "call": "CALL_START_DATE",
+        "stage_history_deal": "CREATED_TIME",
+        "stage_history_lead": "CREATED_TIME",
     }
 
     async def _sync_related_references(self, entity_type: str) -> None:

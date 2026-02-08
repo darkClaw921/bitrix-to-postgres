@@ -1,6 +1,6 @@
 """Bitrix24 API client with retry and rate limiting support."""
 
-from typing import Any, AsyncIterator, TypeVar
+from typing import Any, TypeVar
 
 from fast_bitrix24 import BitrixAsync
 from tenacity import (
@@ -120,6 +120,20 @@ CALL_FIELD_TYPES: dict[str, str] = {
     "RECORD_FILE_ID": "string",
 }
 
+# crm.stagehistory.list has no .fields method.
+# This mapping provides type info for known stage history fields.
+STAGE_HISTORY_FIELD_TYPES: dict[str, str] = {
+    "ID": "integer",
+    "TYPE_ID": "integer",
+    "OWNER_ID": "integer",
+    "CREATED_TIME": "datetime",
+    "CATEGORY_ID": "integer",
+    "STAGE_SEMANTIC_ID": "string",
+    "STAGE_ID": "string",
+    "STATUS_SEMANTIC_ID": "string",
+    "STATUS_ID": "string",
+}
+
 
 class BitrixClient:
     """Async client for Bitrix24 REST API.
@@ -232,7 +246,7 @@ class BitrixClient:
         """Get all entities of a specific type.
 
         Args:
-            entity_type: Entity type (deal, contact, lead, company, user, task)
+            entity_type: Entity type (deal, contact, lead, company, user, task, stage_history_*)
             filter_params: Filter parameters
             select: Fields to select (defaults to all including UF_*)
 
@@ -245,6 +259,8 @@ class BitrixClient:
             return await self._get_tasks(filter_params, select)
         if entity_type == "call":
             return await self._get_calls(filter_params)
+        if entity_type in ["stage_history_deal", "stage_history_lead"]:
+            return await self._get_stage_history(entity_type, filter_params, select)
 
         method = f"crm.{entity_type}.list"
         params: dict[str, Any] = {}
@@ -335,6 +351,76 @@ class BitrixClient:
             logger.error("Failed to fetch calls", error=str(e))
             raise BitrixAPIError(f"Failed to fetch calls: {str(e)}") from e
 
+    async def _get_stage_history(
+        self,
+        entity_type: str,
+        filter_params: dict[str, Any] | None = None,
+        select: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get stage history records via crm.stagehistory.list.
+
+        Args:
+            entity_type: "stage_history_deal" or "stage_history_lead"
+            filter_params: Filter parameters for API
+            select: List of fields to select
+
+        Returns:
+            List of stage history records
+        """
+        # Determine entityTypeId: 1=Lead, 2=Deal
+        entity_type_id = 1 if entity_type == "stage_history_lead" else 2
+
+        params: dict[str, Any] = {
+            "entityTypeId": entity_type_id,
+        }
+
+        if filter_params:
+            params["filter"] = filter_params
+
+        if select:
+            params["select"] = select
+
+        try:
+            logger.info(
+                "Fetching stage history",
+                entity_type=entity_type,
+                entity_type_id=entity_type_id,
+            )
+
+            # Use built-in get_all for automatic pagination
+            result = await self._client.get_all("crm.stagehistory.list", params=params)
+
+            # crm.stagehistory.list returns {"items": [...]} structure
+            # fast-bitrix24 get_all may return list directly or dict with items
+            if isinstance(result, dict) and "items" in result:
+                records = result["items"]
+            elif isinstance(result, list):
+                # If result is already a list, check if items are wrapped
+                if result and isinstance(result[0], dict) and "items" in result[0]:
+                    # Unwrap batched items
+                    records = []
+                    for batch in result:
+                        records.extend(batch.get("items", []))
+                else:
+                    records = result
+            else:
+                records = []
+
+            logger.info(
+                "Fetched stage history",
+                entity_type=entity_type,
+                count=len(records),
+            )
+            return records
+
+        except Exception as e:
+            logger.error(
+                "Failed to fetch stage history",
+                entity_type=entity_type,
+                error=str(e),
+            )
+            raise BitrixAPIError(f"Failed to fetch stage history: {str(e)}") from e
+
     async def get_entity(
         self,
         entity_type: str,
@@ -343,7 +429,7 @@ class BitrixClient:
         """Get a single entity by ID.
 
         Args:
-            entity_type: Entity type (deal, contact, lead, company, user, task)
+            entity_type: Entity type (deal, contact, lead, company, user, task, stage_history_*)
             entity_id: Entity ID
 
         Returns:
@@ -374,6 +460,13 @@ class BitrixClient:
                 return records[0]
             return {}
 
+        if entity_type in ["stage_history_deal", "stage_history_lead"]:
+            # stage_history has no .get method; filter by ID
+            records = await self._get_stage_history(entity_type, {"ID": entity_id})
+            if records:
+                return records[0]
+            return {}
+
         method = f"crm.{entity_type}.get"
         items = {"ID": entity_id, "select": ["*", "UF_*"]}
         return await self._call(method, items=items)
@@ -382,7 +475,7 @@ class BitrixClient:
         """Get field definitions for an entity type.
 
         Args:
-            entity_type: Entity type (deal, contact, lead, company, user, task)
+            entity_type: Entity type (deal, contact, lead, company, user, task, stage_history_*)
 
         Returns:
             Field definitions in format {FIELD: {type, title, isMultiple, isRequired}}
@@ -392,6 +485,9 @@ class BitrixClient:
 
         if entity_type == "call":
             return self._get_call_field_definitions()
+
+        if entity_type in ["stage_history_deal", "stage_history_lead"]:
+            return self._get_stage_history_field_definitions()
 
         if entity_type == "task":
             result = await self._call("tasks.task.getFields")
@@ -437,11 +533,28 @@ class BitrixClient:
             }
         return fields
 
+    @staticmethod
+    def _get_stage_history_field_definitions() -> dict[str, Any]:
+        """Build CRM-compatible field definitions from STAGE_HISTORY_FIELD_TYPES.
+
+        crm.stagehistory.list has no .fields method,
+        so we use a predefined mapping to construct proper field definitions.
+        """
+        fields: dict[str, Any] = {}
+        for field_name, field_type in STAGE_HISTORY_FIELD_TYPES.items():
+            fields[field_name] = {
+                "type": field_type,
+                "title": field_name,
+                "isMultiple": False,
+                "isRequired": field_name == "ID",
+            }
+        return fields
+
     async def get_userfields(self, entity_type: str) -> list[dict[str, Any]]:
         """Get user field definitions for an entity type.
 
         Args:
-            entity_type: Entity type (deal, contact, lead, company, user, task)
+            entity_type: Entity type (deal, contact, lead, company, user, task, stage_history_*)
 
         Returns:
             List of user field definitions
@@ -452,6 +565,10 @@ class BitrixClient:
 
         if entity_type == "call":
             # Voximplant doesn't support UF_* fields
+            return []
+
+        if entity_type in ["stage_history_deal", "stage_history_lead"]:
+            # Stage history doesn't support UF_* fields
             return []
 
         if entity_type == "task":

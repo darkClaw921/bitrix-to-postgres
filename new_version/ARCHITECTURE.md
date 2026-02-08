@@ -140,6 +140,7 @@ app/domain/
 │   ├── lead.py              # Модель лида
 │   ├── company.py           # Модель компании
 │   ├── call.py              # Модель звонка (voximplant.statistic.get)
+│   ├── stage_history.py     # Модель истории движения по стадиям (crm.stagehistory.list)
 │   └── reference.py         # Реестр справочных типов (ReferenceType, ReferenceFieldDef)
 ├── services/
 │   ├── sync_service.py      # Основная логика синхронизации (+ авто-синхронизация справочников)
@@ -226,6 +227,8 @@ class ChartService:
 | `crm_contacts` | `ref_crm_statuses`, `ref_enum_values` |
 | `crm_leads` | `ref_crm_statuses`, `ref_enum_values` |
 | `crm_companies` | `ref_crm_statuses`, `ref_enum_values` |
+| `stage_history_deals` | `crm_deals`, `ref_crm_statuses`, `ref_crm_deal_categories` |
+| `stage_history_leads` | `crm_leads`, `ref_crm_statuses` |
 
 **Улучшенное отображение метаданных полей:**
 
@@ -302,6 +305,23 @@ class SelectorService:
 | Пользовательские поля (UF_*) | Не поддерживаются |
 | Webhooks | Не поддерживаются (нет событий изменения) |
 | Определения полей | Захардкожены в `CALL_FIELD_TYPES` (нет API `.fields`) |
+
+#### Сущность StageHistory (История движения по стадиям)
+
+Синхронизация истории движения сделок и лидов по стадиям/статусам:
+
+| Параметр | Значение |
+|---|---|
+| API метод | `crm.stagehistory.list` |
+| Таблицы БД | `stage_history_deals`, `stage_history_leads` |
+| Уникальный ключ | `ID` → `history_id` |
+| Инкрементальная синхронизация | По полю `CREATED_TIME` |
+| Пользовательские поля (UF_*) | Не поддерживаются |
+| Webhooks | Не поддерживаются напрямую (можно использовать `onCrmDealUpdate`/`onCrmLeadUpdate` как триггер) |
+| Определения полей | Захардкожены в `STAGE_HISTORY_FIELD_TYPES` (нет API `.fields`) |
+| Особенности | Использует `get_all()` для автоматической пагинации. Для сделок используются поля `STAGE_*`, для лидов — `STATUS_*` |
+| Типы записей (TYPE_ID) | 1=создание элемента, 2=промежуточная стадия, 3=финальная стадия, 5=смена воронки |
+| Semantic ID | P=промежуточная стадия, S=успешная, F=провальная |
 
 ### 3. Infrastructure Layer (`app/infrastructure/`)
 

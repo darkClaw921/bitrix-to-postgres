@@ -293,13 +293,13 @@ class ChartService:
             query = text(
                 "SELECT DISTINCT table_name "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%')"
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%' OR table_name LIKE 'stage_history_%')"
             )
         else:
             query = text(
                 "SELECT DISTINCT table_name "
                 "FROM information_schema.columns "
-                "WHERE (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%')"
+                "WHERE (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%' OR table_name LIKE 'stage_history_%')"
             )
 
         async with engine.begin() as conn:
@@ -1048,3 +1048,68 @@ class ChartService:
         if not desc:
             raise ChartServiceError(f"Описание схемы с id={desc_id} не найдено")
         return desc
+
+    # === Chart Prompt Templates ===
+
+    async def get_chart_prompt_template(self, name: str = "bitrix_context") -> dict[str, Any] | None:
+        """Get chart prompt template by name.
+
+        Args:
+            name: Template name (default: bitrix_context)
+
+        Returns:
+            Template record or None if not found
+        """
+        engine = get_engine()
+        query = text(
+            "SELECT id, name, content, is_active, created_at, updated_at "
+            "FROM chart_prompt_templates WHERE name = :name"
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(query, {"name": name})
+            row = result.fetchone()
+
+        if not row:
+            return None
+
+        columns = list(result.keys())
+        return dict(zip(columns, row))
+
+    async def update_chart_prompt_template(
+        self, name: str, content: str
+    ) -> dict[str, Any]:
+        """Update chart prompt template content.
+
+        Args:
+            name: Template name
+            content: New template content
+
+        Returns:
+            Updated template record
+        """
+        engine = get_engine()
+        dialect = get_dialect()
+
+        if dialect == "mysql":
+            query = text(
+                "UPDATE chart_prompt_templates SET content = :content, updated_at = NOW() "
+                "WHERE name = :name"
+            )
+        else:
+            query = text(
+                "UPDATE chart_prompt_templates SET content = :content, updated_at = NOW() "
+                "WHERE name = :name"
+            )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(query, {"name": name, "content": content})
+
+        if result.rowcount == 0:
+            raise ChartServiceError(f"Промпт с именем '{name}' не найден")
+
+        logger.info("Chart prompt template updated", name=name)
+        template = await self.get_chart_prompt_template(name)
+        if not template:
+            raise ChartServiceError(f"Промпт с именем '{name}' не найден")
+        return template

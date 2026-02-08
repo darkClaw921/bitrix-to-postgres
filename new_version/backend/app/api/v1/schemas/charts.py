@@ -110,3 +110,20 @@ class ChartDataResponse(BaseModel):
     data: list[dict[str, Any]]
     row_count: int
     execution_time_ms: float
+
+
+class ChartPromptTemplateResponse(BaseModel):
+    """Chart prompt template response."""
+
+    id: int
+    name: str
+    content: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChartPromptTemplateUpdateRequest(BaseModel):
+    """Request to update chart prompt template."""
+
+    content: str = Field(..., min_length=10, description="Prompt template content")

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import ChartCard from '../components/charts/ChartCard'
+import PromptEditorModal from '../components/charts/PromptEditorModal'
 import DashboardCard from '../components/dashboards/DashboardCard'
 import PublishModal from '../components/dashboards/PublishModal'
 import { useGenerateChart, useSaveChart, useSavedCharts } from '../hooks/useCharts'
@@ -8,11 +9,26 @@ import { useDashboardList } from '../hooks/useDashboards'
 import { useTranslation } from '../i18n'
 import type { ChartGenerateResponse } from '../services/api'
 
+// Helper to extract error message from axios error
+function getErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const axiosError = error as { response?: { data?: { detail?: string } } }
+    if (axiosError.response?.data?.detail) {
+      return axiosError.response.data.detail
+    }
+  }
+  if (error instanceof Error) {
+    return error.message
+  }
+  return 'Произошла неизвестная ошибка'
+}
+
 export default function ChartsPage() {
   const { t } = useTranslation()
   const [prompt, setPrompt] = useState('')
   const [preview, setPreview] = useState<ChartGenerateResponse | null>(null)
   const [showPublishModal, setShowPublishModal] = useState(false)
+  const [showPromptEditor, setShowPromptEditor] = useState(false)
 
   const generateChart = useGenerateChart()
   const saveChart = useSaveChart()
@@ -58,7 +74,20 @@ export default function ChartsPage() {
     <div className="space-y-6">
       {/* Generation Section */}
       <div className="card">
-        <h2 className="text-lg font-semibold mb-4">{t('charts.aiGenerator')}</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">{t('charts.aiGenerator')}</h2>
+          <button
+            onClick={() => setShowPromptEditor(true)}
+            className="text-sm text-gray-600 hover:text-primary-600 flex items-center gap-2"
+            title="Настроить промпт для AI"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Настроить промпт
+          </button>
+        </div>
         <div className="flex space-x-3">
           <input
             type="text"
@@ -79,7 +108,7 @@ export default function ChartsPage() {
 
         {generateChart.isError && (
           <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-            {(generateChart.error as Error).message || t('charts.failedToGenerate')}
+            <strong>Ошибка генерации:</strong> {getErrorMessage(generateChart.error)}
           </div>
         )}
       </div>
@@ -180,6 +209,12 @@ export default function ChartsPage() {
           onClose={() => setShowPublishModal(false)}
         />
       )}
+
+      {/* Prompt Editor Modal */}
+      <PromptEditorModal
+        isOpen={showPromptEditor}
+        onClose={() => setShowPromptEditor(false)}
+      />
     </div>
   )
 }

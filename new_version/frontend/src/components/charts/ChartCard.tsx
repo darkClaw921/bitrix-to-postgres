@@ -49,14 +49,7 @@ export default function ChartCard({ chart }: ChartCardProps) {
 
   return (
     <div className="card">
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <h3 className="text-lg font-semibold">{chart.title}</h3>
-          {chart.description && (
-            <p className="text-sm text-gray-500 mt-1">{chart.description}</p>
-          )}
-          <p className="text-xs text-gray-400 mt-1 italic">"{chart.user_prompt}"</p>
-        </div>
+      <div className="flex justify-end mb-2">
         <div className="flex space-x-1">
           <button
             onClick={() => togglePin.mutate(chart.id)}
@@ -106,6 +99,15 @@ export default function ChartCard({ chart }: ChartCardProps) {
             {t('common.delete')}
           </button>
         </div>
+      </div>
+      <div className="mb-3">
+        <h3 className="text-lg font-semibold">{chart.title}</h3>
+        {chart.description && (
+          <p className="text-sm text-gray-500 mt-1">{chart.description}</p>
+        )}
+        {chart.user_prompt && (
+          <p className="text-xs text-gray-400 mt-1 italic">"{chart.user_prompt}"</p>
+        )}
       </div>
 
       {showSettings && (

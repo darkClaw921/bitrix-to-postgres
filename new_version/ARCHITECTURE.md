@@ -104,6 +104,8 @@ app/api/
 | `GET` | `/api/v1/charts/{id}/data` | Обновление данных чарта |
 | `DELETE` | `/api/v1/charts/{id}` | Удаление чарта |
 | `POST` | `/api/v1/charts/{id}/pin` | Закрепить/открепить чарт |
+| `GET` | `/api/v1/charts/prompt-template/bitrix-context` | Получение промпта для AI генерации чартов (инструкции по работе с Bitrix24) |
+| `PUT` | `/api/v1/charts/prompt-template/bitrix-context` | Обновление промпта для AI генерации чартов |
 | `GET` | `/api/v1/schema/describe` | AI-описание схемы БД (markdown). Автоматически сохраняется в БД. Query params: `entity_tables` (comma-separated), `include_related` (bool) |
 | `GET` | `/api/v1/schema/describe-raw` | Генерация markdown-описания схемы из метаданных БД (без AI). Быстро и детерминировано. Сохраняется в БД. Query params: `entity_tables`, `include_related` |
 | `GET` | `/api/v1/schema/tables` | Список таблиц с колонками (включая description из комментариев и enum-значения). Query params: `entity_tables`, `include_related` |
@@ -167,10 +169,21 @@ class SyncService:
 
 ```python
 class AIService:
-    async def generate_chart_spec(prompt: str, schema_context: str) -> dict
+    async def _get_bitrix_context() -> str  # Загружает активный Bitrix-промпт из chart_prompt_templates
+    async def generate_chart_spec(prompt: str, schema_context: str) -> dict  # Автоматически подгружает Bitrix-контекст
     async def generate_schema_description(schema_context: str) -> str
     async def generate_selectors(charts_context: str, schema_context: str) -> list[dict]  # AI-генерация селекторов
 ```
+
+**Bitrix Context Prompt**: При генерации чартов AIService автоматически загружает промпт `bitrix_context` из таблицы `chart_prompt_templates` и добавляет его в контекст для AI. Этот промпт содержит инструкции по работе с данными Bitrix24:
+- Как рассчитывать конверсию по стадиям
+- Как получать воронку продаж
+- Как анализировать время в стадиях
+- Примеры SQL-запросов для типичных задач
+- Информация о связях между таблицами (deal/lead + stage_history)
+- Пояснения по полям и идентификаторам
+
+Пользователь может редактировать промпт через API для добавления собственных инструкций.
 
 #### ChartService — управление чартами:
 
@@ -191,7 +204,7 @@ class ChartService:
     # Схема и контекст (с автоматическим включением связанных таблиц, комментариев и enum-значений)
     async def get_schema_context(table_filter?, include_related=True) -> str  # Включает комментарии и enum-значения
     async def get_tables_info(table_filter?, include_related=True) -> list[dict]  # Включает description из комментариев и enum
-    async def get_allowed_tables() -> list[str]  # Включает crm_* и ref_* таблицы
+    async def get_allowed_tables() -> list[str]  # Включает crm_*, ref_*, bitrix_*, stage_history_* таблицы
     async def generate_schema_markdown(table_filter?, include_related=True) -> str  # Генерация markdown из метаданных БД (без AI)
 
     # Извлечение колонок из SQL
@@ -215,6 +228,10 @@ class ChartService:
     async def get_latest_schema_description(entity_filter?, include_related?) -> dict | None
     async def get_schema_description_by_id(desc_id: int) -> dict | None
     async def update_schema_description(desc_id: int, markdown: str) -> dict
+
+    # Управление промптами для AI-генерации чартов
+    async def get_chart_prompt_template(name: str = "bitrix_context") -> dict | None  # Получение промпта по имени
+    async def update_chart_prompt_template(name: str, content: str) -> dict  # Обновление промпта
 ```
 
 **Автоматическое включение связанных таблиц:**
@@ -331,7 +348,7 @@ app/infrastructure/
 │   └── client.py            # BitrixClient с retry и rate limiting
 ├── database/
 │   ├── connection.py        # AsyncEngine, get_session, get_dialect()
-│   ├── models.py            # SQLAlchemy модели (SyncConfig, SyncLog, SyncState, AIChart, SchemaDescription, PublishedDashboard, DashboardChart, DashboardLink, DashboardSelector, SelectorChartMapping)
+│   ├── models.py            # SQLAlchemy модели (SyncConfig, SyncLog, SyncState, AIChart, SchemaDescription, ChartPromptTemplate, PublishedDashboard, DashboardChart, DashboardLink, DashboardSelector, SelectorChartMapping)
 │   └── dynamic_table.py     # Динамическое создание таблиц (кросс-БД, с комментариями полей)
 └── scheduler/
     └── scheduler.py         # APScheduler для периодической синхронизации
@@ -345,7 +362,9 @@ alembic/
     ├── 004_create_dashboards_tables.py  # Таблицы published_dashboards, dashboard_charts
     ├── 005_add_refresh_interval.py  # Добавление refresh_interval_minutes в published_dashboards
     ├── 006_create_dashboard_links_table.py  # Таблица dashboard_links (связи между дашбордами)
-    └── 007_create_dashboard_selectors_tables.py  # Таблицы dashboard_selectors, selector_chart_mappings
+    ├── 007_create_dashboard_selectors_tables.py  # Таблицы dashboard_selectors, selector_chart_mappings
+    ├── 008_create_stage_history_tables.py  # Таблицы stage_history_deals, stage_history_leads (история движения по стадиям)
+    └── 009_create_chart_prompts_table.py  # Таблица chart_prompt_templates с дефолтным Bitrix-промптом
 ```
 
 #### connection.py — ключевые функции:
@@ -454,6 +473,21 @@ services:
 | `created_at` | TIMESTAMP | Дата создания |
 | `updated_at` | TIMESTAMP | Дата последнего обновления |
 
+### chart_prompt_templates
+
+Таблица для хранения системных промптов для AI-генерации чартов:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | BIGINT (PK) | Уникальный идентификатор |
+| `name` | VARCHAR(100) (unique) | Имя промпта (например, `bitrix_context`) |
+| `content` | TEXT | Содержимое промпта с инструкциями для AI |
+| `is_active` | BOOLEAN | Флаг активности промпта |
+| `created_at` | TIMESTAMP | Дата создания |
+| `updated_at` | TIMESTAMP | Дата последнего обновления |
+
+**Назначение**: Хранит пользовательские инструкции для AI при генерации чартов. Промпт `bitrix_context` содержит специфичные инструкции по работе с данными Bitrix24 (например, как рассчитывать конверсию по стадиям, получать воронку продаж, анализировать время в стадиях). При первом запуске автоматически создается стандартный промпт. Пользователь может редактировать его через API.
+
 ### dashboard_selectors
 
 Таблица селекторов (фильтров) дашбордов:
@@ -549,7 +583,8 @@ frontend/src/
 │   ├── charts/
 │   │   ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter/funnel/horizontal_bar через Recharts, indicator — KPI-карточка, table — таблица с итогами и сортировкой)
 │   │   ├── ChartSettingsPanel.tsx # Панель настроек отображения чарта (цвета, оси, legend, grid, настройки для каждого типа)
-│   │   └── ChartCard.tsx      # Карточка сохранённого чарта с действиями
+│   │   ├── ChartCard.tsx      # Карточка сохранённого чарта с действиями
+│   │   └── PromptEditorModal.tsx  # Модальное окно редактирования Bitrix-промпта для AI (markdown-редактор)
 │   ├── dashboards/
 │   │   ├── DashboardCard.tsx  # Карточка дашборда в списке
 │   │   ├── PasswordGate.tsx   # Форма ввода пароля для публичного дашборда
@@ -572,7 +607,7 @@ frontend/src/
 │   └── DashboardEditorPage.tsx # Редактор дашборда: grid-layout, override, ссылки, SelectorsSection (CRUD фильтров + маппинги)
 ├── hooks/
 │   ├── useSync.ts             # React Query хуки для синхронизации и справочников
-│   ├── useCharts.ts           # React Query хуки для чартов, схемы и истории генерации
+│   ├── useCharts.ts           # React Query хуки для чартов, схемы, истории генерации и промптов (useChartPromptTemplate, useUpdateChartPromptTemplate)
 │   ├── useDashboards.ts       # React Query хуки для CRUD дашбордов, layout, ссылок, паролей
 │   ├── useSelectors.ts        # React Query хуки для CRUD селекторов, маппингов, опций, AI-генерации, колонок чартов
 │   └── useAuth.ts             # Хук авторизации
@@ -613,7 +648,11 @@ GET /api/v1/schema/tables?entity_tables=crm_deals&include_related=false
 
 ### Генерация чартов
 
-Генерация чартов использует последнее сохранённое AI-описание схемы БД (`schema_descriptions`) в качестве контекста для AI. Если описание схемы ещё не было сгенерировано, endpoint вернёт ошибку 400 с просьбой сначала вызвать `GET /api/v1/schema/describe`.
+Генерация чартов использует:
+1. **Описание схемы БД** из `schema_descriptions` (последнее сохранённое)
+2. **Bitrix-промпт** из `chart_prompt_templates` (инструкции по работе с данными Bitrix24)
+
+Если описание схемы ещё не было сгенерировано, endpoint вернёт ошибку 400 с просьбой сначала вызвать `GET /api/v1/schema/describe`.
 
 **Создать чарт:**
 ```json
@@ -622,4 +661,18 @@ POST /api/v1/charts/generate
   "prompt": "Количество сделок по стадиям воронки"
 }
 ```
-AI получит markdown из последней генерации описания схемы как контекст для построения SQL-запроса.
+AI получит markdown из последней генерации описания схемы + Bitrix-промпт с инструкциями как контекст для построения SQL-запроса.
+
+**Получить текущий промпт:**
+```bash
+GET /api/v1/charts/prompt-template/bitrix-context
+```
+
+**Обновить промпт:**
+```json
+PUT /api/v1/charts/prompt-template/bitrix-context
+{
+  "content": "# Ваши инструкции для AI\n..."
+}
+```
+После обновления промпта все последующие генерации чартов будут использовать новые инструкции.

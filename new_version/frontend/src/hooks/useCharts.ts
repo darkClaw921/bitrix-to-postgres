@@ -110,3 +110,21 @@ export function useSchemaTables() {
     queryFn: schemaApi.tables,
   })
 }
+
+export function useChartPromptTemplate() {
+  return useQuery({
+    queryKey: ['chartPromptTemplate'],
+    queryFn: chartsApi.getPromptTemplate,
+  })
+}
+
+export function useUpdateChartPromptTemplate() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (content: string) => chartsApi.updatePromptTemplate(content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chartPromptTemplate'] })
+    },
+  })
+}

@@ -8,6 +8,8 @@ from app.api.v1.schemas.charts import (
     ChartGenerateRequest,
     ChartGenerateResponse,
     ChartListResponse,
+    ChartPromptTemplateResponse,
+    ChartPromptTemplateUpdateRequest,
     ChartResponse,
     ChartSaveRequest,
     ChartSpec,
@@ -153,5 +155,28 @@ async def toggle_pin_chart(chart_id: int) -> ChartResponse:
     try:
         chart = await chart_service.toggle_pin(chart_id)
         return ChartResponse(**chart)
+    except ChartServiceError as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+
+
+@router.get("/prompt-template/bitrix-context", response_model=ChartPromptTemplateResponse)
+async def get_bitrix_prompt_template() -> ChartPromptTemplateResponse:
+    """Get the Bitrix context prompt template for chart generation."""
+    template = await chart_service.get_chart_prompt_template("bitrix_context")
+    if not template:
+        raise HTTPException(status_code=404, detail="Промпт не найден")
+    return ChartPromptTemplateResponse(**template)
+
+
+@router.put("/prompt-template/bitrix-context", response_model=ChartPromptTemplateResponse)
+async def update_bitrix_prompt_template(
+    request: ChartPromptTemplateUpdateRequest,
+) -> ChartPromptTemplateResponse:
+    """Update the Bitrix context prompt template for chart generation."""
+    try:
+        template = await chart_service.update_chart_prompt_template(
+            "bitrix_context", request.content
+        )
+        return ChartPromptTemplateResponse(**template)
     except ChartServiceError as e:
         raise HTTPException(status_code=404, detail=e.message) from e

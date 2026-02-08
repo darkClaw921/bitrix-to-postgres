@@ -4,10 +4,12 @@ import json
 
 import openai
 from openai import AsyncOpenAI
+from sqlalchemy import text
 
 from app.config import get_settings
 from app.core.exceptions import AIServiceError
 from app.core.logging import get_logger
+from app.infrastructure.database.connection import get_engine
 
 logger = get_logger(__name__)
 
@@ -15,6 +17,8 @@ CHART_SYSTEM_PROMPT = """You are a SQL query and chart configuration generator f
 
 Available database schema:
 {schema_context}
+
+{bitrix_context}
 
 Your task: generate a JSON object with the following fields:
 - title (string): short chart title in Russian
@@ -100,6 +104,34 @@ class AIService:
         )
         self.model = settings.openai_model
 
+    async def _get_bitrix_context(self) -> str:
+        """Get active Bitrix context prompt from database.
+
+        Returns:
+            Bitrix context string or empty string if not found.
+        """
+        engine = get_engine()
+        try:
+            async with engine.begin() as conn:
+                result = await conn.execute(
+                    text(
+                        """
+                        SELECT content
+                        FROM chart_prompt_templates
+                        WHERE name = 'bitrix_context' AND is_active = true
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """
+                    )
+                )
+                row = result.first()
+                if row:
+                    return row[0]
+                return ""
+        except Exception as e:
+            logger.warning("Failed to load bitrix context", error=str(e))
+            return ""
+
     async def generate_chart_spec(self, prompt: str, schema_context: str) -> dict:
         """Generate a chart specification from a natural language prompt.
 
@@ -110,9 +142,13 @@ class AIService:
         Returns:
             Dict with keys: title, chart_type, sql_query, data_keys, colors, description.
         """
-        system_message = CHART_SYSTEM_PROMPT.format(schema_context=schema_context)
+        bitrix_context = await self._get_bitrix_context()
+        system_message = CHART_SYSTEM_PROMPT.format(
+            schema_context=schema_context,
+            bitrix_context=bitrix_context
+        )
 
-        logger.info("Generating chart spec", prompt=prompt, model=self.model)
+        logger.info("Generating chart spec", prompt=prompt, model=self.model, has_bitrix_context=bool(bitrix_context))
 
         try:
             response = await self.client.chat.completions.create(

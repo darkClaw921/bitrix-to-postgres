@@ -301,6 +301,15 @@ export interface ChartDataResponse {
   execution_time_ms: number
 }
 
+export interface ChartPromptTemplate {
+  id: number
+  name: string
+  content: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 // === Schema Types ===
 
 export interface ColumnInfo {
@@ -371,6 +380,12 @@ export const chartsApi = {
 
   updateConfig: (chartId: number, config: Partial<ChartDisplayConfig>) =>
     api.patch<SavedChart>(`/charts/${chartId}/config`, { config }).then((r) => r.data),
+
+  getPromptTemplate: () =>
+    api.get<ChartPromptTemplate>('/charts/prompt-template/bitrix-context').then((r) => r.data),
+
+  updatePromptTemplate: (content: string) =>
+    api.put<ChartPromptTemplate>('/charts/prompt-template/bitrix-context', { content }).then((r) => r.data),
 }
 
 // === Schema API ===

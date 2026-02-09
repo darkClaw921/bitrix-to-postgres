@@ -16,7 +16,10 @@ config = context.config
 settings = get_settings()
 
 # Override sqlalchemy.url with environment variable
-config.set_main_option("sqlalchemy.url", settings.async_database_url)
+# Escape '%' for configparser interpolation syntax
+config.set_main_option(
+    "sqlalchemy.url", settings.async_database_url.replace("%", "%%")
+)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

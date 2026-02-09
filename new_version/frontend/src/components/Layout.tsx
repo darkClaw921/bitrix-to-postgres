@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation } from 'react-router-dom'
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useHealth } from '../hooks/useSync'
 import { useTranslation } from '../i18n'
@@ -6,6 +6,7 @@ import LanguageSwitcher from './LanguageSwitcher'
 
 export default function Layout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const logout = useAuthStore((state) => state.logout)
   const user = useAuthStore((state) => state.user)
   const { data: health } = useHealth()
@@ -67,7 +68,7 @@ export default function Layout() {
               {/* User info */}
               <span className="text-sm text-gray-600">{user?.email}</span>
               <button
-                onClick={() => logout()}
+                onClick={() => { logout(); navigate('/login') }}
                 className="btn btn-secondary text-sm"
               >
                 {t('auth.logout')}

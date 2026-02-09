@@ -1,5 +1,6 @@
 """JWT authentication utilities."""
 
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
@@ -7,51 +8,62 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from app.config import get_settings
-from app.core.exceptions import AuthenticationError
+
+security = HTTPBearer(auto_error=True)
 
 
-security = HTTPBearer(auto_error=False)
+def create_access_token(email: str) -> str:
+    """Create a JWT access token for the given email."""
+    settings = get_settings()
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.auth_token_expiry_minutes
+    )
+    payload = {
+        "sub": email,
+        "email": email,
+        "type": "access",
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.dashboard_secret_key, algorithm="HS256")
 
 
 async def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
 ) -> dict[str, Any]:
     """Validate JWT token and return user data.
 
-    Args:
-        credentials: Bearer token from Authorization header
-
-    Returns:
-        User data from JWT claims
-
     Raises:
-        HTTPException: If token is invalid or expired
+        HTTPException: If token is invalid, expired, or wrong type
     """
-    # If no auth configured, return a default user
-    if credentials is None:
-        return {
-            "id": "anonymous",
-            "email": None,
-            "role": "admin",
-        }
-
     settings = get_settings()
     token = credentials.credentials
 
     try:
         payload = jwt.decode(
             token,
-            settings.bitrix_webhook_url,  # Use as JWT secret fallback
+            settings.dashboard_secret_key,
             algorithms=["HS256"],
         )
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise AuthenticationError("Invalid token: no subject claim")
+
+        token_type = payload.get("type")
+        if token_type != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        email = payload.get("sub")
+        if email is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: no subject claim",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
         return {
-            "id": user_id,
-            "email": payload.get("email"),
-            "role": payload.get("role"),
+            "id": email,
+            "email": email,
         }
 
     except JWTError as e:

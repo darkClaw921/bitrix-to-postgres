@@ -9,16 +9,39 @@ import SchemaPage from './pages/SchemaPage'
 import EmbedChartPage from './pages/EmbedChartPage'
 import EmbedDashboardPage from './pages/EmbedDashboardPage'
 import DashboardEditorPage from './pages/DashboardEditorPage'
+import LoginPage from './pages/LoginPage'
+import { useAuth } from './hooks/useAuth'
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth()
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <>{children}</>
+}
 
 function App() {
   return (
     <Routes>
+      {/* Login */}
+      <Route path="/login" element={<LoginPage />} />
+
       {/* Embed routes — outside Layout, no nav */}
       <Route path="/embed/chart/:chartId" element={<EmbedChartPage />} />
       <Route path="/embed/dashboard/:slug" element={<EmbedDashboardPage />} />
 
-      {/* App routes — inside Layout */}
-      <Route path="/" element={<Layout />}>
+      {/* App routes — inside Layout, protected */}
+      <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<DashboardPage />} />
         <Route path="config" element={<ConfigPage />} />
         <Route path="monitoring" element={<MonitoringPage />} />

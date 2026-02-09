@@ -22,7 +22,11 @@
 Архитектура: Clean Architecture (API → Domain → Infrastructure)
 
 #### Конфигурация и ядро
-- **app/config.py** — Pydantic Settings: DB URL, Bitrix webhook, OpenAI, charts, dashboards (secret_key, token_expiry)
+- **app/config.py** — Pydantic Settings: DB URL, Bitrix webhook, OpenAI, charts, dashboards (secret_key, token_expiry), auth (auth_login, auth_password, auth_token_expiry_minutes)
+- **app/core/auth.py** — JWT аутентификация:
+  - `create_access_token(email)` — генерация JWT с `type: "access"`, секрет `dashboard_secret_key`
+  - `get_current_user()` — валидация Bearer JWT, проверка `type == "access"` (изоляция от dashboard-токенов)
+  - `CurrentUser` — типизированная зависимость для protected routes
 - **app/core/logging.py** — structlog с JSON/pretty форматированием
 - **app/core/exceptions.py** — иерархия исключений:
   - `AppException` (base), `BitrixAPIError`, `BitrixRateLimitError`, `BitrixAuthError`
@@ -94,7 +98,9 @@
 - **reference.py** — `ReferenceType` (crm_status, crm_deal_category, crm_currency)
 
 #### API (`app/api/v1/`)
-- **__init__.py** — регистрация роутеров (sync, webhooks, status, charts, schema, references, dashboards, public)
+- **__init__.py** — регистрация роутеров с разделением на public и protected:
+  - Публичные (без auth): auth, webhooks, public
+  - Защищённые (JWT `Depends(get_current_user)`): sync, status, charts, schema, references, dashboards, selectors
 
 ##### Схемы (`app/api/v1/schemas/`)
 - **common.py** — `HealthResponse`, `ErrorResponse`, `SuccessResponse`, `PaginationParams`
@@ -105,6 +111,7 @@
 - **webhooks.py** — `WebhookEventData`, `WebhookResponse`, `WebhookRegistration`
 
 ##### Эндпоинты (`app/api/v1/endpoints/`)
+- **auth.py** — POST `/login` — single-user аутентификация (email + password из .env), возвращает JWT access token
 - **charts.py** — POST `/generate`, POST `/save`, GET `/list`, GET `/{id}/data`, PATCH `/{id}/config`, DELETE `/{id}`, POST `/{id}/pin`
 - **dashboards.py** (internal):
   - POST `/publish`, GET `/list`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}`
@@ -134,7 +141,7 @@
 React 18 + TypeScript + Vite + Tailwind CSS
 
 #### Сервисы и хуки
-- **src/services/api.ts** — axios HTTP клиент, все типы и API объекты:
+- **src/services/api.ts** — axios HTTP клиент (с 401 interceptor → redirect на /login), все типы и API объекты:
   - `syncApi`, `statusApi`, `webhooksApi`, `referencesApi`, `chartsApi` (с `updateConfig` для PATCH), `schemaApi`
   - `dashboardsApi` — publish, list, get, update, delete, updateLayout, updateChartOverride, removeChart, changePassword, getIframeCode, addLink, removeLink, updateLinks
   - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData, getLinkedDashboard, getLinkedDashboardChartData
@@ -172,10 +179,12 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **src/store/syncStore.ts** — Zustand store текущих синхронизаций
 
 #### Маршрутизация (`src/App.tsx`)
-- `/embed/chart/:chartId` → EmbedChartPage (вне Layout)
-- `/embed/dashboard/:slug` → EmbedDashboardPage (вне Layout)
-- `/` → DashboardPage, `/config`, `/monitoring`, `/validation`, `/charts`, `/schema` (внутри Layout)
-- `/dashboards/:id/edit` → DashboardEditorPage (внутри Layout)
+- `/login` → LoginPage (публичный)
+- `/embed/chart/:chartId` → EmbedChartPage (вне Layout, публичный)
+- `/embed/dashboard/:slug` → EmbedDashboardPage (вне Layout, публичный)
+- `/` → DashboardPage, `/config`, `/monitoring`, `/validation`, `/charts`, `/schema` (внутри Layout, ProtectedRoute)
+- `/dashboards/:id/edit` → DashboardEditorPage (внутри Layout, ProtectedRoute)
+- `ProtectedRoute` — auth guard: проверяет isAuthenticated, редиректит на /login
 
 #### Зависимости (`package.json`)
 - @tanstack/react-query, axios, react, react-dom, react-router-dom

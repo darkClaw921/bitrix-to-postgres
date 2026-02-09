@@ -58,10 +58,9 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
           })
         } else {
-          // No auth required — allow access without login
           set({
             user: null,
-            isAuthenticated: true,
+            isAuthenticated: false,
             isLoading: false,
           })
         }
@@ -69,7 +68,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
+      partialize: (state) => ({ user: state.user }),
     }
   )
 )

@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     chart_query_timeout_seconds: int = 5
     chart_max_rows: int = 10000
 
+    # Auth (single-user from .env)
+    auth_login: str = ""
+    auth_password: str = ""
+    auth_token_expiry_minutes: int = 1440  # 24 hours
+
     # Dashboards
     dashboard_secret_key: str = "change-me-in-production"
     dashboard_token_expiry_minutes: int = 30

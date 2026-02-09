@@ -9,6 +9,28 @@ const api = axios.create({
   },
 })
 
+// Restore token from localStorage on module init
+const savedToken = localStorage.getItem('auth_token')
+if (savedToken) {
+  api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`
+}
+
+// 401 response interceptor — clear token and redirect to login
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth_token')
+      delete api.defaults.headers.common['Authorization']
+      // Only redirect if not already on login page
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+
 // Types
 export interface SyncConfigItem {
   entity_type: string

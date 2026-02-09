@@ -44,60 +44,60 @@ async def get_reference_status() -> dict:
     ref_types = get_all_reference_types()
     statuses = []
 
-    for name, rt in ref_types.items():
-        entity_type = f"ref:{name}"
+    # Use a single connection for all queries
+    async with engine.begin() as conn:
+        for name, rt in ref_types.items():
+            entity_type = f"ref:{name}"
 
-        # Get last sync log
-        if dialect == "mysql":
-            log_query = text(
-                "SELECT status, sync_type, records_processed, error_message, "
-                "       started_at, completed_at "
-                "FROM sync_logs "
-                "WHERE entity_type = :entity_type "
-                "ORDER BY started_at DESC LIMIT 1"
-            )
-        else:
-            log_query = text(
-                "SELECT status, sync_type, records_processed, error_message, "
-                "       started_at, completed_at "
-                "FROM sync_logs "
-                "WHERE entity_type = :entity_type "
-                "ORDER BY started_at DESC NULLS LAST LIMIT 1"
-            )
+            # Get last sync log
+            if dialect == "mysql":
+                log_query = text(
+                    "SELECT status, sync_type, records_processed, error_message, "
+                    "       started_at, completed_at "
+                    "FROM sync_logs "
+                    "WHERE entity_type = :entity_type "
+                    "ORDER BY started_at DESC LIMIT 1"
+                )
+            else:
+                log_query = text(
+                    "SELECT status, sync_type, records_processed, error_message, "
+                    "       started_at, completed_at "
+                    "FROM sync_logs "
+                    "WHERE entity_type = :entity_type "
+                    "ORDER BY started_at DESC NULLS LAST LIMIT 1"
+                )
 
-        async with engine.begin() as conn:
             result = await conn.execute(log_query, {"entity_type": entity_type})
             log_row = result.fetchone()
 
-        # Get record count from actual table
-        record_count = 0
-        table_exists = await DynamicTableBuilder.table_exists(rt.table_name)
-        if table_exists:
-            try:
-                count_query = text(f"SELECT COUNT(*) FROM {rt.table_name}")
-                async with engine.begin() as conn:
+            # Get record count from actual table
+            record_count = 0
+            table_exists = await DynamicTableBuilder.table_exists(rt.table_name)
+            if table_exists:
+                try:
+                    count_query = text(f"SELECT COUNT(*) FROM {rt.table_name}")
                     result = await conn.execute(count_query)
                     record_count = result.scalar() or 0
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
-        is_running = _running_ref_syncs.get(name, False) or _running_ref_syncs.get("__all__", False)
+            is_running = _running_ref_syncs.get(name, False) or _running_ref_syncs.get("__all__", False)
 
-        status_info = {
-            "name": name,
-            "table_name": rt.table_name,
-            "table_exists": table_exists,
-            "record_count": record_count,
-            "status": "running" if is_running else (log_row[0] if log_row else "idle"),
-            "last_sync_type": log_row[1] if log_row else None,
-            "records_synced": log_row[2] if log_row else None,
-            "error_message": log_row[3] if log_row and log_row[0] == "failed" else None,
-            "last_sync_at": log_row[4].isoformat() if log_row and log_row[4] else None,
-            "completed_at": log_row[5].isoformat() if log_row and log_row[5] else None,
-            "auto_only": not bool(rt.api_method),
-        }
+            status_info = {
+                "name": name,
+                "table_name": rt.table_name,
+                "table_exists": table_exists,
+                "record_count": record_count,
+                "status": "running" if is_running else (log_row[0] if log_row else "idle"),
+                "last_sync_type": log_row[1] if log_row else None,
+                "records_synced": log_row[2] if log_row else None,
+                "error_message": log_row[3] if log_row and log_row[0] == "failed" else None,
+                "last_sync_at": log_row[4].isoformat() if log_row and log_row[4] else None,
+                "completed_at": log_row[5].isoformat() if log_row and log_row[5] else None,
+                "auto_only": not bool(rt.api_method),
+            }
 
-        statuses.append(status_info)
+            statuses.append(status_info)
 
     return {"references": statuses}
 

@@ -36,6 +36,8 @@ async def init_db() -> None:
         echo=settings.database_echo,
         pool_size=settings.database_pool_size,
         max_overflow=settings.database_max_overflow,
+        pool_pre_ping=True,
+        pool_recycle=3600,
     )
 
     _async_session_factory = async_sessionmaker(

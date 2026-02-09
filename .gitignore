@@ -4,9 +4,10 @@ __pycache__/
 *$py.class
 *.pdf
 *.html
+mapping_fields*.json
 # C extensions
 *.so
-*.json
+# *.json
 *.cfg
 *~
 *.rdb

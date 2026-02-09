@@ -11,3 +11,4 @@ v1.0.2
   - API метод: crm.stagehistory.list
   - поддержка full sync и incremental sync по полю CREATED_TIME
   - таблицы: stage_history_deals, stage_history_leads
+  - авторизация по логину паролю

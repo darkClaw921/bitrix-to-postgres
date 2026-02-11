@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from '../i18n'
-import type { BitrixFilter } from '../services/api'
+import { syncApi, type BitrixFilter } from '../services/api'
 
 interface FilterDialogProps {
   entityType: string
@@ -22,9 +22,27 @@ export default function FilterDialog({ entityType, onApply, onCancel }: FilterDi
   const { t } = useTranslation()
   const defaultField = DEFAULT_FIELD_MAP[entityType] || 'DATE_CREATE'
 
+  const [fields, setFields] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
   const [field, setField] = useState(defaultField)
   const [operator, setOperator] = useState<string>('>')
   const [value, setValue] = useState('')
+
+  useEffect(() => {
+    syncApi.getEntityFields(entityType)
+      .then((data) => {
+        setFields(data.fields)
+        // If the default field exists in the list, keep it; otherwise select first
+        if (data.fields.length > 0 && !data.fields.includes(defaultField)) {
+          setField(data.fields[0])
+        }
+      })
+      .catch(() => {
+        // Fallback: allow manual input if API fails
+        setFields([])
+      })
+      .finally(() => setLoading(false))
+  }, [entityType, defaultField])
 
   const operatorLabels: Record<string, string> = {
     '>': t('syncCard.operatorGt'),
@@ -48,12 +66,30 @@ export default function FilterDialog({ entityType, onApply, onCancel }: FilterDi
             <label className="block text-sm font-medium text-gray-700 mb-1">
               {t('syncCard.filterField')}
             </label>
-            <input
-              type="text"
-              value={field}
-              onChange={(e) => setField(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
-            />
+            {loading ? (
+              <div className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-400">
+                {t('common.loading')}...
+              </div>
+            ) : fields.length > 0 ? (
+              <select
+                value={field}
+                onChange={(e) => setField(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+              >
+                {fields.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={field}
+                onChange={(e) => setField(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+              />
+            )}
           </div>
 
           <div>

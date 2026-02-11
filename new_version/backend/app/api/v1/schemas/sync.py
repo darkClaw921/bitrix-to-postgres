@@ -73,6 +73,7 @@ class SyncLogEntry(BaseModel):
     entity_type: str
     sync_type: str
     status: str
+    records_fetched: Optional[int] = None
     records_processed: Optional[int] = None
     error_message: Optional[str] = None
     started_at: Optional[datetime] = None

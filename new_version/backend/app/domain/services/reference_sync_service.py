@@ -57,7 +57,10 @@ class ReferenceSyncService:
                 upserted=upserted,
             )
 
-            await self._complete_sync_log(sync_log_id, "completed", upserted)
+            await self._complete_sync_log(
+                sync_log_id, "completed", upserted,
+                records_fetched=len(records),
+            )
 
             return {
                 "status": "completed",
@@ -69,7 +72,7 @@ class ReferenceSyncService:
             logger.error(
                 "Reference sync failed", ref_name=ref_name, error=str(e)
             )
-            await self._complete_sync_log(sync_log_id, "failed", 0, str(e))
+            await self._complete_sync_log(sync_log_id, "failed", 0, str(e), records_fetched=0)
             raise SyncError(
                 f"Reference sync failed for {ref_name}: {str(e)}"
             ) from e
@@ -128,7 +131,10 @@ class ReferenceSyncService:
 
             upserted = await self._upsert_reference_records(ref_type, records)
 
-            await self._complete_sync_log(sync_log_id, "completed", upserted)
+            await self._complete_sync_log(
+                sync_log_id, "completed", upserted,
+                records_fetched=len(records),
+            )
 
             return {
                 "status": "completed",
@@ -143,7 +149,7 @@ class ReferenceSyncService:
                 entity_type=entity_type,
                 error=str(e),
             )
-            await self._complete_sync_log(sync_log_id, "failed", 0, str(e))
+            await self._complete_sync_log(sync_log_id, "failed", 0, str(e), records_fetched=0)
             raise SyncError(
                 f"Enum userfields sync failed for {entity_type}: {str(e)}"
             ) from e
@@ -475,6 +481,7 @@ class ReferenceSyncService:
         status: str,
         records_processed: int,
         error_message: str | None = None,
+        records_fetched: int | None = None,
     ) -> None:
         """Complete a sync log entry."""
         engine = get_engine()
@@ -482,6 +489,7 @@ class ReferenceSyncService:
         query = text(
             "UPDATE sync_logs "
             "SET status = :status, "
+            "    records_fetched = :records_fetched, "
             "    records_processed = :records_processed, "
             "    error_message = :error_message, "
             "    completed_at = NOW() "
@@ -494,6 +502,7 @@ class ReferenceSyncService:
                 {
                     "log_id": log_id,
                     "status": status,
+                    "records_fetched": records_fetched,
                     "records_processed": records_processed,
                     "error_message": error_message,
                 },

@@ -119,6 +119,8 @@ export const en: Translations = {
     incremental: 'Incremental',
     webhook: 'Webhook',
     type: 'Type',
+    fetched: 'Fetched',
+    updated: 'Updated',
     started: 'Started',
     duration: 'Duration',
     showing: 'Showing',

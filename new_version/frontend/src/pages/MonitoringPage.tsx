@@ -193,7 +193,10 @@ export default function MonitoringPage() {
                       {t('dashboard.status')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      {t('dashboard.records')}
+                      {t('monitoring.fetched')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      {t('monitoring.updated')}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       {t('monitoring.started')}
@@ -220,6 +223,9 @@ export default function MonitoringPage() {
                         >
                           {log.status}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                        {log.records_fetched ?? '-'}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                         {log.records_processed ?? '-'}

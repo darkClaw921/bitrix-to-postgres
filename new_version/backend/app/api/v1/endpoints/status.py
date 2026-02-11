@@ -84,14 +84,20 @@ async def get_sync_history(
     params["limit"] = per_page
     params["offset"] = offset
 
-    # Get paginated results
+    # Get paginated results — MySQL doesn't support NULLS LAST
+    dialect = get_dialect()
+    if dialect == "mysql":
+        order_clause = "ORDER BY started_at DESC, id DESC"
+    else:
+        order_clause = "ORDER BY started_at DESC NULLS LAST, id DESC"
+
     data_query = text(
         f"""
-        SELECT id, entity_type, sync_type, status, records_processed,
-               error_message, started_at, completed_at
+        SELECT id, entity_type, sync_type, status, records_fetched,
+               records_processed, error_message, started_at, completed_at
         FROM sync_logs
         {where_clause}
-        ORDER BY started_at DESC NULLS LAST, id DESC
+        {order_clause}
         LIMIT :limit OFFSET :offset
         """
     )
@@ -108,10 +114,11 @@ async def get_sync_history(
                 entity_type=row[1],
                 sync_type=row[2],
                 status=row[3],
-                records_processed=row[4],
-                error_message=row[5],
-                started_at=row[6],
-                completed_at=row[7],
+                records_fetched=row[4],
+                records_processed=row[5],
+                error_message=row[6],
+                started_at=row[7],
+                completed_at=row[8],
             )
         )
 
@@ -246,5 +253,5 @@ async def detailed_health_check() -> dict:
             "running": scheduler["running"],
             "jobs_count": scheduler["job_count"],
         },
-        "synced_tables": synced_tables,
+        "crm_tables": synced_tables,
     }

@@ -20,14 +20,56 @@ depends_on: Union[str, Sequence[str], None] = None
 
 DEFAULT_BITRIX_PROMPT = """# Инструкции по работе с данными Bitrix24 CRM
 
+- названия столбцов дложны быть всегда в человеческим виде и на русском языке
+- сделки считаются закрытыми если у них stage_semantic_id = 'F' или 'S' 
+- не используй поле closed
 
+- если пользователь просит данные в человеческрм виде то возможно эти данные можно получить из таблицы со списком значений полей 
 ## лид считаеться качественным если он имеет статус status_semantic_id = 'S' или status_id = 'CONVERTED'
 ## лид считаеться не качественным если он имеет статус status_semantic_id = 'F' или status_id = 'JUNK'
 
 ## сделки и лиды которые были или находившиеся в какой-то стадии это значит что бы должны смотреть также таблицы с историей движения этих сущностей
 ## Получение конверсии по стадиям сделок
 
+чтобы получить данные по конкретной воронки можно использовать WHERE d.category_id = (SELECT id FROM ref_crm_deal_categories WHERE name = 'Продажа клиенту')
 Для расчета конверсии по стадиям воронки сделок необходимо:
+
+
+
+## справка по задачам
+REAL_STATUS — статус задачи.
+2 — ждет выполнения
+3 — выполняется
+4 — ожидает контроля
+5 — завершена
+6 — отложена
+STATUS — статус для сортировки. Аналогичен REAL_STATUS, но имеет три дополнительных мета-статуса:
+-3 — задача почти просрочена
+-2 — не просмотренная задача
+-1 — просроченная задача
+
+## примеры запросов
+# конверия сделок по определенным стадиям и воронке 
+SELECT s.name AS stage_name, COUNT(d.bitrix_id) AS deal_count
+FROM crm_deals d
+JOIN stage_history_deals sh ON d.bitrix_id = sh.owner_id
+JOIN ref_crm_statuses s ON sh.stage_id = s.status_id
+WHERE d.category_id = (SELECT id FROM ref_crm_deal_categories WHERE name = 'Продажа клиенту')
+  AND s.name IN ('Новая сделка', 'КП отправлено', 'Счет/договор отправлены', 'Согласовано/договор подписан')
+GROUP BY s.name
+ORDER BY s.sort
+LIMIT 10000
+
+# Причины отказов сделок с человеческими названиями значений полей
+SELECT
+  ev.value AS reason,
+  COUNT(d.bitrix_id) AS deal_count
+FROM crm_deals d
+JOIN ref_enum_values ev ON d.uf_crm_1674660872571 = ev.item_id
+WHERE d.stage_semantic_id = 'F'
+GROUP BY ev.value
+ORDER BY deal_count DESC
+LIMIT 10000
 
 1. Использовать таблицу `crm_deals` для получения списка сделок
 2. Использовать таблицу `stage_history_deals` для получения истории движения сделок по стадиям

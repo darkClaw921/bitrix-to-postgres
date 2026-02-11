@@ -71,6 +71,7 @@ export interface SyncLogEntry {
   entity_type: string
   sync_type: string
   status: string
+  records_fetched: number | null
   records_processed: number | null
   error_message: string | null
   started_at: string | null

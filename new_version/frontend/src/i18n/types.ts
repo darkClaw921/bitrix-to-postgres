@@ -119,6 +119,8 @@ export interface Translations {
     incremental: string
     webhook: string
     type: string
+    fetched: string
+    updated: string
     started: string
     duration: string
     showing: string

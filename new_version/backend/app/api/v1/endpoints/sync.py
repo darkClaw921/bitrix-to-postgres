@@ -336,6 +336,29 @@ async def get_sync_status(
     )
 
 
+@router.get("/fields/{entity}")
+async def get_entity_fields(entity: str) -> dict:
+    """Get list of Bitrix field names for entity type (from DB table columns)."""
+    from app.infrastructure.database.dynamic_table import DynamicTableBuilder
+
+    if entity not in EntityType.all():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid entity type. Must be one of: {', '.join(EntityType.all())}",
+        )
+
+    table_name = EntityType.get_table_name(entity)
+    if not await DynamicTableBuilder.table_exists(table_name):
+        return {"entity_type": entity, "fields": []}
+
+    columns = await DynamicTableBuilder.get_table_columns(table_name)
+    # Filter out system columns and convert to Bitrix field names (uppercase)
+    system_columns = {"record_id", "bitrix_id", "created_at", "updated_at"}
+    fields = [col.upper() for col in columns if col not in system_columns]
+
+    return {"entity_type": entity, "fields": fields}
+
+
 @router.get("/running")
 async def get_running_syncs() -> dict:
     """Get list of currently running syncs and queue status."""

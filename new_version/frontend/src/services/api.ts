@@ -129,6 +129,9 @@ export const syncApi = {
   getStatus: () =>
     api.get<SyncStatusResponse>('/sync/status').then((r) => r.data),
 
+  getEntityFields: (entity: string) =>
+    api.get<{ entity_type: string; fields: string[] }>(`/sync/fields/${entity}`).then((r) => r.data),
+
   getRunningSyncs: () =>
     api.get<{ running_syncs: string[]; count: number }>('/sync/running').then((r) => r.data),
 }

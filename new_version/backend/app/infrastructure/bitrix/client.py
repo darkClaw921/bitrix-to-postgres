@@ -1,5 +1,6 @@
 """Bitrix24 API client with retry and rate limiting support."""
 
+import re
 from typing import Any, TypeVar
 
 from fast_bitrix24 import BitrixAsync
@@ -133,6 +134,29 @@ STAGE_HISTORY_FIELD_TYPES: dict[str, str] = {
     "STATUS_SEMANTIC_ID": "string",
     "STATUS_ID": "string",
 }
+
+
+def _camel_to_upper_snake(name: str) -> str:
+    """Convert camelCase to UPPER_SNAKE_CASE.
+
+    Already UPPER_SNAKE_CASE keys (e.g. UF_CRM_TASK) pass through unchanged.
+
+    Examples:
+        responsibleId -> RESPONSIBLE_ID
+        changedDate   -> CHANGED_DATE
+        ID            -> ID
+        UF_CRM_TASK   -> UF_CRM_TASK
+    """
+    converted = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    return converted.upper()
+
+
+def _normalize_task_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize task record keys from camelCase to UPPER_SNAKE_CASE."""
+    return [
+        {_camel_to_upper_snake(k): v for k, v in record.items()}
+        for record in records
+    ]
 
 
 class BitrixClient:
@@ -314,11 +338,11 @@ class BitrixClient:
                     tasks = []
                     for batch in result:
                         tasks.extend(batch.get("tasks", []))
-                    return tasks
-                return result
+                    return _normalize_task_records(tasks)
+                return _normalize_task_records(result)
             if isinstance(result, dict) and "tasks" in result:
-                return result["tasks"]
-            return result
+                return _normalize_task_records(result["tasks"])
+            return _normalize_task_records(result)
         except Exception as e:
             logger.error("Failed to fetch tasks", error=str(e))
             raise BitrixAPIError(f"Failed to fetch tasks: {str(e)}") from e
@@ -450,8 +474,11 @@ class BitrixClient:
             )
             # Result may be {"task": {...}} or the task dict directly
             if isinstance(result, dict) and "task" in result:
-                return result["task"]
-            return result
+                task_data = result["task"]
+            else:
+                task_data = result
+            # Normalize camelCase keys to UPPER_SNAKE_CASE
+            return {_camel_to_upper_snake(k): v for k, v in task_data.items()}
 
         if entity_type == "call":
             # voximplant has no .get method; filter by CALL_ID

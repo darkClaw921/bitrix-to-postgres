@@ -39,6 +39,7 @@
   - CRM сущности: `crm.{entity}.list`, `crm.{entity}.get`, `crm.{entity}.fields`, `crm.{entity}.userfield.list`
   - Users: `user.get`, `user.fields` (+ `USER_FIELD_TYPES` mapping для типов полей), `user.userfield.list`
   - Tasks: `tasks.task.list`, `tasks.task.get`, `tasks.task.getFields` (UF-поля внутри getFields)
+  - Вспомогательные функции: `_camel_to_upper_snake()` — конвертация camelCase → UPPER_SNAKE_CASE для нормализации ключей задач; `_normalize_task_records()` — пакетная нормализация ключей списка задач
 
 #### База данных
 - **app/infrastructure/database/connection.py** — SQLAlchemy async engine (asyncpg/aiomysql), session factory

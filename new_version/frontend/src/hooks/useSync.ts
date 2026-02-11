@@ -34,6 +34,7 @@ export function useSyncHistory(params?: {
   return useQuery({
     queryKey: ['syncHistory', params],
     queryFn: () => statusApi.getHistory(params),
+    refetchInterval: 10000, // Refresh every 10 seconds
   })
 }
 

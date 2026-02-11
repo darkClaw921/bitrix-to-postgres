@@ -95,7 +95,10 @@ class SyncService:
             # Step 5: Update sync state
             await self._update_sync_state(entity_type, len(records))
 
-            await self._complete_sync_log(sync_log.id, "completed", records_processed)
+            await self._complete_sync_log(
+                sync_log.id, "completed", records_processed,
+                records_fetched=len(records),
+            )
 
             # Step 6: Best-effort sync of related reference tables
             await self._sync_related_references(entity_type)
@@ -112,7 +115,7 @@ class SyncService:
 
         except Exception as e:
             logger.error("Full sync failed", entity_type=entity_type, error=str(e))
-            await self._complete_sync_log(sync_log.id, "failed", 0, str(e))
+            await self._complete_sync_log(sync_log.id, "failed", 0, str(e), records_fetched=0)
             raise SyncError(f"Full sync failed for {entity_type}: {str(e)}") from e
 
     async def _upsert_records(
@@ -306,6 +309,7 @@ class SyncService:
         status: str,
         records_processed: int,
         error_message: str | None = None,
+        records_fetched: int | None = None,
     ) -> None:
         """Complete a sync log entry."""
         from app.infrastructure.database.connection import get_engine
@@ -315,6 +319,7 @@ class SyncService:
         query = text(
             "UPDATE sync_logs "
             "SET status = :status, "
+            "    records_fetched = :records_fetched, "
             "    records_processed = :records_processed, "
             "    error_message = :error_message, "
             "    completed_at = NOW() "
@@ -327,6 +332,7 @@ class SyncService:
                 {
                     "log_id": log_id,
                     "status": status,
+                    "records_fetched": records_fetched,
                     "records_processed": records_processed,
                     "error_message": error_message,
                 },
@@ -431,7 +437,7 @@ class SyncService:
 
             if not records:
                 logger.info("No modified records found", entity_type=entity_type)
-                await self._complete_sync_log(sync_log.id, "completed", 0)
+                await self._complete_sync_log(sync_log.id, "completed", 0, records_fetched=0)
                 return {
                     "status": "completed",
                     "entity_type": entity_type,
@@ -449,7 +455,10 @@ class SyncService:
             )
 
             await self._update_sync_state(entity_type, records_processed, incremental=True)
-            await self._complete_sync_log(sync_log.id, "completed", records_processed)
+            await self._complete_sync_log(
+                sync_log.id, "completed", records_processed,
+                records_fetched=len(records),
+            )
 
             return {
                 "status": "completed",
@@ -460,7 +469,7 @@ class SyncService:
 
         except Exception as e:
             logger.error("Incremental sync failed", entity_type=entity_type, error=str(e))
-            await self._complete_sync_log(sync_log.id, "failed", 0, str(e))
+            await self._complete_sync_log(sync_log.id, "failed", 0, str(e), records_fetched=0)
             raise SyncError(f"Incremental sync failed for {entity_type}: {str(e)}") from e
 
     async def sync_entity_by_id(
@@ -492,11 +501,13 @@ class SyncService:
                     entity_type=entity_type,
                     entity_id=entity_id,
                 )
-                await self._complete_sync_log(sync_log.id, "completed", 0)
+                await self._complete_sync_log(sync_log.id, "completed", 0, records_fetched=0)
                 return {"status": "not_found", "entity_id": entity_id}
 
             records_processed = await self._upsert_records(table_name, [entity_data])
-            await self._complete_sync_log(sync_log.id, "completed", records_processed)
+            await self._complete_sync_log(
+                sync_log.id, "completed", records_processed, records_fetched=1,
+            )
 
             return {
                 "status": "completed",
@@ -512,7 +523,7 @@ class SyncService:
                 entity_id=entity_id,
                 error=str(e),
             )
-            await self._complete_sync_log(sync_log.id, "failed", 0, str(e))
+            await self._complete_sync_log(sync_log.id, "failed", 0, str(e), records_fetched=0)
             raise SyncError(f"Webhook sync failed for {entity_type}/{entity_id}") from e
 
     async def delete_entity_by_id(

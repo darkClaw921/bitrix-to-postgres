@@ -119,6 +119,8 @@ export const ru: Translations = {
     incremental: 'Инкрементальная',
     webhook: 'Вебхук',
     type: 'Тип',
+    fetched: 'Получено',
+    updated: 'Обновлено',
     started: 'Начало',
     duration: 'Длительность',
     showing: 'Показано',

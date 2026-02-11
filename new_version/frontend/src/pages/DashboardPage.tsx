@@ -73,8 +73,8 @@ export default function DashboardPage() {
             config={entityConfig}
             status={getStatusForEntity(entityConfig.entity_type)}
             isStarting={startSync.isPending}
-            onStartSync={(syncType) =>
-              startSync.mutate({ entity: entityConfig.entity_type, syncType })
+            onStartSync={(syncType, filter) =>
+              startSync.mutate({ entity: entityConfig.entity_type, syncType, filter })
             }
             onToggleEnabled={(enabled) =>
               updateConfig.mutate({

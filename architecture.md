@@ -29,7 +29,7 @@
   - `CurrentUser` — типизированная зависимость для protected routes
 - **app/core/logging.py** — structlog с JSON/pretty форматированием
 - **app/core/exceptions.py** — иерархия исключений:
-  - `AppException` (base), `BitrixAPIError`, `BitrixRateLimitError`, `BitrixAuthError`
+  - `AppException` (base), `BitrixAPIError`, `BitrixRateLimitError`, `BitrixAuthError`, `BitrixOperationTimeLimitError`
   - `DatabaseError`, `SyncError`, `AuthenticationError`, `AuthorizationError`
   - `AIServiceError` (502), `ChartServiceError` (400)
   - `DashboardServiceError` (400), `DashboardAuthError` (401)
@@ -119,7 +119,7 @@
 - **charts.py** — `ChartGenerateRequest`, `ChartConfigUpdateRequest`, `ChartSpec`, `ChartGenerateResponse`, `ChartResponse`, `ChartListResponse`, `ChartDataResponse`
 - **dashboards.py** — `DashboardPublishRequest`, `DashboardUpdateRequest`, `LayoutItem`, `DashboardLayoutUpdateRequest`, `ChartOverrideUpdateRequest`, `DashboardAuthRequest`, `IframeCodeRequest`, `DashboardLinkRequest`, `DashboardLinkOrderItem`, `DashboardLinkUpdateRequest`, `DashboardChartResponse`, `DashboardLinkResponse`, `DashboardResponse` (с `linked_dashboards`), `DashboardListResponse`, `DashboardPublishResponse`, `DashboardAuthResponse`, `PasswordChangeResponse`, `IframeCodeResponse`
 - **schema_description.py** — `ColumnInfo`, `TableInfo`, `SchemaTablesResponse`, `SchemaDescriptionResponse`
-- **sync.py** — `SyncConfigItem`, `SyncStartRequest/Response`, `SyncStatusItem/Response`, `SyncHistoryResponse`
+- **sync.py** — `SyncConfigItem`, `BitrixFilter`, `SyncStartRequest/Response` (с optional filter), `SyncStatusItem/Response`, `SyncHistoryResponse`
 - **webhooks.py** — `WebhookEventData`, `WebhookResponse`, `WebhookRegistration`
 
 ##### Эндпоинты (`app/api/v1/endpoints/`)
@@ -176,7 +176,8 @@ React 18 + TypeScript + Vite + Tailwind CSS
 
 #### Компоненты (`src/components/`)
 - **Layout.tsx** — навигация, health индикатор, outlet
-- **SyncCard.tsx** — карточка синхронизации сущности
+- **SyncCard.tsx** — карточка синхронизации сущности с обнаружением OPERATION_TIME_LIMIT и интеграцией FilterDialog
+- **FilterDialog.tsx** — модальное окно фильтра для повторной синхронизации с ограничением по дате (поле, оператор, значение)
 - **ReferenceCard.tsx** — карточка справочника
 - **charts/ChartRenderer.tsx** — рендер чартов (bar, line, pie, area, scatter) через recharts с поддержкой настроек отображения (legend, grid, axes, line/area/pie параметры)
 - **charts/ChartSettingsPanel.tsx** — панель настроек чарта (visual, data format, line/area/pie settings) с PATCH сохранением в chart_config

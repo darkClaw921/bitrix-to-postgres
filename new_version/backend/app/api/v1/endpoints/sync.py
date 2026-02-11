@@ -189,11 +189,19 @@ async def start_sync(
         )
 
     task_type = SyncTaskType.FULL if request.sync_type == "full" else SyncTaskType.INCREMENTAL
+    payload: dict = {}
+    if request.filter:
+        payload["filter"] = {
+            "field": request.filter.field,
+            "operator": request.filter.operator,
+            "value": request.filter.value,
+        }
     task = SyncTask(
         priority=SyncPriority.MANUAL,
         task_type=task_type,
         entity_type=entity,
         sync_type=request.sync_type,
+        payload=payload,
     )
 
     result = await get_sync_queue().enqueue(task)
@@ -283,12 +291,20 @@ async def get_sync_status(
     overall_running = False
     sync_queue = get_sync_queue()
 
+    overall_queued = False
+
     for row in rows:
         entity_type = row[0]
         is_running = sync_queue.is_entity_running(entity_type)
-        status = "running" if is_running else row[1]
+        is_queued = sync_queue.is_entity_queued(entity_type)
         if is_running:
+            status = "running"
             overall_running = True
+        elif is_queued:
+            status = "queued"
+            overall_queued = True
+        else:
+            status = row[1]
 
         entities.append(
             SyncStatusItem(
@@ -315,7 +331,7 @@ async def get_sync_status(
             )
 
     return SyncStatusResponse(
-        overall_status="running" if overall_running else "idle",
+        overall_status="running" if overall_running else "queued" if overall_queued else "idle",
         entities=entities,
     )
 

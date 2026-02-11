@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.core.exceptions import (
     BitrixAPIError,
     BitrixAuthError,
+    BitrixOperationTimeLimitError,
     BitrixRateLimitError,
 )
 from app.core.logging import get_logger
@@ -216,6 +217,10 @@ class BitrixClient:
                     error_code = response.get("error", "")
                     error_msg = response.get("error_description", str(response))
 
+                    if "OPERATION_TIME_LIMIT" in str(error_code):
+                        raise BitrixOperationTimeLimitError(
+                            f"OPERATION_TIME_LIMIT: {error_msg}"
+                        )
                     if "QUERY_LIMIT_EXCEEDED" in str(error_code):
                         raise BitrixRateLimitError(f"Rate limit exceeded: {error_msg}")
                     if "expired_token" in str(error_code) or "invalid_token" in str(error_code):
@@ -232,7 +237,14 @@ class BitrixClient:
         except BitrixAuthError:
             logger.error("Authentication failed", method=method)
             raise
+        except BitrixOperationTimeLimitError:
+            logger.error("Operation time limit exceeded", method=method)
+            raise
         except Exception as e:
+            if "OPERATION_TIME_LIMIT" in str(e):
+                raise BitrixOperationTimeLimitError(
+                    f"OPERATION_TIME_LIMIT: {str(e)}"
+                ) from e
             logger.error("Bitrix API call failed", method=method, error=str(e))
             raise BitrixAPIError(f"API call failed: {str(e)}") from e
 
@@ -257,7 +269,15 @@ class BitrixClient:
             result = await self._client.get_all(method, params=params or {})
             logger.info("Fetched records", method=method, count=len(result))
             return result
+        except BitrixOperationTimeLimitError:
+            raise
         except Exception as e:
+            if "OPERATION_TIME_LIMIT" in str(e):
+                raise BitrixOperationTimeLimitError(
+                    f"OPERATION_TIME_LIMIT: сервер Bitrix24 не успел обработать запрос. "
+                    f"Попробуйте использовать фильтр (например, DATE_CREATE > 2024-01-01). "
+                    f"Метод: {method}"
+                ) from e
             logger.error("Failed to fetch all records", method=method, error=str(e))
             raise BitrixAPIError(f"Failed to fetch records: {str(e)}") from e
 
@@ -343,7 +363,14 @@ class BitrixClient:
             if isinstance(result, dict) and "tasks" in result:
                 return _normalize_task_records(result["tasks"])
             return _normalize_task_records(result)
+        except BitrixOperationTimeLimitError:
+            raise
         except Exception as e:
+            if "OPERATION_TIME_LIMIT" in str(e):
+                raise BitrixOperationTimeLimitError(
+                    f"OPERATION_TIME_LIMIT: сервер Bitrix24 не успел обработать запрос задач. "
+                    f"Попробуйте использовать фильтр (например, CHANGED_DATE > 2024-01-01)."
+                ) from e
             logger.error("Failed to fetch tasks", error=str(e))
             raise BitrixAPIError(f"Failed to fetch tasks: {str(e)}") from e
 
@@ -371,7 +398,14 @@ class BitrixClient:
                     record["ID"] = record["CALL_ID"]
             logger.info("Fetched calls", count=len(result))
             return result
+        except BitrixOperationTimeLimitError:
+            raise
         except Exception as e:
+            if "OPERATION_TIME_LIMIT" in str(e):
+                raise BitrixOperationTimeLimitError(
+                    f"OPERATION_TIME_LIMIT: сервер Bitrix24 не успел обработать запрос звонков. "
+                    f"Попробуйте использовать фильтр (например, CALL_START_DATE > 2024-01-01)."
+                ) from e
             logger.error("Failed to fetch calls", error=str(e))
             raise BitrixAPIError(f"Failed to fetch calls: {str(e)}") from e
 
@@ -437,7 +471,14 @@ class BitrixClient:
             )
             return records
 
+        except BitrixOperationTimeLimitError:
+            raise
         except Exception as e:
+            if "OPERATION_TIME_LIMIT" in str(e):
+                raise BitrixOperationTimeLimitError(
+                    f"OPERATION_TIME_LIMIT: сервер Bitrix24 не успел обработать запрос истории стадий. "
+                    f"Попробуйте использовать фильтр (например, CREATED_TIME > 2024-01-01)."
+                ) from e
             logger.error(
                 "Failed to fetch stage history",
                 entity_type=entity_type,

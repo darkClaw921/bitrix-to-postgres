@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { syncApi, statusApi, referencesApi } from '../services/api'
+import { syncApi, statusApi, referencesApi, type BitrixFilter } from '../services/api'
 
 export function useSyncConfig() {
   return useQuery({
@@ -69,8 +69,8 @@ export function useStartSync() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ entity, syncType }: { entity: string; syncType: 'full' | 'incremental' }) =>
-      syncApi.startSync(entity, syncType),
+    mutationFn: ({ entity, syncType, filter }: { entity: string; syncType: 'full' | 'incremental'; filter?: BitrixFilter }) =>
+      syncApi.startSync(entity, syncType, filter),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['syncStatus'] })
       queryClient.invalidateQueries({ queryKey: ['runningSyncs'] })

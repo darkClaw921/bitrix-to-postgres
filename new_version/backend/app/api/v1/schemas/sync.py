@@ -32,10 +32,19 @@ class SyncConfigUpdateRequest(BaseModel):
     webhook_enabled: Optional[bool] = None
 
 
+class BitrixFilter(BaseModel):
+    """Filter for Bitrix24 API queries."""
+
+    field: str = Field(..., description="Bitrix field name (e.g. DATE_CREATE)")
+    operator: str = Field(">", description="Comparison operator: >, <, >=, <=")
+    value: str = Field(..., description="Filter value (e.g. 2024-01-01)")
+
+
 class SyncStartRequest(BaseModel):
     """Request to start sync."""
 
     sync_type: str = Field("full", description="Sync type: full or incremental")
+    filter: Optional[BitrixFilter] = Field(None, description="Optional filter for Bitrix API")
 
 
 class SyncStartResponse(BaseModel):
@@ -52,7 +61,7 @@ class SyncStatusItem(BaseModel):
     """Status of sync for one entity."""
 
     entity_type: str
-    status: str = Field(..., description="idle, running, completed, failed")
+    status: str = Field(..., description="idle, queued, running, completed, failed")
     last_sync_type: Optional[str] = None
     last_sync_at: Optional[datetime] = None
     records_synced: Optional[int] = None
@@ -62,7 +71,7 @@ class SyncStatusItem(BaseModel):
 class SyncStatusResponse(BaseModel):
     """Overall sync status response."""
 
-    overall_status: str = Field(..., description="idle, running")
+    overall_status: str = Field(..., description="idle, queued, running")
     entities: list[SyncStatusItem]
 
 

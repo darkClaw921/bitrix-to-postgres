@@ -276,11 +276,25 @@ export interface Translations {
     syncing: string
     completed: string
     failed: string
+    queued: string
     lastSync: string
     interval: string
     webhooks: string
     fullSync: string
     minutes: string
+    timeLimitError: string
+    useFilter: string
+    filterByDate: string
+    filterField: string
+    filterOperator: string
+    filterValue: string
+    applyFilter: string
+    cancelFilter: string
+    operatorGt: string
+    operatorLt: string
+    operatorGte: string
+    operatorLte: string
+    datePlaceholder: string
   }
   referenceCard: {
     statuses: string

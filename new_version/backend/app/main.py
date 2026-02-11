@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.core.logging import get_logger
 from app.api.v1 import router as api_v1_router
 from app.infrastructure.database.connection import init_db, close_db
+from app.infrastructure.queue import get_sync_queue
 from app.infrastructure.scheduler import (
     get_scheduler_status,
     schedule_sync_jobs,
@@ -29,6 +30,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting application", version=settings.app_version)
     await init_db()
 
+    # Start sync queue before scheduler
+    sync_queue = get_sync_queue()
+    await sync_queue.start()
+
     # Start scheduler and load jobs from database
     start_scheduler()
     try:
@@ -42,6 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.info("Shutting down application")
     stop_scheduler()
+    await sync_queue.stop()
     await close_db()
 
 
@@ -74,12 +80,19 @@ def create_app() -> FastAPI:
     async def health_check() -> dict:
         """Health check endpoint."""
         scheduler_status = get_scheduler_status()
+        queue_status = get_sync_queue().get_status()
         return {
             "status": "healthy",
             "version": settings.app_version,
             "scheduler": {
                 "running": scheduler_status["running"],
                 "jobs_count": scheduler_status["job_count"],
+            },
+            "queue": {
+                "running": queue_status["running"],
+                "heavy_queue_size": queue_status["heavy_queue_size"],
+                "webhook_queue_size": queue_status["webhook_queue_size"],
+                "current_heavy_task": queue_status["current_heavy_task"],
             },
         }
 

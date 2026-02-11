@@ -59,6 +59,17 @@
 - **005_add_refresh_interval.py** — добавление refresh_interval_minutes в published_dashboards
 - **006_create_dashboard_links_table.py** — dashboard_links (FK → published_dashboards CASCADE, unique constraint)
 
+#### Очередь синхронизаций (`app/infrastructure/queue/`)
+- **sync_queue.py** — `SyncQueue`: центральная очередь с двумя каналами:
+  - Heavy Queue (`asyncio.PriorityQueue`) — full/incremental/reference синхронизации, один worker (строго последовательно)
+  - Webhook Queue (`asyncio.Queue`) — webhook-обработка, worker с `Semaphore(3)` (до 3 параллельно)
+  - `SyncPriority(IntEnum)` — WEBHOOK=0, MANUAL=10, REFERENCE=20, SCHEDULED=30
+  - `SyncTaskType(Enum)` — FULL, INCREMENTAL, WEBHOOK, WEBHOOK_DELETE, REFERENCE, REFERENCE_ALL
+  - `SyncTask(dataclass)` — задача с приоритетом, дедупликацией по `dedup_key`
+  - `get_sync_queue()` — singleton
+  - Дедупликация: задача с тем же `dedup_key` не ставится в очередь повторно
+  - `_execute_task()` — диспетчер: создаёт BitrixClient и вызывает SyncService/ReferenceSyncService
+
 #### Доменные сервисы (`app/domain/services/`)
 - **chart_service.py** — `ChartService`:
   - SQL валидация (`validate_sql_query`, `validate_table_names`, `ensure_limit`)

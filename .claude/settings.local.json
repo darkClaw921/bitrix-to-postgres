@@ -32,7 +32,8 @@
       "Bash(node:*)",
       "mcp__ide__getDiagnostics",
       "Bash(npm run build:*)",
-      "Bash(python -m py_compile:*)"
+      "Bash(python -m py_compile:*)",
+      "Bash(cd:*)"
     ]
   }
 }

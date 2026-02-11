@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     openai_timeout_seconds: int = 120
 
     # Charts
-    chart_query_timeout_seconds: int = 5
+    chart_query_timeout_seconds: int = 30
     chart_max_rows: int = 10000
 
     # Auth (single-user from .env)

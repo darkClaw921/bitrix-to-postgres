@@ -10,8 +10,6 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import text
 
 from app.core.logging import get_logger
-from app.domain.services.sync_service import SyncService
-from app.infrastructure.bitrix.client import BitrixClient
 
 logger = get_logger(__name__)
 
@@ -35,24 +33,31 @@ def get_scheduler() -> AsyncIOScheduler:
 
 
 async def sync_job(entity_type: str) -> None:
-    """Job function for incremental sync.
+    """Job function for incremental sync — enqueues task to SyncQueue.
 
     Args:
         entity_type: Entity type to sync
     """
-    logger.info("Starting scheduled sync job", entity_type=entity_type)
+    from app.infrastructure.queue import SyncPriority, SyncTask, SyncTaskType, get_sync_queue
+
+    logger.info("Scheduled sync job triggered", entity_type=entity_type)
     try:
-        bitrix_client = BitrixClient()
-        sync_service = SyncService(bitrix_client=bitrix_client)
-        result = await sync_service.incremental_sync(entity_type)
-        logger.info(
-            "Scheduled sync completed",
+        task = SyncTask(
+            priority=SyncPriority.SCHEDULED,
+            task_type=SyncTaskType.INCREMENTAL,
             entity_type=entity_type,
-            records_processed=result.get("records_processed", 0),
+            sync_type="incremental",
+        )
+        result = await get_sync_queue().enqueue(task)
+        logger.info(
+            "Scheduled sync enqueued",
+            entity_type=entity_type,
+            enqueue_status=result["status"],
+            task_id=result["task_id"],
         )
     except Exception as e:
         logger.error(
-            "Scheduled sync failed",
+            "Failed to enqueue scheduled sync",
             entity_type=entity_type,
             error=str(e),
         )

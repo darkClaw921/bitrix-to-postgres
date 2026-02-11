@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import SyncError
+from app.core.exceptions import BitrixOperationTimeLimitError, SyncError
 from app.core.logging import get_logger
 from app.domain.entities.base import EntityType
 from app.domain.services.field_mapper import FieldMapper
@@ -34,9 +34,11 @@ class SyncService:
         self._bitrix = bitrix_client or BitrixClient()
         self._session = session
 
-    async def full_sync(self, entity_type: str) -> dict[str, Any]:
+    async def full_sync(
+        self, entity_type: str, filter_params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Perform full synchronization for an entity type."""
-        logger.info("Starting full sync", entity_type=entity_type)
+        logger.info("Starting full sync", entity_type=entity_type, filter_params=filter_params)
         table_name = EntityType.get_table_name(entity_type)
 
         sync_log = await self._create_sync_log(entity_type, "full")
@@ -76,8 +78,8 @@ class SyncService:
                 logger.info("Created new table", table_name=table_name)
 
             # Step 3: Fetch all records from Bitrix
-            logger.info("Fetching all records", entity_type=entity_type)
-            records = await self._bitrix.get_entities(entity_type)
+            logger.info("Fetching all records", entity_type=entity_type, filter_params=filter_params)
+            records = await self._bitrix.get_entities(entity_type, filter_params=filter_params)
             logger.info(
                 "Records fetched",
                 entity_type=entity_type,
@@ -113,6 +115,14 @@ class SyncService:
                 "fields_count": len(all_fields),
             }
 
+        except BitrixOperationTimeLimitError as e:
+            error_msg = (
+                f"OPERATION_TIME_LIMIT: синхронизация прервана — сервер Bitrix24 не успел обработать запрос. "
+                f"Попробуйте использовать фильтр, например DATE_CREATE > 2024-01-01"
+            )
+            logger.error("Full sync hit OPERATION_TIME_LIMIT", entity_type=entity_type, error=str(e))
+            await self._complete_sync_log(sync_log.id, "failed", 0, error_msg, records_fetched=0)
+            raise SyncError(error_msg) from e
         except Exception as e:
             logger.error("Full sync failed", entity_type=entity_type, error=str(e))
             await self._complete_sync_log(sync_log.id, "failed", 0, str(e), records_fetched=0)

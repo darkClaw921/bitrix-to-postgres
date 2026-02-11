@@ -59,6 +59,12 @@ export interface SyncStatusResponse {
   entities: SyncStatusItem[]
 }
 
+export interface BitrixFilter {
+  field: string
+  operator: string
+  value: string
+}
+
 export interface SyncStartResponse {
   status: string
   entity: string
@@ -114,8 +120,11 @@ export const syncApi = {
   updateConfig: (data: Partial<SyncConfigItem>) =>
     api.put<SyncConfigItem>('/sync/config', data).then((r) => r.data),
 
-  startSync: (entity: string, syncType: 'full' | 'incremental' = 'full') =>
-    api.post<SyncStartResponse>(`/sync/start/${entity}`, { sync_type: syncType }).then((r) => r.data),
+  startSync: (entity: string, syncType: 'full' | 'incremental' = 'full', filter?: BitrixFilter) =>
+    api.post<SyncStartResponse>(`/sync/start/${entity}`, {
+      sync_type: syncType,
+      ...(filter ? { filter } : {}),
+    }).then((r) => r.data),
 
   getStatus: () =>
     api.get<SyncStatusResponse>('/sync/status').then((r) => r.data),

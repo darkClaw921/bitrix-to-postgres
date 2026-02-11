@@ -30,6 +30,12 @@ class BitrixAuthError(BitrixAPIError):
     pass
 
 
+class BitrixOperationTimeLimitError(BitrixAPIError):
+    """Bitrix24 OPERATION_TIME_LIMIT error — server couldn't process batch in time."""
+
+    pass
+
+
 class DatabaseError(AppException):
     """Database operation error."""
 

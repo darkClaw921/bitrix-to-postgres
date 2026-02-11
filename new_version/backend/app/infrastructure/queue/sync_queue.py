@@ -298,7 +298,12 @@ class SyncQueue:
         if task.task_type == SyncTaskType.FULL:
             bitrix_client = BitrixClient()
             sync_service = SyncService(bitrix_client=bitrix_client)
-            await sync_service.full_sync(task.entity_type)
+            # Extract filter from payload if present
+            filter_params = None
+            if task.payload.get("filter"):
+                f = task.payload["filter"]
+                filter_params = {f"{f['operator']}{f['field']}": f["value"]}
+            await sync_service.full_sync(task.entity_type, filter_params=filter_params)
 
         elif task.task_type == SyncTaskType.INCREMENTAL:
             bitrix_client = BitrixClient()

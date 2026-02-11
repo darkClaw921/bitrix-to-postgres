@@ -598,33 +598,40 @@ class SyncService:
     }
 
     async def _sync_related_references(self, entity_type: str) -> None:
-        """Best-effort sync of reference tables related to this entity type."""
+        """Best-effort enqueue of reference sync tasks related to this entity type."""
         ref_names = self._ENTITY_REFERENCE_MAP.get(entity_type, [])
         if not ref_names:
             return
 
         try:
-            from app.domain.services.reference_sync_service import ReferenceSyncService
+            from app.infrastructure.queue import SyncPriority, SyncTask, SyncTaskType, get_sync_queue
 
-            ref_service = ReferenceSyncService(bitrix_client=self._bitrix)
+            sync_queue = get_sync_queue()
             for ref_name in ref_names:
                 try:
-                    await ref_service.sync_reference(ref_name)
+                    task = SyncTask(
+                        priority=SyncPriority.REFERENCE,
+                        task_type=SyncTaskType.REFERENCE,
+                        entity_type=ref_name,
+                        sync_type="reference",
+                    )
+                    result = await sync_queue.enqueue(task)
                     logger.info(
-                        "Related reference synced",
+                        "Related reference enqueued",
                         entity_type=entity_type,
                         ref_name=ref_name,
+                        enqueue_status=result["status"],
                     )
                 except Exception as e:
                     logger.warning(
-                        "Failed to sync related reference, skipping",
+                        "Failed to enqueue related reference, skipping",
                         entity_type=entity_type,
                         ref_name=ref_name,
                         error=str(e),
                     )
         except Exception as e:
             logger.warning(
-                "Failed to sync related references",
+                "Failed to enqueue related references",
                 entity_type=entity_type,
                 error=str(e),
             )

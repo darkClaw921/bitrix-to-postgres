@@ -1,15 +1,15 @@
 """Webhook handler endpoints."""
 
-import re
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, Request
 
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.core.webhooks import extract_event_info, parse_nested_query
 from app.domain.services.sync_service import SyncService
 from app.infrastructure.bitrix.client import BitrixClient
+from app.infrastructure.queue import SyncPriority, SyncTask, SyncTaskType, get_sync_queue
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -113,14 +113,13 @@ async def process_webhook_event(event_data: dict[str, Any]) -> dict[str, Any]:
 @router.post("/bitrix")
 async def handle_bitrix_webhook(
     request: Request,
-    background_tasks: BackgroundTasks,
 ) -> dict:
     """Handle incoming Bitrix24 webhook events.
 
     Bitrix24 sends webhooks as URL-encoded form data with nested keys.
-    This endpoint parses the data and processes the event asynchronously.
+    This endpoint parses the data and enqueues the event for async processing.
 
-    Returns immediately with 200 OK to Bitrix24, processes in background.
+    Returns immediately with 200 OK to Bitrix24, processes via queue.
     """
     body = await request.body()
     body_str = body.decode("utf-8")
@@ -136,13 +135,24 @@ async def handle_bitrix_webhook(
         entity_id=entity_id,
     )
 
-    # Process in background to return quickly to Bitrix
-    background_tasks.add_task(process_webhook_event, event_data)
+    entity_type = get_entity_type_from_event(event_type) if event_type else None
+    task_type = SyncTaskType.WEBHOOK_DELETE if is_delete_event(event_type or "") else SyncTaskType.WEBHOOK
+
+    task = SyncTask(
+        priority=SyncPriority.WEBHOOK,
+        task_type=task_type,
+        entity_type=entity_type or "",
+        sync_type="webhook",
+        payload=event_data,
+    )
+
+    result = await get_sync_queue().enqueue(task)
 
     return {
         "status": "accepted",
         "event": event_type,
         "entity_id": entity_id,
+        "task_id": result["task_id"],
     }
 
 

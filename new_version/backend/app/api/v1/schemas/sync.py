@@ -41,9 +41,10 @@ class SyncStartRequest(BaseModel):
 class SyncStartResponse(BaseModel):
     """Response for sync start."""
 
-    status: str = Field(..., description="Status: started, queued, already_running")
+    status: str = Field(..., description="Status: started, already_running, already_queued")
     entity: str
     sync_type: str
+    task_id: Optional[str] = Field(None, description="Queue task ID")
     message: Optional[str] = None
 
 

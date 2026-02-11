@@ -1,8 +1,6 @@
 """Sync management endpoints."""
 
-from typing import Optional
-
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,17 +15,14 @@ from app.api.v1.schemas.sync import (
 )
 from app.core.logging import get_logger
 from app.domain.entities.base import EntityType
-from app.domain.services.sync_service import SyncService
 from app.infrastructure.bitrix.client import BitrixClient
 from app.infrastructure.database.connection import get_dialect, get_engine, get_session
+from app.infrastructure.queue import SyncPriority, SyncTask, SyncTaskType, get_sync_queue
 from app.infrastructure.scheduler import reschedule_entity, remove_entity_job
 
 logger = get_logger(__name__)
 
 router = APIRouter()
-
-# Track currently running syncs
-_running_syncs: dict[str, bool] = {}
 
 
 @router.get("/config", response_model=SyncConfigResponse)
@@ -174,26 +169,9 @@ async def update_sync_config(
     )
 
 
-async def _run_sync(entity_type: str, sync_type: str) -> None:
-    """Background task to run sync."""
-    global _running_syncs
-    try:
-        _running_syncs[entity_type] = True
-        bitrix_client = BitrixClient()
-        sync_service = SyncService(bitrix_client=bitrix_client)
-
-        if sync_type == "full":
-            await sync_service.full_sync(entity_type)
-        else:
-            await sync_service.incremental_sync(entity_type)
-    finally:
-        _running_syncs.pop(entity_type, None)
-
-
 @router.post("/start/{entity}", response_model=SyncStartResponse)
 async def start_sync(
     entity: str,
-    background_tasks: BackgroundTasks,
     request: SyncStartRequest = SyncStartRequest(),
     session: AsyncSession = Depends(get_session),
 ) -> SyncStartResponse:
@@ -210,27 +188,37 @@ async def start_sync(
             detail="sync_type must be 'full' or 'incremental'",
         )
 
-    if _running_syncs.get(entity):
-        return SyncStartResponse(
-            status="already_running",
-            entity=entity,
-            sync_type=request.sync_type,
-            message=f"Sync for {entity} is already running",
-        )
-
-    background_tasks.add_task(_run_sync, entity, request.sync_type)
-
-    logger.info(
-        "Sync started",
+    task_type = SyncTaskType.FULL if request.sync_type == "full" else SyncTaskType.INCREMENTAL
+    task = SyncTask(
+        priority=SyncPriority.MANUAL,
+        task_type=task_type,
         entity_type=entity,
         sync_type=request.sync_type,
     )
 
+    result = await get_sync_queue().enqueue(task)
+
+    status_map = {
+        "queued": "started",
+        "already_running": "already_running",
+        "duplicate": "already_queued",
+    }
+    status = status_map.get(result["status"], result["status"])
+
+    logger.info(
+        "Sync enqueued",
+        entity_type=entity,
+        sync_type=request.sync_type,
+        status=status,
+        task_id=result["task_id"],
+    )
+
     return SyncStartResponse(
-        status="started",
+        status=status,
         entity=entity,
         sync_type=request.sync_type,
-        message=f"Started {request.sync_type} sync for {entity}",
+        task_id=result["task_id"],
+        message=f"{request.sync_type} sync for {entity}: {status}",
     )
 
 
@@ -293,10 +281,11 @@ async def get_sync_status(
 
     entities = []
     overall_running = False
+    sync_queue = get_sync_queue()
 
     for row in rows:
         entity_type = row[0]
-        is_running = _running_syncs.get(entity_type, False)
+        is_running = sync_queue.is_entity_running(entity_type)
         status = "running" if is_running else row[1]
         if is_running:
             overall_running = True
@@ -333,10 +322,14 @@ async def get_sync_status(
 
 @router.get("/running")
 async def get_running_syncs() -> dict:
-    """Get list of currently running syncs."""
+    """Get list of currently running syncs and queue status."""
+    sync_queue = get_sync_queue()
+    queue_status = sync_queue.get_status()
+    running_entities = sync_queue.get_running_entities()
     return {
-        "running_syncs": list(_running_syncs.keys()),
-        "count": len(_running_syncs),
+        "running_syncs": running_entities,
+        "count": len(running_entities),
+        "queue": queue_status,
     }
 
 

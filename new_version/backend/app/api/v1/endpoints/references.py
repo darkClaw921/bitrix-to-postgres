@@ -1,20 +1,17 @@
 """Reference data synchronization endpoints."""
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
 from app.core.logging import get_logger
 from app.domain.entities.reference import get_all_reference_types, get_reference_type
-from app.domain.services.reference_sync_service import ReferenceSyncService
-from app.infrastructure.bitrix.client import BitrixClient
 from app.infrastructure.database.connection import get_dialect, get_engine
 from app.infrastructure.database.dynamic_table import DynamicTableBuilder
+from app.infrastructure.queue import SyncPriority, SyncTask, SyncTaskType, get_sync_queue
 
 logger = get_logger(__name__)
 
 router = APIRouter()
-
-_running_ref_syncs: dict[str, bool] = {}
 
 
 @router.get("/types")
@@ -81,7 +78,9 @@ async def get_reference_status() -> dict:
                 except Exception:
                     pass
 
-            is_running = _running_ref_syncs.get(name, False) or _running_ref_syncs.get("__all__", False)
+            sync_queue = get_sync_queue()
+            ref_entity = f"ref:{name}"
+            is_running = sync_queue.is_entity_running(ref_entity) or sync_queue.is_entity_running("__all_refs__")
 
             status_info = {
                 "name": name,
@@ -102,28 +101,8 @@ async def get_reference_status() -> dict:
     return {"references": statuses}
 
 
-async def _run_ref_sync(ref_name: str) -> None:
-    """Background task to sync a single reference."""
-    try:
-        _running_ref_syncs[ref_name] = True
-        service = ReferenceSyncService(bitrix_client=BitrixClient())
-        await service.sync_reference(ref_name)
-    finally:
-        _running_ref_syncs.pop(ref_name, None)
-
-
-async def _run_all_ref_sync() -> None:
-    """Background task to sync all references."""
-    try:
-        _running_ref_syncs["__all__"] = True
-        service = ReferenceSyncService(bitrix_client=BitrixClient())
-        await service.sync_all_references()
-    finally:
-        _running_ref_syncs.pop("__all__", None)
-
-
 @router.post("/sync/{ref_name}")
-async def sync_reference(ref_name: str, background_tasks: BackgroundTasks) -> dict:
+async def sync_reference(ref_name: str) -> dict:
     """Start synchronization of a specific reference type."""
     ref_type = get_reference_type(ref_name)
     if ref_type is None:
@@ -139,39 +118,56 @@ async def sync_reference(ref_name: str, background_tasks: BackgroundTasks) -> di
             detail=f"Reference type '{ref_name}' is auto-only and syncs automatically during full_sync",
         )
 
-    if _running_ref_syncs.get(ref_name):
-        return {
-            "status": "already_running",
-            "ref_name": ref_name,
-            "message": f"Sync for {ref_name} is already running",
-        }
+    task = SyncTask(
+        priority=SyncPriority.REFERENCE,
+        task_type=SyncTaskType.REFERENCE,
+        entity_type=ref_name,
+        sync_type="reference",
+    )
 
-    background_tasks.add_task(_run_ref_sync, ref_name)
+    result = await get_sync_queue().enqueue(task)
 
-    logger.info("Reference sync started", ref_name=ref_name)
+    status_map = {
+        "queued": "started",
+        "already_running": "already_running",
+        "duplicate": "already_queued",
+    }
+    status = status_map.get(result["status"], result["status"])
+
+    logger.info("Reference sync enqueued", ref_name=ref_name, status=status)
 
     return {
-        "status": "started",
+        "status": status,
         "ref_name": ref_name,
-        "message": f"Started sync for reference {ref_name}",
+        "task_id": result["task_id"],
+        "message": f"Reference sync for {ref_name}: {status}",
     }
 
 
 @router.post("/sync-all")
-async def sync_all_references(background_tasks: BackgroundTasks) -> dict:
+async def sync_all_references() -> dict:
     """Start synchronization of all reference types."""
-    if _running_ref_syncs.get("__all__"):
-        return {
-            "status": "already_running",
-            "message": "Reference sync-all is already running",
-        }
+    task = SyncTask(
+        priority=SyncPriority.REFERENCE,
+        task_type=SyncTaskType.REFERENCE_ALL,
+        entity_type="__all_refs__",
+        sync_type="reference",
+    )
 
-    background_tasks.add_task(_run_all_ref_sync)
+    result = await get_sync_queue().enqueue(task)
 
-    logger.info("All references sync started")
+    status_map = {
+        "queued": "started",
+        "already_running": "already_running",
+        "duplicate": "already_queued",
+    }
+    status = status_map.get(result["status"], result["status"])
+
+    logger.info("All references sync enqueued", status=status)
 
     return {
-        "status": "started",
-        "message": "Started sync for all reference types",
+        "status": status,
+        "task_id": result["task_id"],
+        "message": f"Sync all references: {status}",
         "reference_types": list(get_all_reference_types().keys()),
     }

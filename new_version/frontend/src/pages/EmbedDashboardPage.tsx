@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import ChartRenderer from '../components/charts/ChartRenderer'
+import ExportButtons from '../components/charts/ExportButtons'
+import { getCardStyleClasses, getCardInlineStyle, getTitleSizeClass } from '../components/charts/cardStyleUtils'
 import PasswordGate from '../components/dashboards/PasswordGate'
 import SelectorBar from '../components/selectors/SelectorBar'
 import { useTranslation } from '../i18n'
@@ -14,9 +16,26 @@ interface TabData {
   chartData: Record<number, ChartDataResponse>
 }
 
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false,
+  )
+
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint}px)`)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mql.addEventListener('change', handler)
+    setIsMobile(mql.matches)
+    return () => mql.removeEventListener('change', handler)
+  }, [breakpoint])
+
+  return isMobile
+}
+
 export default function EmbedDashboardPage() {
   const { slug } = useParams<{ slug: string }>()
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const [token, setToken] = useState<string | null>(() => {
     if (!slug) return null
     return sessionStorage.getItem(SESSION_KEY_PREFIX + slug)
@@ -304,10 +323,10 @@ export default function EmbedDashboardPage() {
   const currentFilterValues = filterValues[activeFilterKey] || {}
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-3 md:p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-2xl font-bold text-gray-800">{dashboard.title}</h1>
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-2 gap-2">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-800">{dashboard.title}</h1>
           <div className="flex items-center space-x-3 text-xs text-gray-400">
             {refreshing && (
               <span className="flex items-center space-x-1">
@@ -372,7 +391,7 @@ export default function EmbedDashboardPage() {
           <div
             className="grid gap-4"
             style={{
-              gridTemplateColumns: 'repeat(12, 1fr)',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(12, 1fr)',
             }}
           >
             {activeCharts.map((dc) => (
@@ -380,6 +399,7 @@ export default function EmbedDashboardPage() {
                 key={dc.id}
                 dc={dc}
                 data={activeChartData[dc.id] || null}
+                isMobile={isMobile}
               />
             ))}
           </div>
@@ -415,9 +435,11 @@ function TabButton({
 function DashboardChartCard({
   dc,
   data,
+  isMobile,
 }: {
   dc: DashboardChart
   data: ChartDataResponse | null
+  isMobile?: boolean
 }) {
   const { t } = useTranslation()
   const title = dc.title_override || dc.chart_title || 'Chart'
@@ -443,24 +465,45 @@ function DashboardChartCard({
     table: config?.table,
     funnel: config?.funnel,
     horizontal_bar: config?.horizontal_bar,
+    general: config?.general,
+    designLayout: config?.designLayout,
+  }
+
+  const cardClasses = config?.cardStyle
+    ? getCardStyleClasses(config.cardStyle)
+    : 'bg-white rounded-lg shadow-sm border border-gray-200 p-4'
+  const cardInline = getCardInlineStyle(config?.cardStyle)
+  const titleClass = getTitleSizeClass(config?.general?.titleFontSize)
+
+  const gridStyle = isMobile ? undefined : {
+    gridColumn: `${dc.layout_x + 1} / span ${dc.layout_w}`,
+    gridRow: `${dc.layout_y + 1} / span ${dc.layout_h}`,
   }
 
   return (
     <div
-      className="bg-white rounded-lg shadow-sm border border-gray-200 p-4"
-      style={{
-        gridColumn: `${dc.layout_x + 1} / span ${dc.layout_w}`,
-        gridRow: `${dc.layout_y + 1} / span ${dc.layout_h}`,
-        minHeight: `${dc.layout_h * 100}px`,
-      }}
+      className={cardClasses}
+      style={{ ...gridStyle, ...cardInline }}
     >
-      <h3 className="text-sm font-semibold text-gray-700 mb-1">{title}</h3>
+      <div className="flex items-start justify-between mb-1">
+        <h3
+          className={`font-semibold text-gray-700 ${titleClass}`}
+          style={
+            config?.designLayout?.title
+              ? { transform: `translate(${config.designLayout.title.dx ?? 0}px, ${config.designLayout.title.dy ?? 0}px)` }
+              : undefined
+          }
+        >
+          {title}
+        </h3>
+        {data && <ExportButtons data={data.data} title={title} />}
+      </div>
       {description && (
         <p className="text-xs text-gray-400 mb-2">{description}</p>
       )}
       <div className="flex-1">
         {data ? (
-          <ChartRenderer spec={spec} data={data.data} height={dc.layout_h * 80} />
+          <ChartRenderer spec={spec} data={data.data} height={isMobile ? 250 : dc.layout_h * 80} />
         ) : (
           <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
             {t('embed.loadingChartData')}

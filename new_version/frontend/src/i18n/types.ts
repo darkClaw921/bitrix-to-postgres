@@ -170,8 +170,11 @@ export interface Translations {
     deleteChart: string
     embedCode: string
     embed: string
+    embedCopyError: string
     emptyChart: string
     noData: string
+    downloadCSV: string
+    downloadExcel: string
   }
   schema: {
     aiDescription: string
@@ -265,6 +268,12 @@ export interface Translations {
     confirmRemoveChart: string
     confirmDeleteSelector: string
     confirmDeleteChart: string
+    design: string
+    gridFormat: string
+    columns1: string
+    columns2: string
+    columns3: string
+    columns4: string
     min1: string
     min5: string
     min10: string
@@ -359,6 +368,33 @@ export interface Translations {
     bottom: string
     left: string
     right: string
+    cardStyle: string
+    backgroundColor: string
+    borderRadius: string
+    shadow: string
+    padding: string
+    radiusNone: string
+    radiusSm: string
+    radiusMd: string
+    radiusLg: string
+    radiusXl: string
+    shadowNone: string
+    shadowSm: string
+    shadowMd: string
+    shadowLg: string
+    paddingSm: string
+    paddingMd: string
+    paddingLg: string
+    generalSettings: string
+    titleFontSize: string
+    showTooltip: string
+    animation: string
+    showDataLabels: string
+    chartMargins: string
+    marginTop: string
+    marginRight: string
+    marginBottom: string
+    marginLeft: string
   }
   publishModal: {
     title: string
@@ -418,5 +454,20 @@ export interface Translations {
     page: string
     ofPages: string
     rowsCount: string
+  }
+  designMode: {
+    designMode: string
+    legend: string
+    title: string
+    xAxisLabel: string
+    yAxisLabel: string
+    dataLabels: string
+    margins: string
+    resetPosition: string
+    resetAll: string
+    applyLayout: string
+    noElementSelected: string
+    defaultPosition: string
+    dragHint: string
   }
 }

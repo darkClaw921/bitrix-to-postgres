@@ -64,6 +64,7 @@ export function useUpdateChartConfig() {
       chartsApi.updateConfig(chartId, config),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['savedCharts'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }

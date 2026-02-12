@@ -33,7 +33,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(npm run build:*)",
       "Bash(python -m py_compile:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(grep:*)"
     ]
   }
 }

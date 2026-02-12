@@ -263,6 +263,32 @@ export interface ChartDisplayConfig {
   funnel?: { showLabels?: boolean; labelPosition?: 'right' | 'inside' }
   // horizontal_bar (uses same settings as bar — grid, xAxis, yAxis)
   horizontal_bar?: {}
+  // card style
+  cardStyle?: {
+    backgroundColor?: string
+    borderRadius?: 'none' | 'sm' | 'md' | 'lg' | 'xl'
+    shadow?: 'none' | 'sm' | 'md' | 'lg'
+    padding?: 'sm' | 'md' | 'lg'
+  }
+  // general chart settings
+  general?: {
+    titleFontSize?: 'sm' | 'md' | 'lg' | 'xl'
+    showTooltip?: boolean
+    animate?: boolean
+    showDataLabels?: boolean
+    margins?: { top?: number; right?: number; bottom?: number; left?: number }
+  }
+  // design layout (interactive positioning)
+  designLayout?: DesignLayout
+}
+
+export interface DesignLayout {
+  legend?: { x?: number; y?: number; layout?: 'horizontal' | 'vertical' }
+  title?: { dx?: number; dy?: number }
+  xAxisLabel?: { dx?: number; dy?: number }
+  yAxisLabel?: { dx?: number; dy?: number }
+  dataLabels?: { dx?: number; dy?: number }
+  margins?: { top?: number; right?: number; bottom?: number; left?: number }
 }
 
 export interface ChartSpec {
@@ -287,6 +313,9 @@ export interface ChartSpec {
   table?: ChartDisplayConfig['table']
   funnel?: ChartDisplayConfig['funnel']
   horizontal_bar?: ChartDisplayConfig['horizontal_bar']
+  cardStyle?: ChartDisplayConfig['cardStyle']
+  general?: ChartDisplayConfig['general']
+  designLayout?: DesignLayout
 }
 
 export interface ChartGenerateRequest {

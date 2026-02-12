@@ -9,7 +9,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from 'recharts'
-import type { ChartSpec } from '../../services/api'
+import type { ChartSpec, DesignLayout } from '../../services/api'
 import { useTranslation } from '../../i18n'
 
 const DEFAULT_COLORS = [
@@ -20,7 +20,8 @@ const DEFAULT_COLORS = [
 interface ChartRendererProps {
   spec: ChartSpec
   data: Record<string, unknown>[]
-  height?: number
+  height?: number | string
+  designLayout?: DesignLayout
 }
 
 function formatValue(value: number, format?: 'number' | 'currency' | 'percent'): string {
@@ -65,7 +66,7 @@ function IndicatorRenderer({ spec, data }: { spec: ChartSpec; data: Record<strin
   )
 }
 
-function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, unknown>[] }) {
+function TableRenderer({ spec, data, maxHeight }: { spec: ChartSpec; data: Record<string, unknown>[]; maxHeight?: number | string }) {
   const { t } = useTranslation()
   const tableCfg = spec.table ?? {}
   const columns = useMemo(() => {
@@ -149,71 +150,73 @@ function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, u
   const displayColumns = tableCfg.showRowTotals ? [...columns, '__row_total__'] : columns
 
   return (
-    <div className="overflow-auto">
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="bg-gray-100">
-            {displayColumns.map((col) => (
-              <th
-                key={col}
-                className={`border border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 ${
-                  tableCfg.sortable ? 'cursor-pointer hover:bg-gray-200 select-none' : ''
-                }`}
-                onClick={() => col !== '__row_total__' && handleSort(col)}
-              >
-                {col === '__row_total__' ? t('common.total') : col}
-                {sortColumn === col && (
-                  <span className="ml-1">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span>
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {pagedData.map((row, ri) => {
-            const rowTotal = tableCfg.showRowTotals
-              ? columns.reduce((sum, col) => sum + (numericColumns.has(col) ? (Number(row[col]) || 0) : 0), 0)
-              : 0
-            return (
-              <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                {columns.map((col) => (
-                  <td key={col} className="border border-gray-200 px-3 py-1.5">
-                    {formatTableCell(row[col], tableCfg.columnFormats?.[col])}
+    <div className="flex flex-col" style={{ height: maxHeight || '100%', maxHeight: maxHeight || undefined, overflow: 'hidden' }}>
+      <div className="overflow-auto flex-1 min-h-0">
+        <table className="w-full text-sm border-collapse">
+          <thead className="sticky top-0 z-10">
+            <tr className="bg-gray-100">
+              {displayColumns.map((col) => (
+                <th
+                  key={col}
+                  className={`border border-gray-200 px-3 py-2 text-left font-semibold text-gray-700 ${
+                    tableCfg.sortable ? 'cursor-pointer hover:bg-gray-200 select-none' : ''
+                  }`}
+                  onClick={() => col !== '__row_total__' && handleSort(col)}
+                >
+                  {col === '__row_total__' ? t('common.total') : col}
+                  {sortColumn === col && (
+                    <span className="ml-1">{sortDir === 'asc' ? '\u25B2' : '\u25BC'}</span>
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {pagedData.map((row, ri) => {
+              const rowTotal = tableCfg.showRowTotals
+                ? columns.reduce((sum, col) => sum + (numericColumns.has(col) ? (Number(row[col]) || 0) : 0), 0)
+                : 0
+              return (
+                <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  {columns.map((col) => (
+                    <td key={col} className="border border-gray-200 px-3 py-1.5">
+                      {formatTableCell(row[col], tableCfg.columnFormats?.[col])}
+                    </td>
+                  ))}
+                  {tableCfg.showRowTotals && (
+                    <td className="border border-gray-200 px-3 py-1.5 font-semibold bg-blue-50">
+                      {rowTotal.toLocaleString()}
+                    </td>
+                  )}
+                </tr>
+              )
+            })}
+          </tbody>
+          {columnTotals && (
+            <tfoot>
+              <tr className="bg-gray-100 font-semibold">
+                {columns.map((col, i) => (
+                  <td key={col} className="border border-gray-200 px-3 py-2">
+                    {i === 0 && !numericColumns.has(col)
+                      ? t('common.total')
+                      : columnTotals[col] != null
+                        ? formatTableCell(columnTotals[col], tableCfg.columnFormats?.[col])
+                        : ''}
                   </td>
                 ))}
                 {tableCfg.showRowTotals && (
-                  <td className="border border-gray-200 px-3 py-1.5 font-semibold bg-blue-50">
-                    {rowTotal.toLocaleString()}
+                  <td className="border border-gray-200 px-3 py-2 bg-blue-50">
+                    {Object.values(columnTotals).reduce((a, b) => a + b, 0).toLocaleString()}
                   </td>
                 )}
               </tr>
-            )
-          })}
-        </tbody>
-        {columnTotals && (
-          <tfoot>
-            <tr className="bg-gray-100 font-semibold">
-              {columns.map((col, i) => (
-                <td key={col} className="border border-gray-200 px-3 py-2">
-                  {i === 0 && !numericColumns.has(col)
-                    ? t('common.total')
-                    : columnTotals[col] != null
-                      ? formatTableCell(columnTotals[col], tableCfg.columnFormats?.[col])
-                      : ''}
-                </td>
-              ))}
-              {tableCfg.showRowTotals && (
-                <td className="border border-gray-200 px-3 py-2 bg-blue-50">
-                  {Object.values(columnTotals).reduce((a, b) => a + b, 0).toLocaleString()}
-                </td>
-              )}
-            </tr>
-          </tfoot>
-        )}
-      </table>
+            </tfoot>
+          )}
+        </table>
+      </div>
 
       {pageSize > 0 && totalPages > 1 && (
-        <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+        <div className="flex items-center justify-between mt-2 text-xs text-gray-500 flex-shrink-0">
           <span>
             {t('chartRenderer.page')} {page + 1} {t('chartRenderer.ofPages')} {totalPages} ({sortedData.length} {t('chartRenderer.rowsCount')})
           </span>
@@ -239,12 +242,15 @@ function TableRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, u
   )
 }
 
-export default function ChartRenderer({ spec, data, height = 350 }: ChartRendererProps) {
+export default function ChartRenderer({ spec, data, height = 350, designLayout: designLayoutProp }: ChartRendererProps) {
   const { t } = useTranslation()
   const { chart_type, data_keys, colors } = spec
   const palette = colors?.length ? colors : DEFAULT_COLORS
   const xKey = data_keys.x
   const yKeys = Array.isArray(data_keys.y) ? data_keys.y : [data_keys.y]
+
+  // Merge designLayout from prop or spec
+  const dl = designLayoutProp ?? spec.designLayout
 
   // Display config with defaults
   const legendCfg = spec.legend ?? { visible: true, position: 'bottom' }
@@ -254,26 +260,58 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
   const lineCfg = spec.line ?? { strokeWidth: 2, type: 'monotone' as const }
   const areaCfg = spec.area ?? { fillOpacity: 0.3 }
   const pieCfg = spec.pie ?? { innerRadius: 0, showLabels: true }
+  const generalCfg = spec.general ?? {}
 
   const yTickFormatter = (v: number) => formatValue(v, yAxisCfg.format)
   const tooltipFormatter = (v: number | undefined) => formatValue(v ?? 0, yAxisCfg.format)
 
-  // Legend position mapping
+  // General settings
+  const showTooltip = generalCfg.showTooltip !== false
+  const isAnimated = generalCfg.animate !== false
+  const showDataLabels = generalCfg.showDataLabels || false
+  const defaultMargin = { top: 5, right: 20, bottom: 5, left: 0 }
+  const baseMargin = generalCfg.margins
+    ? { ...defaultMargin, ...generalCfg.margins }
+    : defaultMargin
+  // Apply design layout margins on top
+  const chartMargin = dl?.margins
+    ? { ...baseMargin, ...dl.margins }
+    : baseMargin
+
+  // Legend position mapping — with design layout override
+  const legendHasDesignPos = dl?.legend && (dl.legend.x != null || dl.legend.y != null)
   const legendProps = legendCfg.visible
-    ? {
-        verticalAlign: (legendCfg.position === 'top' || legendCfg.position === 'bottom'
-          ? legendCfg.position
-          : 'middle') as 'top' | 'bottom' | 'middle',
-        align: (legendCfg.position === 'left' || legendCfg.position === 'right'
-          ? legendCfg.position
-          : 'center') as 'left' | 'right' | 'center',
-      }
+    ? legendHasDesignPos
+      ? {
+          wrapperStyle: {
+            position: 'absolute' as const,
+            left: `${dl!.legend!.x ?? 0}%`,
+            top: `${dl!.legend!.y ?? 0}%`,
+          },
+          layout: (dl!.legend!.layout || 'horizontal') as 'horizontal' | 'vertical',
+        }
+      : {
+          verticalAlign: (legendCfg.position === 'top' || legendCfg.position === 'bottom'
+            ? legendCfg.position
+            : 'middle') as 'top' | 'bottom' | 'middle',
+          align: (legendCfg.position === 'left' || legendCfg.position === 'right'
+            ? legendCfg.position
+            : 'center') as 'left' | 'right' | 'center',
+        }
     : null
 
   // XAxis tick angle props
   const xTickProps = xAxisCfg.angle
     ? { angle: xAxisCfg.angle, textAnchor: 'end' as const, height: 60 }
     : {}
+
+  // Design layout: axis label offsets
+  const xLabelDx = dl?.xAxisLabel?.dx ?? 0
+  const xLabelDy = dl?.xAxisLabel?.dy ?? 0
+  const yLabelDx = dl?.yAxisLabel?.dx ?? 0
+  const yLabelDy = dl?.yAxisLabel?.dy ?? 0
+  const dataLabelDx = dl?.dataLabels?.dx ?? 0
+  const dataLabelDy = dl?.dataLabels?.dy ?? 0
 
   if (!data.length) {
     return (
@@ -293,7 +331,7 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
 
   // Table — rendered as plain HTML, no ResponsiveContainer
   if (chart_type === 'table') {
-    return <TableRenderer spec={spec} data={data} />
+    return <TableRenderer spec={spec} data={data} maxHeight={height} />
   }
 
   const renderGrid = () =>
@@ -302,7 +340,7 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
   const renderXAxis = () => (
     <XAxis
       dataKey={xKey}
-      label={xAxisCfg.label ? { value: xAxisCfg.label, position: 'insideBottom', offset: -5 } : undefined}
+      label={xAxisCfg.label ? { value: xAxisCfg.label, position: 'insideBottom', offset: -5, dx: xLabelDx, dy: xLabelDy } : undefined}
       tick={xTickProps}
     />
   )
@@ -310,32 +348,33 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
   const renderYAxis = () => (
     <YAxis
       tickFormatter={yTickFormatter}
-      label={yAxisCfg.label ? { value: yAxisCfg.label, angle: -90, position: 'insideLeft' } : undefined}
+      label={yAxisCfg.label ? { value: yAxisCfg.label, angle: -90, position: 'insideLeft', dx: yLabelDx, dy: yLabelDy } : undefined}
     />
   )
 
-  const renderTooltip = () => (
-    <Tooltip formatter={tooltipFormatter} />
-  )
+  const renderTooltip = () =>
+    showTooltip ? <Tooltip formatter={tooltipFormatter} /> : null
 
   const renderLegend = () =>
     legendProps ? <Legend {...legendProps} /> : null
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <ResponsiveContainer width="100%" height={height as number | `${number}%`}>
       {chart_type === 'bar' ? (
-        <BarChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+        <BarChart data={data} margin={chartMargin}>
           {renderGrid()}
           {renderXAxis()}
           {renderYAxis()}
           {renderTooltip()}
           {renderLegend()}
           {yKeys.map((key, i) => (
-            <Bar key={key} dataKey={key} fill={palette[i % palette.length]} />
+            <Bar key={key} dataKey={key} fill={palette[i % palette.length]} isAnimationActive={isAnimated}>
+              {showDataLabels && <LabelList dataKey={key} position="top" fontSize={11} dx={dataLabelDx} dy={dataLabelDy} />}
+            </Bar>
           ))}
         </BarChart>
       ) : chart_type === 'line' ? (
-        <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+        <LineChart data={data} margin={chartMargin}>
           {renderGrid()}
           {renderXAxis()}
           {renderYAxis()}
@@ -348,11 +387,14 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
               dataKey={key}
               stroke={palette[i % palette.length]}
               strokeWidth={lineCfg.strokeWidth ?? 2}
-            />
+              isAnimationActive={isAnimated}
+            >
+              {showDataLabels && <LabelList dataKey={key} position="top" fontSize={11} dx={dataLabelDx} dy={dataLabelDy} />}
+            </Line>
           ))}
         </LineChart>
       ) : chart_type === 'area' ? (
-        <AreaChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+        <AreaChart data={data} margin={chartMargin}>
           {renderGrid()}
           {renderXAxis()}
           {renderYAxis()}
@@ -366,20 +408,22 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
               fill={palette[i % palette.length]}
               stroke={palette[i % palette.length]}
               fillOpacity={areaCfg.fillOpacity ?? 0.3}
+              isAnimationActive={isAnimated}
             />
           ))}
         </AreaChart>
       ) : chart_type === 'pie' ? (
-        <PieChart>
+        <PieChart margin={{ top: 5, right: 50, bottom: 5, left: 50 }}>
           <Pie
             data={data}
             dataKey={yKeys[0]}
             nameKey={xKey}
             cx="50%"
             cy="50%"
-            outerRadius={height * 0.35}
+            outerRadius={typeof height === 'number' ? height * 0.28 : '28%'}
             innerRadius={pieCfg.innerRadius || 0}
             label={pieCfg.showLabels !== false}
+            isAnimationActive={isAnimated}
           >
             {data.map((_, i) => (
               <Cell key={`cell-${i}`} fill={palette[i % palette.length]} />
@@ -389,18 +433,18 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
           {renderLegend()}
         </PieChart>
       ) : chart_type === 'scatter' ? (
-        <ScatterChart margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+        <ScatterChart margin={chartMargin}>
           {renderGrid()}
           <XAxis type="number" dataKey={xKey} name={xKey} />
           <YAxis type="number" dataKey={yKeys[0]} name={yKeys[0]} tickFormatter={yTickFormatter} />
-          <Tooltip cursor={{ strokeDasharray: '3 3' }} formatter={tooltipFormatter} />
+          {showTooltip ? <Tooltip cursor={{ strokeDasharray: '3 3' }} formatter={tooltipFormatter} /> : null}
           {renderLegend()}
-          <Scatter name={spec.title} data={data} fill={palette[0]} />
+          <Scatter name={spec.title} data={data} fill={palette[0]} isAnimationActive={isAnimated} />
         </ScatterChart>
       ) : chart_type === 'funnel' ? (
         <FunnelChart margin={{ top: 5, right: 120, bottom: 5, left: 5 }}>
-          <Tooltip formatter={tooltipFormatter} />
-          <Funnel dataKey={yKeys[0]} data={data.map((d, i) => ({ ...d, fill: palette[i % palette.length] }))} isAnimationActive>
+          {showTooltip ? <Tooltip formatter={tooltipFormatter} /> : null}
+          <Funnel dataKey={yKeys[0]} data={data.map((d, i) => ({ ...d, fill: palette[i % palette.length] }))} isAnimationActive={isAnimated}>
             <LabelList
               position="right"
               fill="#374151"
@@ -421,14 +465,16 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
           </Funnel>
         </FunnelChart>
       ) : chart_type === 'horizontal_bar' ? (
-        <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, bottom: 5, left: 80 }}>
+        <BarChart data={data} layout="vertical" margin={{ ...chartMargin, left: Math.max(chartMargin.left ?? 0, 80) }}>
           {renderGrid()}
           <XAxis type="number" tickFormatter={yTickFormatter} />
           <YAxis type="category" dataKey={xKey} width={80} />
           {renderTooltip()}
           {renderLegend()}
           {yKeys.map((key, i) => (
-            <Bar key={key} dataKey={key} fill={palette[i % palette.length]} />
+            <Bar key={key} dataKey={key} fill={palette[i % palette.length]} isAnimationActive={isAnimated}>
+              {showDataLabels && <LabelList dataKey={key} position="right" fontSize={11} dx={dataLabelDx} dy={dataLabelDy} />}
+            </Bar>
           ))}
         </BarChart>
       ) : (
@@ -437,7 +483,7 @@ export default function ChartRenderer({ spec, data, height = 350 }: ChartRendere
           <XAxis dataKey={xKey} />
           <YAxis tickFormatter={yTickFormatter} />
           {renderTooltip()}
-          <Bar dataKey={yKeys[0]} fill={palette[0]} />
+          <Bar dataKey={yKeys[0]} fill={palette[0]} isAnimationActive={isAnimated} />
         </BarChart>
       )}
     </ResponsiveContainer>

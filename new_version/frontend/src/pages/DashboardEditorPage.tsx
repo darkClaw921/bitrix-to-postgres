@@ -1,10 +1,16 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import ReactGridLayout, { useContainerWidth } from 'react-grid-layout'
-import type { Layout, LayoutItem } from 'react-grid-layout'
+import type { Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import ChartRenderer from '../components/charts/ChartRenderer'
+import ChartSettingsPanel from '../components/charts/ChartSettingsPanel'
+import DesignModeOverlay from '../components/charts/DesignModeOverlay'
+import DesignModeToolbar from '../components/charts/design/DesignModeToolbar'
+import { useDesignMode } from '../hooks/useDesignMode'
+import { useUpdateChartConfig } from '../hooks/useCharts'
 import {
   useDashboard,
   useDashboardList,
@@ -32,6 +38,36 @@ import type { DashboardChart, DashboardLink, DashboardSelector, SelectorMapping,
 
 const GRID_COLS = 12
 const ROW_HEIGHT = 120
+
+const GRID_PRESETS = [1, 2, 3, 4] as const
+
+function detectGridPreset(layout: Layout): number | null {
+  if (layout.length === 0) return null
+  const firstW = layout[0].w
+  const allSame = layout.every((item) => item.w === firstW)
+  if (!allSame) return null
+  const colMap: Record<number, number> = { 12: 1, 6: 2, 4: 3, 3: 4 }
+  return colMap[firstW] ?? null
+}
+
+function GridPresetIcon({ columns, active }: { columns: number; active: boolean }) {
+  const cells = Array.from({ length: columns }, (_, i) => i)
+  return (
+    <div
+      className={`inline-flex gap-px p-1 rounded border-2 ${
+        active ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white'
+      }`}
+    >
+      {cells.map((i) => (
+        <div
+          key={i}
+          className={`rounded-sm ${active ? 'bg-blue-400' : 'bg-gray-300'}`}
+          style={{ width: `${Math.max(20 / columns, 4)}px`, height: 14 }}
+        />
+      ))}
+    </div>
+  )
+}
 
 export default function DashboardEditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -125,6 +161,25 @@ export default function DashboardEditorPage() {
 
   const handleLayoutChange = useCallback((newLayout: Layout) => {
     setGridLayout(newLayout)
+    setLayoutDirty(true)
+  }, [])
+
+  const handleGridPreset = useCallback((columns: number) => {
+    const colWidth = GRID_COLS / columns
+    const defaultH = 3
+    setGridLayout((prev) => {
+      const sorted = [...prev].sort((a, b) => {
+        if (a.y !== b.y) return a.y - b.y
+        return a.x - b.x
+      })
+      return sorted.map((item, idx) => ({
+        ...item,
+        w: colWidth,
+        h: item.h || defaultH,
+        x: (idx % columns) * colWidth,
+        y: Math.floor(idx / columns) * (item.h || defaultH),
+      }))
+    })
     setLayoutDirty(true)
   }, [])
 
@@ -233,7 +288,31 @@ export default function DashboardEditorPage() {
             )}
           </div>
 
-          <div className="flex space-x-2 ml-4">
+          <div className="flex items-center space-x-2 ml-4">
+            {dashboard.charts.length > 0 && (
+              <div className="flex items-center space-x-1 mr-2">
+                <span className="text-xs text-gray-500 mr-1">{t('editor.gridFormat')}:</span>
+                {GRID_PRESETS.map((cols) => {
+                  const active = detectGridPreset(gridLayout) === cols
+                  const labels = {
+                    1: t('editor.columns1'),
+                    2: t('editor.columns2'),
+                    3: t('editor.columns3'),
+                    4: t('editor.columns4'),
+                  } as const
+                  return (
+                    <button
+                      key={cols}
+                      onClick={() => handleGridPreset(cols)}
+                      className="p-0.5 rounded hover:bg-gray-100 transition-colors"
+                      title={labels[cols]}
+                    >
+                      <GridPresetIcon columns={cols} active={active} />
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             <button onClick={handleCopyLink} className="btn btn-secondary text-sm">
               {copiedLink ? t('common.copied') : t('editor.copyLink')}
             </button>
@@ -281,20 +360,16 @@ export default function DashboardEditorPage() {
             dragConfig={{ enabled: true, bounded: false, threshold: 3 }}
             resizeConfig={{ enabled: true, handles: ['se'] }}
           >
-            {dashboard.charts.map((dc) => {
-              const layoutItem = gridLayout.find((l) => l.i === String(dc.id))
-              return (
-                <div key={String(dc.id)} className="overflow-hidden">
-                  <EditorChartCard
-                    dc={dc}
-                    data={chartData[dc.chart_id] || null}
-                    layout={layoutItem}
-                    onRemove={() => handleRemoveChart(dc.id)}
-                    onUpdateOverride={handleUpdateOverride}
-                  />
-                </div>
-              )
-            })}
+            {dashboard.charts.map((dc) => (
+              <div key={String(dc.id)} className="overflow-visible">
+                <EditorChartCard
+                  dc={dc}
+                  data={chartData[dc.chart_id] || null}
+                  onRemove={() => handleRemoveChart(dc.id)}
+                  onUpdateOverride={handleUpdateOverride}
+                />
+              </div>
+            ))}
           </ReactGridLayout>
         )}
       </div>
@@ -348,16 +423,17 @@ export default function DashboardEditorPage() {
   )
 }
 
+// Chart types that support design mode (SVG-based)
+const DESIGN_MODE_CHART_TYPES = new Set(['bar', 'line', 'area', 'pie', 'scatter', 'funnel', 'horizontal_bar'])
+
 function EditorChartCard({
   dc,
   data,
-  layout,
   onRemove,
   onUpdateOverride,
 }: {
   dc: DashboardChart
   data: ChartDataResponse | null
-  layout?: LayoutItem
   onRemove: () => void
   onUpdateOverride: (dcId: number, field: 'title_override' | 'description_override', value: string) => void
 }) {
@@ -366,15 +442,24 @@ function EditorChartCard({
   const [titleVal, setTitleVal] = useState(dc.title_override || '')
   const [editDesc, setEditDesc] = useState(false)
   const [descVal, setDescVal] = useState(dc.description_override || '')
+  const [showSettings, setShowSettings] = useState(false)
+  const [settingsPos, setSettingsPos] = useState({ x: 0, y: 0 })
+  const settingsDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
+  const updateConfig = useUpdateChartConfig()
+  const chartContainerRef = useRef<HTMLDivElement>(null)
 
   const title = dc.title_override || dc.chart_title || 'Chart'
   const description = dc.description_override || dc.chart_description
 
   const config = dc.chart_config as unknown as ChartDisplayConfig | null
+  const chartType = dc.chart_type || 'bar'
+  const supportsDesign = DESIGN_MODE_CHART_TYPES.has(chartType)
+
+  const designMode = useDesignMode(config?.designLayout)
 
   const spec: ChartSpec = {
     title,
-    chart_type: (dc.chart_type || 'bar') as ChartSpec['chart_type'],
+    chart_type: chartType as ChartSpec['chart_type'],
     sql_query: '',
     data_keys: { x: config?.x || 'x', y: config?.y || 'y' },
     colors: config?.colors,
@@ -390,13 +475,37 @@ function EditorChartCard({
     table: config?.table,
     funnel: config?.funnel,
     horizontal_bar: config?.horizontal_bar,
+    general: config?.general,
   }
 
-  // Calculate chart height from grid layout
-  const chartHeight = layout ? Math.max(layout.h * ROW_HEIGHT - 100, 120) : 200
+  const handleConfigUpdate = (patch: Partial<ChartDisplayConfig>) => {
+    updateConfig.mutate({ chartId: dc.chart_id, config: patch })
+  }
+
+  const handleDesignApply = () => {
+    const layoutToSave = designMode.applyLayout()
+    updateConfig.mutate(
+      { chartId: dc.chart_id, config: { designLayout: layoutToSave } },
+      { onSuccess: () => designMode.deactivate() },
+    )
+  }
+
+  const handleMarginChange = (side: 'top' | 'right' | 'bottom' | 'left', value: number) => {
+    designMode.updateDraft({
+      margins: {
+        ...designMode.draftLayout.margins,
+        [side]: value,
+      },
+    })
+  }
 
   return (
-    <div className="h-full bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex flex-col">
+    <div
+      className="h-full bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex flex-col"
+      style={{ position: 'relative' }}
+      ref={chartContainerRef}
+      data-design-card=""
+    >
       <div className="flex justify-between items-start mb-2">
         <div className="flex-1 min-w-0">
           {editTitle ? (
@@ -425,8 +534,13 @@ function EditorChartCard({
           ) : (
             <h3
               className="text-sm font-semibold cursor-pointer hover:text-blue-600 truncate"
-              onClick={() => setEditTitle(true)}
+              onClick={() => !designMode.isActive && setEditTitle(true)}
               title={t('editor.clickToEditTitle')}
+              style={
+                designMode.isActive && designMode.draftLayout.title
+                  ? { transform: `translate(${designMode.draftLayout.title.dx ?? 0}px, ${designMode.draftLayout.title.dy ?? 0}px)` }
+                  : undefined
+              }
             >
               {title}
             </h3>
@@ -458,7 +572,7 @@ function EditorChartCard({
           ) : (
             <p
               className="text-xs text-gray-500 mt-0.5 cursor-pointer hover:text-blue-500 truncate"
-              onClick={() => setEditDesc(true)}
+              onClick={() => !designMode.isActive && setEditDesc(true)}
               title={t('editor.clickToEditDesc')}
             >
               {description || t('editor.addDescription')}
@@ -466,24 +580,152 @@ function EditorChartCard({
           )}
         </div>
 
-        <button
-          onClick={onRemove}
-          className="p-1 rounded text-xs bg-red-50 text-red-500 hover:bg-red-100 ml-2 flex-shrink-0"
-          title={t('editor.removeFromDashboard')}
-        >
-          {t('editor.removeChart')}
-        </button>
+        <div className="flex space-x-1 ml-2 flex-shrink-0">
+          {supportsDesign && !designMode.isActive && (
+            <button
+              onClick={() => designMode.activate()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="p-1 rounded text-xs bg-purple-50 text-purple-600 hover:bg-purple-100"
+              title={t('designMode.designMode')}
+            >
+              {t('editor.design')}
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              if (!showSettings) {
+                const rect = e.currentTarget.getBoundingClientRect()
+                setSettingsPos({
+                  x: Math.min(rect.left, window.innerWidth - 440),
+                  y: Math.min(rect.bottom + 4, window.innerHeight - 400),
+                })
+              }
+              setShowSettings(!showSettings)
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className={`p-1 rounded text-xs ${
+              showSettings
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+            title={t('charts.chartSettings')}
+          >
+            {t('charts.settings')}
+          </button>
+          <button
+            onClick={onRemove}
+            className="p-1 rounded text-xs bg-red-50 text-red-500 hover:bg-red-100"
+            title={t('editor.removeFromDashboard')}
+          >
+            {t('editor.removeChart')}
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 min-h-0">
+      {designMode.isActive && (
+        <div onMouseDown={(e) => e.stopPropagation()}>
+          <DesignModeToolbar
+            selectedElement={designMode.selectedElement}
+            draftLayout={designMode.draftLayout}
+            onResetElement={designMode.resetElement}
+            onResetAll={designMode.resetAll}
+            onApply={handleDesignApply}
+            onCancel={designMode.deactivate}
+            isSaving={updateConfig.isPending}
+            chartType={chartType}
+          />
+        </div>
+      )}
+
+      {showSettings && !designMode.isActive && createPortal(
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: settingsPos.x,
+            top: settingsPos.y,
+            zIndex: 50000,
+            width: 420,
+            maxHeight: '80vh',
+          }}
+          className="bg-white rounded-xl shadow-2xl border border-gray-300 overflow-hidden"
+        >
+          <div
+            className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-gray-200 cursor-move select-none"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              const startX = e.clientX
+              const startY = e.clientY
+              settingsDragRef.current = { startX, startY, origX: settingsPos.x, origY: settingsPos.y }
+
+              const onMove = (ev: MouseEvent) => {
+                if (!settingsDragRef.current) return
+                setSettingsPos({
+                  x: settingsDragRef.current.origX + (ev.clientX - settingsDragRef.current.startX),
+                  y: settingsDragRef.current.origY + (ev.clientY - settingsDragRef.current.startY),
+                })
+              }
+              const onUp = () => {
+                settingsDragRef.current = null
+                document.removeEventListener('mousemove', onMove)
+                document.removeEventListener('mouseup', onUp)
+              }
+              document.addEventListener('mousemove', onMove)
+              document.addEventListener('mouseup', onUp)
+            }}
+          >
+            <span className="text-sm font-semibold text-gray-700">{t('charts.chartSettings')}</span>
+            <button
+              onClick={() => setShowSettings(false)}
+              className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+            >
+              &times;
+            </button>
+          </div>
+          <div className="overflow-y-auto" style={{ maxHeight: 'calc(80vh - 40px)' }}>
+            <ChartSettingsPanel
+              chartType={chartType}
+              config={config || { x: 'x', y: 'y' }}
+              onApply={handleConfigUpdate}
+              isSaving={updateConfig.isPending}
+            />
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      <div
+        className="flex-1 min-h-0"
+        onMouseDown={designMode.isActive ? (e) => e.stopPropagation() : undefined}
+      >
         {data ? (
-          <ChartRenderer spec={spec} data={data.data} height={chartHeight} />
+          <ChartRenderer
+            spec={spec}
+            data={data.data}
+            height="100%"
+            designLayout={designMode.isActive ? designMode.draftLayout : config?.designLayout}
+          />
         ) : (
           <div className="flex items-center justify-center h-full text-gray-400 text-sm">
             {t('embed.loadingChartData')}
           </div>
         )}
       </div>
+
+      {designMode.isActive && data && (
+        <DesignModeOverlay
+          containerRef={chartContainerRef}
+          selectedElement={designMode.selectedElement}
+          draftLayout={designMode.draftLayout}
+          chartType={chartType}
+          onSelectElement={designMode.selectElement}
+          onDragStart={designMode.onDragStart}
+          onDragMove={designMode.onDragMove}
+          onDragEnd={designMode.onDragEnd}
+          onMarginChange={handleMarginChange}
+          isDragging={designMode.isDragging}
+        />
+      )}
     </div>
   )
 }

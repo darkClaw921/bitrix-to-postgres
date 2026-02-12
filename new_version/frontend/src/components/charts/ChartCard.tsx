@@ -2,9 +2,11 @@ import { useState, useCallback } from 'react'
 import ChartRenderer from './ChartRenderer'
 import ChartSettingsPanel from './ChartSettingsPanel'
 import IframeCopyButton from './IframeCopyButton'
+import ExportButtons from './ExportButtons'
 import type { SavedChart, ChartDisplayConfig } from '../../services/api'
 import { useChartData, useDeleteChart, useToggleChartPin, useUpdateChartConfig } from '../../hooks/useCharts'
 import { useTranslation } from '../../i18n'
+import { getCardStyleClasses, getCardInlineStyle, getTitleSizeClass } from './cardStyleUtils'
 
 interface ChartCardProps {
   chart: SavedChart
@@ -39,6 +41,7 @@ export default function ChartCard({ chart }: ChartCardProps) {
     table: config.table,
     funnel: config.funnel,
     horizontal_bar: config.horizontal_bar,
+    general: config.general,
   }
 
   const chartData = freshData?.data
@@ -47,8 +50,12 @@ export default function ChartCard({ chart }: ChartCardProps) {
     updateConfig.mutate({ chartId: chart.id, config: patch })
   }, [chart.id, updateConfig])
 
+  const cardClasses = getCardStyleClasses(config.cardStyle)
+  const cardInline = getCardInlineStyle(config.cardStyle)
+  const titleClass = getTitleSizeClass(config.general?.titleFontSize)
+
   return (
-    <div className="card">
+    <div className={cardClasses} style={cardInline}>
       <div className="flex justify-end mb-2">
         <div className="flex space-x-1">
           <button
@@ -71,6 +78,7 @@ export default function ChartCard({ chart }: ChartCardProps) {
             {isFetching ? '...' : t('charts.refresh')}
           </button>
           <IframeCopyButton chartId={chart.id} />
+          {chartData && <ExportButtons data={chartData} title={chart.title} />}
           <button
             onClick={() => setShowSettings(!showSettings)}
             className={`p-1.5 rounded text-sm ${
@@ -101,7 +109,7 @@ export default function ChartCard({ chart }: ChartCardProps) {
         </div>
       </div>
       <div className="mb-3">
-        <h3 className="text-lg font-semibold">{chart.title}</h3>
+        <h3 className={`font-semibold ${titleClass}`}>{chart.title}</h3>
         {chart.description && (
           <p className="text-sm text-gray-500 mt-1">{chart.description}</p>
         )}

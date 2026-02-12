@@ -25,6 +25,8 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
   const [indicator, setIndicator] = useState(config.indicator ?? { prefix: '', suffix: '', fontSize: 'lg' as const, color: '#1f2937' })
   const [table, setTable] = useState(config.table ?? { showColumnTotals: false, showRowTotals: false, sortable: true, defaultSortDirection: 'asc' as const, pageSize: 0 })
   const [funnel, setFunnel] = useState(config.funnel ?? { showLabels: true, labelPosition: 'right' as const })
+  const [cardStyle, setCardStyle] = useState(config.cardStyle ?? { backgroundColor: '', borderRadius: 'md' as const, shadow: 'sm' as const, padding: 'md' as const })
+  const [general, setGeneral] = useState(config.general ?? { titleFontSize: 'md' as const, showTooltip: true, animate: true, showDataLabels: false, margins: { top: 5, right: 20, bottom: 5, left: 0 } })
 
   const isCartesian = ['bar', 'line', 'area', 'scatter', 'horizontal_bar'].includes(chartType)
   const isLineOrArea = ['line', 'area'].includes(chartType)
@@ -32,9 +34,10 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
   const isIndicator = chartType === 'indicator'
   const isTable = chartType === 'table'
   const isFunnel = chartType === 'funnel'
+  const isChartWithTooltip = isCartesian || isPie || isFunnel
 
   const handleApply = () => {
-    const patch: Partial<ChartDisplayConfig> = { colors, legend, grid, xAxis, yAxis, line, area, pie, indicator, table, funnel }
+    const patch: Partial<ChartDisplayConfig> = { colors, legend, grid, xAxis, yAxis, line, area, pie, indicator, table, funnel, cardStyle, general }
     onApply(patch)
   }
 
@@ -370,6 +373,162 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
           </div>
         </div>
       )}
+
+      {/* Card Style */}
+      <div>
+        <h4 className="font-semibold text-gray-700 mb-2">{t('chartSettings.cardStyle')}</h4>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex items-center gap-2">
+            <span className="text-gray-500">{t('chartSettings.backgroundColor')}</span>
+            <input
+              type="color"
+              value={cardStyle.backgroundColor || '#ffffff'}
+              onChange={(e) => setCardStyle({ ...cardStyle, backgroundColor: e.target.value })}
+              className="w-7 h-7 border rounded cursor-pointer"
+            />
+          </label>
+
+          <label className="flex items-center gap-2">
+            <span className="text-gray-500">{t('chartSettings.borderRadius')}</span>
+            <select
+              className="border rounded px-1 py-0.5 text-xs"
+              value={cardStyle.borderRadius || 'md'}
+              onChange={(e) => setCardStyle({ ...cardStyle, borderRadius: e.target.value as 'none' | 'sm' | 'md' | 'lg' | 'xl' })}
+            >
+              <option value="none">{t('chartSettings.radiusNone')}</option>
+              <option value="sm">{t('chartSettings.radiusSm')}</option>
+              <option value="md">{t('chartSettings.radiusMd')}</option>
+              <option value="lg">{t('chartSettings.radiusLg')}</option>
+              <option value="xl">{t('chartSettings.radiusXl')}</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <span className="text-gray-500">{t('chartSettings.shadow')}</span>
+            <select
+              className="border rounded px-1 py-0.5 text-xs"
+              value={cardStyle.shadow || 'sm'}
+              onChange={(e) => setCardStyle({ ...cardStyle, shadow: e.target.value as 'none' | 'sm' | 'md' | 'lg' })}
+            >
+              <option value="none">{t('chartSettings.shadowNone')}</option>
+              <option value="sm">{t('chartSettings.shadowSm')}</option>
+              <option value="md">{t('chartSettings.shadowMd')}</option>
+              <option value="lg">{t('chartSettings.shadowLg')}</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <span className="text-gray-500">{t('chartSettings.padding')}</span>
+            <select
+              className="border rounded px-1 py-0.5 text-xs"
+              value={cardStyle.padding || 'md'}
+              onChange={(e) => setCardStyle({ ...cardStyle, padding: e.target.value as 'sm' | 'md' | 'lg' })}
+            >
+              <option value="sm">{t('chartSettings.paddingSm')}</option>
+              <option value="md">{t('chartSettings.paddingMd')}</option>
+              <option value="lg">{t('chartSettings.paddingLg')}</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {/* General Settings */}
+      <div>
+        <h4 className="font-semibold text-gray-700 mb-2">{t('chartSettings.generalSettings')}</h4>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex items-center gap-2">
+            <span className="text-gray-500">{t('chartSettings.titleFontSize')}</span>
+            <select
+              className="border rounded px-1 py-0.5 text-xs"
+              value={general.titleFontSize || 'md'}
+              onChange={(e) => setGeneral({ ...general, titleFontSize: e.target.value as 'sm' | 'md' | 'lg' | 'xl' })}
+            >
+              <option value="sm">{t('chartSettings.small')}</option>
+              <option value="md">{t('chartSettings.medium')}</option>
+              <option value="lg">{t('chartSettings.large')}</option>
+              <option value="xl">{t('chartSettings.extraLarge')}</option>
+            </select>
+          </label>
+
+          {isChartWithTooltip && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={general.showTooltip !== false}
+                onChange={(e) => setGeneral({ ...general, showTooltip: e.target.checked })}
+              />
+              <span>{t('chartSettings.showTooltip')}</span>
+            </label>
+          )}
+
+          {!isTable && !isIndicator && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={general.animate !== false}
+                onChange={(e) => setGeneral({ ...general, animate: e.target.checked })}
+              />
+              <span>{t('chartSettings.animation')}</span>
+            </label>
+          )}
+
+          {(isCartesian) && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={general.showDataLabels || false}
+                onChange={(e) => setGeneral({ ...general, showDataLabels: e.target.checked })}
+              />
+              <span>{t('chartSettings.showDataLabels')}</span>
+            </label>
+          )}
+        </div>
+
+        {/* Chart margins */}
+        {!isTable && !isIndicator && (
+          <div className="mt-3">
+            <span className="text-gray-500 text-xs">{t('chartSettings.chartMargins')}</span>
+            <div className="grid grid-cols-4 gap-2 mt-1">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-xs text-gray-400">{t('chartSettings.marginTop')}</span>
+                <input
+                  type="number"
+                  className="border rounded px-2 py-0.5 text-xs w-full"
+                  value={general.margins?.top ?? 5}
+                  onChange={(e) => setGeneral({ ...general, margins: { ...general.margins, top: Number(e.target.value) } })}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-xs text-gray-400">{t('chartSettings.marginRight')}</span>
+                <input
+                  type="number"
+                  className="border rounded px-2 py-0.5 text-xs w-full"
+                  value={general.margins?.right ?? 20}
+                  onChange={(e) => setGeneral({ ...general, margins: { ...general.margins, right: Number(e.target.value) } })}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-xs text-gray-400">{t('chartSettings.marginBottom')}</span>
+                <input
+                  type="number"
+                  className="border rounded px-2 py-0.5 text-xs w-full"
+                  value={general.margins?.bottom ?? 5}
+                  onChange={(e) => setGeneral({ ...general, margins: { ...general.margins, bottom: Number(e.target.value) } })}
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-xs text-gray-400">{t('chartSettings.marginLeft')}</span>
+                <input
+                  type="number"
+                  className="border rounded px-2 py-0.5 text-xs w-full"
+                  value={general.margins?.left ?? 0}
+                  onChange={(e) => setGeneral({ ...general, margins: { ...general.margins, left: Number(e.target.value) } })}
+                />
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Apply button */}
       <div className="flex items-center gap-2 pt-2 border-t border-gray-200">

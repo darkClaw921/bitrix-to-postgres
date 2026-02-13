@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import text
 
@@ -224,3 +225,155 @@ async def trigger_sync_now(entity_type: str) -> None:
     """
     logger.info("Manually triggering sync", entity_type=entity_type)
     await sync_job(entity_type)
+
+
+# === Report Scheduling ===
+
+
+async def report_execution_job(report_id: int) -> None:
+    """Job function for scheduled report execution.
+
+    Args:
+        report_id: Report ID to execute
+    """
+    from app.domain.services.report_service import ReportService
+
+    logger.info("Scheduled report job triggered", report_id=report_id)
+    try:
+        service = ReportService()
+        await service.execute_report(report_id, trigger_type="scheduled")
+        logger.info("Scheduled report executed", report_id=report_id)
+    except Exception as e:
+        logger.error(
+            "Failed to execute scheduled report",
+            report_id=report_id,
+            error=str(e),
+        )
+
+
+def build_report_trigger(
+    schedule_type: str, schedule_config: dict[str, Any]
+) -> CronTrigger:
+    """Build a CronTrigger from schedule_type and schedule_config.
+
+    Args:
+        schedule_type: daily | weekly | monthly
+        schedule_config: {hour, minute, day_of_week?, day?}
+
+    Returns:
+        CronTrigger instance
+    """
+    hour = schedule_config.get("hour", 9)
+    minute = schedule_config.get("minute", 0)
+
+    if schedule_type == "daily":
+        return CronTrigger(hour=hour, minute=minute)
+    elif schedule_type == "weekly":
+        day_of_week = schedule_config.get("day_of_week", "mon")
+        return CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute)
+    elif schedule_type == "monthly":
+        day = schedule_config.get("day", 1)
+        return CronTrigger(day=day, hour=hour, minute=minute)
+    else:
+        # Default: daily
+        return CronTrigger(hour=hour, minute=minute)
+
+
+async def schedule_report_jobs() -> None:
+    """Schedule report jobs based on active reports in database."""
+    from app.domain.services.report_service import ReportService
+
+    scheduler = get_scheduler()
+    service = ReportService()
+
+    # Remove existing report jobs
+    for job in scheduler.get_jobs():
+        if job.id.startswith("report_"):
+            scheduler.remove_job(job.id)
+
+    # Load active scheduled reports
+    reports = await service.get_active_scheduled_reports()
+
+    for report in reports:
+        report_id = report["id"]
+        schedule_type = report["schedule_type"]
+        schedule_config = report.get("schedule_config") or {}
+
+        if isinstance(schedule_config, str):
+            import json
+            schedule_config = json.loads(schedule_config)
+
+        job_id = f"report_{report_id}"
+
+        try:
+            trigger = build_report_trigger(schedule_type, schedule_config)
+            scheduler.add_job(
+                report_execution_job,
+                trigger=trigger,
+                id=job_id,
+                name=f"Report {report['title']}",
+                kwargs={"report_id": report_id},
+                replace_existing=True,
+            )
+
+            logger.info(
+                "Scheduled report job",
+                report_id=report_id,
+                schedule_type=schedule_type,
+                job_id=job_id,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to schedule report job",
+                report_id=report_id,
+                error=str(e),
+            )
+
+
+async def reschedule_report(
+    report_id: int, schedule_type: str, schedule_config: dict[str, Any]
+) -> None:
+    """Reschedule a single report job.
+
+    Args:
+        report_id: Report ID
+        schedule_type: daily | weekly | monthly
+        schedule_config: {hour, minute, day_of_week?, day?}
+    """
+    scheduler = get_scheduler()
+    job_id = f"report_{report_id}"
+
+    # Remove existing job if any
+    if scheduler.get_job(job_id):
+        scheduler.remove_job(job_id)
+
+    trigger = build_report_trigger(schedule_type, schedule_config)
+
+    scheduler.add_job(
+        report_execution_job,
+        trigger=trigger,
+        id=job_id,
+        name=f"Report {report_id}",
+        kwargs={"report_id": report_id},
+        replace_existing=True,
+    )
+
+    logger.info(
+        "Rescheduled report job",
+        report_id=report_id,
+        schedule_type=schedule_type,
+    )
+
+
+async def remove_report_job(report_id: int) -> None:
+    """Remove a report job.
+
+    Args:
+        report_id: Report ID
+    """
+    scheduler = get_scheduler()
+    job_id = f"report_{report_id}"
+
+    if scheduler.get_job(job_id):
+        scheduler.remove_job(job_id)
+        logger.info("Removed report job", report_id=report_id)

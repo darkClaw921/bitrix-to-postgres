@@ -7,6 +7,7 @@ import ChartRenderer from '../components/charts/ChartRenderer'
 import ChartCard from '../components/charts/ChartCard'
 import PromptEditorModal from '../components/charts/PromptEditorModal'
 import GenerationHistoryModal, { saveHistoryItem } from '../components/charts/GenerationHistoryModal'
+import AISubTabs from '../components/ai/AISubTabs'
 import DashboardCard from '../components/dashboards/DashboardCard'
 import PublishModal from '../components/dashboards/PublishModal'
 import { useGenerateChart, useSaveChart, useSavedCharts, useExecuteSql } from '../hooks/useCharts'
@@ -107,6 +108,8 @@ export default function ChartsPage() {
 
   return (
     <div className="space-y-6">
+      <AISubTabs />
+
       {/* Generation Section */}
       <div className="card">
         <div className="flex justify-between items-center mb-4">

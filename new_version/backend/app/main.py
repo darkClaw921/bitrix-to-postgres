@@ -13,6 +13,7 @@ from app.infrastructure.database.connection import init_db, close_db
 from app.infrastructure.queue import get_sync_queue
 from app.infrastructure.scheduler import (
     get_scheduler_status,
+    schedule_report_jobs,
     schedule_sync_jobs,
     start_scheduler,
     stop_scheduler,
@@ -41,6 +42,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Sync jobs scheduled from database configuration")
     except Exception as e:
         logger.warning("Could not load sync jobs from database", error=str(e))
+
+    try:
+        await schedule_report_jobs()
+        logger.info("Report jobs scheduled from database configuration")
+    except Exception as e:
+        logger.warning("Could not load report jobs from database", error=str(e))
 
     yield
 

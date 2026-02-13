@@ -14,7 +14,7 @@ export default function Layout() {
 
   const navigation = [
     { name: t('nav.dashboard'), href: '/' },
-    { name: t('nav.aiCharts'), href: '/charts' },
+    { name: t('nav.ai'), href: '/ai' },
     { name: t('nav.configuration'), href: '/config' },
     { name: t('nav.monitoring'), href: '/monitoring' },
     { name: t('nav.validation'), href: '/validation' },

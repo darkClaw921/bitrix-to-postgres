@@ -239,3 +239,132 @@ class ChartPromptTemplate(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class ReportPromptTemplate(Base):
+    """System prompt template for AI report generation."""
+
+    __tablename__ = "report_prompt_templates"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(
+        String(100), unique=True, nullable=False, index=True
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class AIReport(Base):
+    """AI-generated report definition with schedule."""
+
+    __tablename__ = "ai_reports"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    user_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    schedule_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    schedule_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sql_queries: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    report_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class AIReportRun(Base):
+    """Result of a single report execution."""
+
+    __tablename__ = "ai_report_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    report_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("ai_reports.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    trigger_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    result_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    result_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    sql_queries_executed: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    execution_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+
+class AIReportConversation(Base):
+    """Conversation message during report generation."""
+
+    __tablename__ = "ai_report_conversations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    report_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("ai_reports.id", ondelete="SET NULL"), nullable=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+
+class PublishedReport(Base):
+    """Published report with password protection."""
+
+    __tablename__ = "published_reports"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    slug: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    report_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("ai_reports.id", ondelete="CASCADE"), nullable=False
+    )
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class PublishedReportLink(Base):
+    """Link between published reports for tab navigation."""
+
+    __tablename__ = "published_report_links"
+    __table_args__ = (
+        UniqueConstraint("published_report_id", "linked_published_report_id", name="uq_published_report_linked"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    published_report_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("published_reports.id", ondelete="CASCADE"), nullable=False
+    )
+    linked_published_report_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("published_reports.id", ondelete="CASCADE"), nullable=False
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )

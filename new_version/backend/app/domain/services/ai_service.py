@@ -73,6 +73,67 @@ Rules:
 7. Return valid JSON only
 """
 
+REPORT_SYSTEM_PROMPT = """Ты — AI-аналитик для CRM-системы Bitrix24. Твоя задача — помогать пользователю создавать аналитические отчёты на основе данных из базы данных.
+
+Доступная схема базы данных:
+{schema_context}
+
+{report_context}
+
+## Режим работы
+
+Ты ведёшь диалог с пользователем. На каждом шаге ты ДОЛЖЕН вернуть JSON одного из двух типов:
+
+### Тип 1: Уточняющий вопрос (когда нужна доп. информация)
+```json
+{{
+  "is_complete": false,
+  "question": "Ваш вопрос пользователю на русском языке"
+}}
+```
+
+### Тип 2: Готовый отчёт (когда всё понятно)
+```json
+{{
+  "is_complete": true,
+  "title": "Название отчёта",
+  "description": "Краткое описание",
+  "sql_queries": [
+    {{"sql": "SELECT ...", "purpose": "Описание что получаем"}},
+    {{"sql": "SELECT ...", "purpose": "Описание что получаем"}}
+  ],
+  "analysis_prompt": "Инструкция для анализа полученных данных и генерации текста отчёта"
+}}
+```
+
+## Правила
+1. ТОЛЬКО SELECT-запросы
+2. ТОЛЬКО таблицы из схемы выше
+3. Всегда добавляй LIMIT (максимум 10000)
+4. Максимум 10 SQL-запросов на отчёт
+5. Все тексты на русском
+6. Возвращай ТОЛЬКО валидный JSON
+7. Если запрос пользователя слишком расплывчатый — задай уточняющий вопрос
+8. SQL-запросы должны быть оптимальными и не вызывать таймаутов
+"""
+
+REPORT_ANALYSIS_PROMPT = """Ты — аналитик данных. Проанализируй результаты SQL-запросов и напиши аналитический отчёт в формате Markdown.
+
+Отчёт: {report_title}
+
+Результаты запросов:
+{sql_results_text}
+
+{analysis_prompt}
+
+Требования к отчёту:
+- Пиши на русском языке
+- Используй заголовки, списки, таблицы Markdown
+- Включи ключевые показатели и метрики
+- Сделай выводы и рекомендации
+- Если есть ошибки в запросах — укажи это
+"""
+
 SCHEMA_DESCRIPTION_PROMPT = """You are a database documentation specialist for a Bitrix24 CRM system.
 
 Analyze the following database schema and generate a detailed markdown documentation in Russian.
@@ -103,6 +164,30 @@ class AIService:
             timeout=settings.openai_timeout_seconds,
         )
         self.model = settings.openai_model
+
+    async def _get_report_context(self) -> str:
+        """Get active report context prompt from database."""
+        engine = get_engine()
+        try:
+            async with engine.begin() as conn:
+                result = await conn.execute(
+                    text(
+                        """
+                        SELECT content
+                        FROM report_prompt_templates
+                        WHERE name = 'report_context' AND is_active = true
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """
+                    )
+                )
+                row = result.first()
+                if row:
+                    return row[0]
+                return ""
+        except Exception as e:
+            logger.warning("Failed to load report context", error=str(e))
+            return ""
 
     async def _get_bitrix_context(self) -> str:
         """Get active Bitrix context prompt from database.
@@ -283,3 +368,135 @@ class AIService:
         selectors = result.get("selectors", [])
         logger.info("Selectors generated", count=len(selectors))
         return selectors
+
+    async def generate_report_step(
+        self,
+        conversation_history: list[dict[str, str]],
+        schema_context: str,
+    ) -> dict:
+        """One step of the report generation dialog.
+
+        Args:
+            conversation_history: List of {role, content} messages.
+            schema_context: Formatted DB schema.
+
+        Returns:
+            Dict with is_complete, and either question or full report spec.
+        """
+        report_context = await self._get_report_context()
+        system_message = REPORT_SYSTEM_PROMPT.format(
+            schema_context=schema_context,
+            report_context=report_context,
+        )
+
+        messages = [{"role": "system", "content": system_message}]
+        messages.extend(conversation_history)
+
+        logger.info(
+            "Generating report step",
+            model=self.model,
+            history_len=len(conversation_history),
+        )
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=0.2,
+                max_tokens=4000,
+            )
+        except openai.APIConnectionError as e:
+            logger.error("OpenAI connection error", error=str(e))
+            raise AIServiceError("Не удалось подключиться к OpenAI API") from e
+        except openai.RateLimitError as e:
+            logger.error("OpenAI rate limit", error=str(e))
+            raise AIServiceError("Превышен лимит запросов OpenAI") from e
+        except openai.APIStatusError as e:
+            logger.error("OpenAI API error", status=e.status_code, error=e.message)
+            raise AIServiceError(f"Ошибка OpenAI: {e.message}") from e
+
+        content = response.choices[0].message.content
+        if not content:
+            raise AIServiceError("AI вернул пустой ответ")
+
+        try:
+            result = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error("Invalid JSON from AI (report step)", content=content)
+            raise AIServiceError("AI вернул невалидный JSON") from e
+
+        logger.info("Report step generated", is_complete=result.get("is_complete"))
+        return result
+
+    async def analyze_report_data(
+        self,
+        report_title: str,
+        sql_results: list[dict],
+        analysis_prompt: str,
+    ) -> str:
+        """Analyze SQL query results and generate a Markdown report.
+
+        Args:
+            report_title: Title of the report.
+            sql_results: List of {sql, purpose, rows, row_count, time_ms, error?}.
+            analysis_prompt: Additional instructions for analysis.
+
+        Returns:
+            Markdown string with the report.
+        """
+        # Format SQL results for the prompt
+        results_parts = []
+        for i, r in enumerate(sql_results, 1):
+            part = f"### Запрос {i}: {r.get('purpose', 'N/A')}\n"
+            part += f"SQL: `{r.get('sql', 'N/A')}`\n"
+            if r.get("error"):
+                part += f"**Ошибка:** {r['error']}\n"
+            else:
+                part += f"Получено строк: {r.get('row_count', 0)}, время: {r.get('time_ms', 0)}мс\n"
+                rows = r.get("rows", [])
+                if rows:
+                    # Show first 20 rows as JSON for brevity
+                    sample = rows[:20]
+                    part += f"Данные (первые {len(sample)} строк):\n```json\n{json.dumps(sample, ensure_ascii=False, default=str, indent=2)}\n```\n"
+            results_parts.append(part)
+
+        sql_results_text = "\n".join(results_parts)
+
+        system_message = REPORT_ANALYSIS_PROMPT.format(
+            report_title=report_title,
+            sql_results_text=sql_results_text,
+            analysis_prompt=analysis_prompt or "Проведи общий анализ данных.",
+        )
+
+        logger.info("Analyzing report data", model=self.model, title=report_title)
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {
+                        "role": "user",
+                        "content": "Проанализируй данные и сгенерируй отчёт в формате Markdown.",
+                    },
+                ],
+                temperature=0.3,
+                max_tokens=6000,
+            )
+        except openai.APIConnectionError as e:
+            logger.error("OpenAI connection error", error=str(e))
+            raise AIServiceError("Не удалось подключиться к OpenAI API") from e
+        except openai.RateLimitError as e:
+            logger.error("OpenAI rate limit", error=str(e))
+            raise AIServiceError("Превышен лимит запросов OpenAI") from e
+        except openai.APIStatusError as e:
+            logger.error("OpenAI API error", status=e.status_code, error=e.message)
+            raise AIServiceError(f"Ошибка OpenAI: {e.message}") from e
+
+        content = response.choices[0].message.content
+        if not content:
+            raise AIServiceError("AI вернул пустой ответ")
+
+        logger.info("Report analysis generated", length=len(content))
+        return content

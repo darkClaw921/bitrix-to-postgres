@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.api.v1.schemas.charts import (
     ChartConfigUpdateRequest,
     ChartDataResponse,
+    ChartExecuteSqlRequest,
     ChartGenerateRequest,
     ChartGenerateResponse,
     ChartListResponse,
@@ -75,6 +76,28 @@ async def generate_chart(request: ChartGenerateRequest) -> ChartGenerateResponse
         raise HTTPException(status_code=502, detail=e.message) from e
     except ChartServiceError as e:
         logger.error("Chart service error", error=e.message)
+        raise HTTPException(status_code=400, detail=e.message) from e
+
+
+@router.post("/execute-sql", response_model=ChartDataResponse)
+async def execute_sql(request: ChartExecuteSqlRequest) -> ChartDataResponse:
+    """Execute a SQL query and return data (for preview editing)."""
+    settings = get_settings()
+
+    try:
+        chart_service.validate_sql_query(request.sql_query)
+        allowed_tables = await chart_service.get_allowed_tables()
+        chart_service.validate_table_names(request.sql_query, allowed_tables)
+        sql = chart_service.ensure_limit(request.sql_query, settings.chart_max_rows)
+        data, exec_time = await chart_service.execute_chart_query(sql)
+
+        return ChartDataResponse(
+            data=data,
+            row_count=len(data),
+            execution_time_ms=round(exec_time, 2),
+        )
+    except ChartServiceError as e:
+        logger.error("SQL execution error", error=e.message)
         raise HTTPException(status_code=400, detail=e.message) from e
 
 

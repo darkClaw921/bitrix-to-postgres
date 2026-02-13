@@ -175,6 +175,15 @@ export interface Translations {
     noData: string
     downloadCSV: string
     downloadExcel: string
+    generationHistory: string
+    historyEmpty: string
+    historyUsePrompt: string
+    historyClearAll: string
+    historyItemDate: string
+    editSql: string
+    runSql: string
+    runningSql: string
+    sqlError: string
   }
   schema: {
     aiDescription: string

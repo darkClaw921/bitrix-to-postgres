@@ -24,6 +24,7 @@
 | `ExportButtons.tsx` | Кнопки экспорта CSV/Excel. CSV — клиентская генерация с BOM для кириллицы. Excel — динамический import xlsx |
 | `IframeCopyButton.tsx` | Кнопка "Встроить" — копирование iframe HTML с fallback через execCommand |
 | `PromptEditorModal.tsx` | Модальное окно редактирования AI prompt шаблона |
+| `GenerationHistoryModal.tsx` | Модальное окно истории генерации — список запросов с мини-превью графиков, клик вставляет промпт в поле ввода. Хранение в localStorage (до 20 записей) |
 | `cardStyleUtils.ts` | Утилиты маппинга cardStyle (borderRadius, shadow, padding) в Tailwind-классы и inline styles |
 | `DesignModeOverlay.tsx` | Оверлей поверх графика для дизайн-режима — определяет позиции элементов из DOM, рендерит DraggableHandle и MarginHandle |
 
@@ -64,7 +65,7 @@
 | Файл | Описание |
 |---|---|
 | `DashboardPage.tsx` | Главная — статистика, карточки сущностей, справочники |
-| `ChartsPage.tsx` | AI генератор графиков, сохранённые графики, список дашбордов |
+| `ChartsPage.tsx` | AI генератор графиков с редактируемым SQL (подсветка синтаксиса через prismjs), история генерации, сохранённые графики, список дашбордов |
 | `DashboardEditorPage.tsx` | Редактор дашборда — react-grid-layout, EditorChartCard с ChartSettingsPanel, селекторы, связанные дашборды, переключатель формата сетки (1/2/3/4 колонки) с автопересчётом layout |
 | `EmbedDashboardPage.tsx` | Публичная embed-страница дашборда — пароль, табы, фильтры, авто-обновление, адаптивность (isMobile) |
 | `EmbedChartPage.tsx` | Публичная embed-страница одного графика |

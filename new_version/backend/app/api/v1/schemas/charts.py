@@ -26,6 +26,17 @@ class ChartGenerateRequest(BaseModel):
     )
 
 
+class ChartExecuteSqlRequest(BaseModel):
+    """Request to execute a raw SQL query and return data."""
+
+    sql_query: str = Field(
+        ...,
+        min_length=5,
+        max_length=5000,
+        description="SQL query to execute",
+    )
+
+
 class ChartSaveRequest(BaseModel):
     """Request to save a generated chart."""
 

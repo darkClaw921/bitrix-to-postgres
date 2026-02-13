@@ -522,6 +522,12 @@ export const ru: Translations = {
     selectReport: 'Выберите отчёт',
     publishing: 'Публикация...',
     reportPublished: 'Отчёт опубликован!',
+    linkedReports: 'Связанные отчёты',
+    noLinkedReports: 'Нет связанных отчётов',
+    selectPublishedReport: 'Выберите опубликованный отчёт',
+    tabLabel: 'Название вкладки',
+    userPrompt: 'Промпт',
+    editReport: 'Редактировать отчёт',
   },
   embedReport: {
     loadingReport: 'Загрузка отчёта...',

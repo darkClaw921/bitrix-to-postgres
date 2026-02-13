@@ -179,7 +179,7 @@ export default function ReportsPage() {
         ) : (
           <div className="space-y-4">
             {publishedData.reports.map((pub) => (
-              <PublishedReportCard key={pub.id} report={pub} />
+              <PublishedReportCard key={pub.id} report={pub} allPublishedReports={publishedData.reports} />
             ))}
           </div>
         )}

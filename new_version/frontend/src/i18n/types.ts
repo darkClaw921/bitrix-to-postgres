@@ -522,6 +522,12 @@ export interface Translations {
     selectReport: string
     publishing: string
     reportPublished: string
+    linkedReports: string
+    noLinkedReports: string
+    selectPublishedReport: string
+    tabLabel: string
+    userPrompt: string
+    editReport: string
   }
   embedReport: {
     loadingReport: string

@@ -246,6 +246,41 @@ class ReportService:
         logger.info("Report schedule updated", report_id=report_id)
         return await self.get_report_by_id(report_id)  # type: ignore[return-value]
 
+    async def update_report(
+        self, report_id: int, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Update report fields (title, description, user_prompt, sql_queries, report_template)."""
+        report = await self.get_report_by_id(report_id)
+        if not report:
+            raise ReportServiceError(f"Отчёт с id={report_id} не найден")
+
+        set_parts = []
+        params: dict[str, Any] = {"id": report_id}
+
+        for field in ("title", "description", "user_prompt", "report_template"):
+            if field in data and data[field] is not None:
+                set_parts.append(f"{field} = :{field}")
+                params[field] = data[field]
+
+        if "sql_queries" in data and data["sql_queries"] is not None:
+            set_parts.append("sql_queries = :sql_queries")
+            params["sql_queries"] = json.dumps(data["sql_queries"], ensure_ascii=False)
+
+        if not set_parts:
+            return report
+
+        set_parts.append("updated_at = NOW()")
+        set_clause = ", ".join(set_parts)
+
+        engine = get_engine()
+        query = text(f"UPDATE ai_reports SET {set_clause} WHERE id = :id")
+
+        async with engine.begin() as conn:
+            await conn.execute(query, params)
+
+        logger.info("Report updated", report_id=report_id)
+        return await self.get_report_by_id(report_id)  # type: ignore[return-value]
+
     async def toggle_pin(self, report_id: int) -> dict[str, Any]:
         """Toggle the is_pinned flag on a report."""
         engine = get_engine()
@@ -670,6 +705,28 @@ class ReportService:
             result = await conn.execute(query, {"id": pub_id})
 
         return result.rowcount > 0
+
+    async def change_published_report_password(self, pub_id: int) -> str:
+        """Generate a new password for a published report."""
+        engine = get_engine()
+
+        password = DashboardService._generate_password()
+        password_hash = DashboardService._hash_password(password)
+
+        query = text(
+            "UPDATE published_reports SET password_hash = :password_hash, updated_at = NOW() "
+            "WHERE id = :id"
+        )
+        async with engine.begin() as conn:
+            result = await conn.execute(
+                query, {"id": pub_id, "password_hash": password_hash}
+            )
+
+        if result.rowcount == 0:
+            raise ReportServiceError("Опубликованный отчёт не найден")
+
+        logger.info("Published report password changed", pub_id=pub_id)
+        return password
 
     async def verify_published_report_password(self, slug: str, password: str) -> bool:
         """Verify password for a published report."""

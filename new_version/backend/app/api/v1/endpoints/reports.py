@@ -24,8 +24,10 @@ from app.api.v1.schemas.reports import (
     ReportRunResponse,
     ReportSaveRequest,
     ReportScheduleUpdateRequest,
+    ReportUpdateRequest,
     SqlQueryItem,
 )
+from app.api.v1.schemas.dashboards import PasswordChangeResponse
 from app.config import get_settings
 from app.core.exceptions import AIServiceError, ChartServiceError, ReportServiceError
 from app.core.logging import get_logger
@@ -280,6 +282,25 @@ async def list_published_reports(
     )
 
 
+@router.get("/published/{pub_id}", response_model=PublishedReportResponse)
+async def get_published_report(pub_id: int) -> PublishedReportResponse:
+    """Get a published report by ID with linked_reports."""
+    report = await report_service.get_published_report_by_id(pub_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Опубликованный отчёт не найден")
+    return PublishedReportResponse(**report)
+
+
+@router.post("/published/{pub_id}/change-password", response_model=PasswordChangeResponse)
+async def change_published_report_password(pub_id: int) -> PasswordChangeResponse:
+    """Generate a new password for a published report."""
+    try:
+        password = await report_service.change_published_report_password(pub_id)
+        return PasswordChangeResponse(password=password)
+    except ReportServiceError as e:
+        raise HTTPException(status_code=404, detail=e.message) from e
+
+
 @router.delete("/published/{pub_id}")
 async def delete_published_report(pub_id: int) -> dict:
     """Delete a published report."""
@@ -345,6 +366,18 @@ async def delete_report(report_id: int) -> dict:
     if not deleted:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
     return {"deleted": True}
+
+
+@router.patch("/{report_id}", response_model=ReportResponse)
+async def update_report(report_id: int, request: ReportUpdateRequest) -> ReportResponse:
+    """Update report fields (title, description, user_prompt, sql_queries, report_template)."""
+    try:
+        report = await report_service.update_report(
+            report_id, request.model_dump(exclude_none=True)
+        )
+        return ReportResponse(**report)
+    except ReportServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
 
 
 @router.patch("/{report_id}/schedule", response_model=ReportResponse)

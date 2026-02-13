@@ -522,6 +522,12 @@ export const en: Translations = {
     selectReport: 'Select report',
     publishing: 'Publishing...',
     reportPublished: 'Report Published!',
+    linkedReports: 'Linked Reports',
+    noLinkedReports: 'No linked reports',
+    selectPublishedReport: 'Select published report',
+    tabLabel: 'Tab label',
+    userPrompt: 'Prompt',
+    editReport: 'Edit report',
   },
   embedReport: {
     loadingReport: 'Loading report...',

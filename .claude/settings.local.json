@@ -34,7 +34,8 @@
       "Bash(npm run build:*)",
       "Bash(python -m py_compile:*)",
       "Bash(cd:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(echo:*)"
     ]
   }
 }

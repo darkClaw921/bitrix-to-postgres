@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { markdownTableComponents } from '../components/reports/markdownComponents'
 import PasswordGate from '../components/dashboards/PasswordGate'
 import { useTranslation } from '../i18n'
 import { publicApi } from '../services/api'
@@ -275,9 +276,9 @@ function RunAccordionItem({
 
       {isExpanded && (
         <div className="px-4 pb-4 border-t border-gray-100">
-          <div className="pt-3 prose prose-sm max-w-none prose-table:border prose-table:border-gray-300 prose-th:border prose-th:border-gray-300 prose-th:px-3 prose-th:py-2 prose-th:bg-gray-50 prose-td:border prose-td:border-gray-300 prose-td:px-3 prose-td:py-2">
+          <div className="pt-3 prose prose-sm max-w-none">
             {run.result_markdown ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>
                 {run.result_markdown}
               </ReactMarkdown>
             ) : (

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { reportsApi, publishedReportsApi } from '../services/api'
-import type { ReportConversationRequest, ReportSaveRequest, ReportScheduleUpdateRequest, PublishReportRequest } from '../services/api'
+import type { ReportConversationRequest, ReportSaveRequest, ReportScheduleUpdateRequest, ReportUpdateRequest, PublishReportRequest } from '../services/api'
 
 export function useReportConverse() {
   return useMutation({
@@ -31,6 +31,18 @@ export function useDeleteReport() {
 
   return useMutation({
     mutationFn: (reportId: number) => reportsApi.delete(reportId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reports'] })
+    },
+  })
+}
+
+export function useUpdateReport() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ reportId, data }: { reportId: number; data: ReportUpdateRequest }) =>
+      reportsApi.update(reportId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reports'] })
     },
@@ -100,6 +112,14 @@ export function useUpdateReportPromptTemplate() {
 
 // === Published Reports ===
 
+export function usePublishedReport(pubId: number) {
+  return useQuery({
+    queryKey: ['publishedReport', pubId],
+    queryFn: () => publishedReportsApi.get(pubId),
+    enabled: !!pubId,
+  })
+}
+
 export function usePublishReport() {
   const queryClient = useQueryClient()
 
@@ -129,6 +149,12 @@ export function useDeletePublishedReport() {
   })
 }
 
+export function useChangePublishedReportPassword() {
+  return useMutation({
+    mutationFn: (pubId: number) => publishedReportsApi.changePassword(pubId),
+  })
+}
+
 export function useAddPublishedReportLink() {
   const queryClient = useQueryClient()
 
@@ -137,6 +163,7 @@ export function useAddPublishedReportLink() {
       publishedReportsApi.addLink(pubId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['publishedReports'] })
+      queryClient.invalidateQueries({ queryKey: ['publishedReport'] })
     },
   })
 }
@@ -149,6 +176,7 @@ export function useRemovePublishedReportLink() {
       publishedReportsApi.removeLink(pubId, linkId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['publishedReports'] })
+      queryClient.invalidateQueries({ queryKey: ['publishedReport'] })
     },
   })
 }

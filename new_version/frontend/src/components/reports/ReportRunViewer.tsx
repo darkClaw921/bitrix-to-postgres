@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useTranslation } from '../../i18n'
+import { markdownTableComponents } from './markdownComponents'
 import { useReportRuns } from '../../hooks/useReports'
 import type { ReportRun } from '../../services/api'
 
@@ -106,7 +108,9 @@ export default function ReportRunViewer({ reportId }: ReportRunViewerProps) {
           {/* Tab content */}
           {activeTab === 'markdown' && selectedRun.result_markdown && (
             <div className="prose prose-sm max-w-none">
-              <ReactMarkdown>{selectedRun.result_markdown}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownTableComponents}>
+                {selectedRun.result_markdown}
+              </ReactMarkdown>
             </div>
           )}
 

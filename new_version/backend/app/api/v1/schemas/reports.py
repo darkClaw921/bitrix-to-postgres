@@ -35,6 +35,16 @@ class ReportScheduleUpdateRequest(BaseModel):
     status: Optional[str] = Field(None, pattern=r"^(draft|active|paused|error)$")
 
 
+class ReportUpdateRequest(BaseModel):
+    """Request to update report fields (title, description, user_prompt, sql_queries, report_template)."""
+
+    title: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+    user_prompt: Optional[str] = None
+    sql_queries: Optional[list[dict[str, Any]]] = None
+    report_template: Optional[str] = None
+
+
 class ReportPromptTemplateUpdateRequest(BaseModel):
     """Request to update report prompt template."""
 

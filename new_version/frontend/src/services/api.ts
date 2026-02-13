@@ -872,6 +872,14 @@ export interface ReportScheduleUpdateRequest {
   status?: string
 }
 
+export interface ReportUpdateRequest {
+  title?: string
+  description?: string
+  user_prompt?: string
+  sql_queries?: Record<string, unknown>[]
+  report_template?: string
+}
+
 export interface Report {
   id: number
   title: string
@@ -1022,6 +1030,9 @@ export const reportsApi = {
   delete: (reportId: number) =>
     api.delete(`/reports/${reportId}`).then((r) => r.data),
 
+  update: (reportId: number, data: ReportUpdateRequest) =>
+    api.patch<Report>(`/reports/${reportId}`, data).then((r) => r.data),
+
   updateSchedule: (reportId: number, data: ReportScheduleUpdateRequest) =>
     api.patch<Report>(`/reports/${reportId}/schedule`, data).then((r) => r.data),
 
@@ -1053,8 +1064,14 @@ export const publishedReportsApi = {
   list: (page = 1, perPage = 20) =>
     api.get<PublishedReportListResponse>('/reports/published', { params: { page, per_page: perPage } }).then((r) => r.data),
 
+  get: (pubId: number) =>
+    api.get<PublishedReport>(`/reports/published/${pubId}`).then((r) => r.data),
+
   delete: (pubId: number) =>
     api.delete(`/reports/published/${pubId}`).then((r) => r.data),
+
+  changePassword: (pubId: number) =>
+    api.post<PasswordChangeResponse>(`/reports/published/${pubId}/change-password`).then((r) => r.data),
 
   addLink: (pubId: number, data: { linked_published_report_id: number; label?: string; sort_order?: number }) =>
     api.post<PublishedReportLink>(`/reports/published/${pubId}/links`, data).then((r) => r.data),

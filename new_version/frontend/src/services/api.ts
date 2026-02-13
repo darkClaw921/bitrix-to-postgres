@@ -423,9 +423,16 @@ export interface SchemaDescriptionListResponse {
 
 // === Charts API ===
 
+export interface ChartExecuteSqlRequest {
+  sql_query: string
+}
+
 export const chartsApi = {
   generate: (data: ChartGenerateRequest) =>
-    api.post<ChartGenerateResponse>('/charts/generate', data).then((r) => r.data),
+    api.post<ChartGenerateResponse>('/charts/generate', data, { timeout: 120_000 }).then((r) => r.data),
+
+  executeSql: (data: ChartExecuteSqlRequest) =>
+    api.post<ChartDataResponse>('/charts/execute-sql', data, { timeout: 120_000 }).then((r) => r.data),
 
   save: (data: ChartSaveRequest) =>
     api.post<SavedChart>('/charts/save', data).then((r) => r.data),

@@ -1,10 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { chartsApi, schemaApi } from '../services/api'
-import type { ChartGenerateRequest, ChartSaveRequest, ChartDisplayConfig, SchemaDescriptionUpdateRequest } from '../services/api'
+import type { ChartGenerateRequest, ChartSaveRequest, ChartExecuteSqlRequest, ChartDisplayConfig, SchemaDescriptionUpdateRequest } from '../services/api'
 
 export function useGenerateChart() {
   return useMutation({
     mutationFn: (data: ChartGenerateRequest) => chartsApi.generate(data),
+  })
+}
+
+export function useExecuteSql() {
+  return useMutation({
+    mutationFn: (data: ChartExecuteSqlRequest) => chartsApi.executeSql(data),
   })
 }
 

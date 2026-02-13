@@ -33,3 +33,12 @@ body {
 .label {
   @apply block text-sm font-medium text-gray-700 mb-1;
 }
+
+/* SQL Editor (react-simple-code-editor) */
+.sql-editor textarea {
+  outline: none !important;
+}
+.sql-editor textarea:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}

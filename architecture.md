@@ -33,6 +33,7 @@
   - `DatabaseError`, `SyncError`, `AuthenticationError`, `AuthorizationError`
   - `AIServiceError` (502), `ChartServiceError` (400)
   - `DashboardServiceError` (400), `DashboardAuthError` (401)
+  - `ReportServiceError` (400), `PublishedReportAuthError` (401)
 
 #### Bitrix24 API клиент
 - **app/infrastructure/bitrix/client.py** — `BitrixClient`: обёртка над fast-bitrix24 с retry/rate limiting
@@ -48,9 +49,15 @@
   - `SyncLog` — история синхронизаций
   - `SyncState` — состояние инкрементальной синхронизации
   - `AIChart` — сохранённые AI-чарты
+  - `ReportPromptTemplate` — системные промпты для AI отчётов
+  - `AIReport` — определение AI-отчёта (title, user_prompt, status, schedule_type, schedule_config, sql_queries, report_template, is_pinned)
+  - `AIReportRun` — результат выполнения отчёта (status, trigger_type, result_markdown, result_data, sql_queries_executed, execution_time_ms)
+  - `AIReportConversation` — история диалога генерации отчёта (session_id, role, content, metadata)
   - `PublishedDashboard` — опубликованные дашборды (slug, password_hash, is_active, refresh_interval_minutes)
   - `DashboardChart` — чарты в дашборде (layout позиции, title/description override)
   - `DashboardLink` — связи между дашбордами для табов (dashboard_id → linked_dashboard_id, sort_order, label)
+  - `PublishedReport` — опубликованные отчёты (slug, title, description, report_id FK → ai_reports, password_hash, is_active)
+  - `PublishedReportLink` — связи между опубликованными отчётами для табов (published_report_id → linked_published_report_id, sort_order, label)
 
 #### Миграции (`alembic/versions/`)
 - **001_create_system_tables.py** — sync_config, sync_logs, sync_state + default config
@@ -59,6 +66,12 @@
 - **004_create_dashboards_tables.py** — published_dashboards, dashboard_charts (FK cascade)
 - **005_add_refresh_interval.py** — добавление refresh_interval_minutes в published_dashboards
 - **006_create_dashboard_links_table.py** — dashboard_links (FK → published_dashboards CASCADE, unique constraint)
+- **007_create_chart_prompt_templates.py** — chart_prompt_templates
+- **008_add_sql_history.py** — sql_query_history
+- **009_create_chart_prompts_table.py** — chart_prompt_templates (промпт-шаблоны для чартов)
+- **010_add_records_fetched_to_sync_logs.py** — добавление records_fetched в sync_logs
+- **011_create_reports_tables.py** — report_prompt_templates, ai_reports, ai_report_runs, ai_report_conversations (PG/MySQL dual dialect, default report_context промпт)
+- **012_create_published_reports_tables.py** — published_reports (slug, report_id FK, password_hash), published_report_links (PG/MySQL dual dialect)
 
 #### Очередь синхронизаций (`app/infrastructure/queue/`)
 - **sync_queue.py** — `SyncQueue`: центральная очередь с двумя каналами:
@@ -81,6 +94,22 @@
 - **ai_service.py** — `AIService`:
   - `generate_chart_spec(prompt, schema_context)` → JSON спецификация чарта
   - `generate_schema_description(schema_context)` → Markdown документация
+  - `generate_report_step(conversation_history, schema_context)` → шаг диалога генерации отчёта (вопрос или готовая спецификация)
+  - `analyze_report_data(report_title, sql_results, analysis_prompt)` → Markdown-текст аналитического отчёта
+  - `_get_report_context()` → системный промпт из report_prompt_templates
+- **report_service.py** — `ReportService`:
+  - Диалог: `save_conversation_message()`, `get_conversation_history()`, `generate_session_id()`
+  - CRUD: `save_report()`, `get_reports()`, `get_report_by_id()`, `delete_report()`, `update_schedule()`, `toggle_pin()`
+  - Выполнение: `execute_report(report_id, trigger_type)` — SQL запросы + LLM анализ → ai_report_runs
+  - Запуски: `get_runs()`, `get_run_by_id()`
+  - Промпт: `get_report_prompt_template()`, `update_report_prompt_template()`
+  - Расписание: `get_active_scheduled_reports()`
+  - Переиспользует ChartService для SQL валидации и выполнения
+  - Публикация: `publish_report()`, `get_published_reports()`, `get_published_report_by_id()`, `delete_published_report()`
+  - Публичный доступ: `verify_published_report_password()`, `get_published_report_by_slug()` (с runs + links), `get_published_report_runs()`
+  - Токены: `generate_report_token(slug)` / `verify_report_token(token)` → JWT с `type: "report"`
+  - Связи: `add_published_report_link()`, `remove_published_report_link()`, `get_published_report_links()`, `update_published_report_link_order()`, `verify_published_report_linked_access()`
+  - Переиспользует `DashboardService._hash_password`, `_generate_slug`, `_generate_password`, `_verify_password`
 - **sync_service.py** — `SyncService`: полная/инкрементальная синхронизация сущностей (CRM, users, tasks)
   - Инкрементальная синхронизация: `DATE_MODIFY` (CRM), `TIMESTAMP_X` (users), `CHANGED_DATE` (tasks)
 - **reference_sync_service.py** — `ReferenceSyncService`: синхронизация справочников
@@ -112,7 +141,7 @@
 #### API (`app/api/v1/`)
 - **__init__.py** — регистрация роутеров с разделением на public и protected:
   - Публичные (без auth): auth, webhooks, public
-  - Защищённые (JWT `Depends(get_current_user)`): sync, status, charts, schema, references, dashboards, selectors
+  - Защищённые (JWT `Depends(get_current_user)`): sync, status, charts, schema, references, dashboards, selectors, reports
 
 ##### Схемы (`app/api/v1/schemas/`)
 - **common.py** — `HealthResponse`, `ErrorResponse`, `SuccessResponse`, `PaginationParams`
@@ -121,6 +150,7 @@
 - **schema_description.py** — `ColumnInfo`, `TableInfo`, `SchemaTablesResponse`, `SchemaDescriptionResponse`
 - **sync.py** — `SyncConfigItem`, `BitrixFilter`, `SyncStartRequest/Response` (с optional filter), `SyncStatusItem/Response`, `SyncHistoryResponse`
 - **webhooks.py** — `WebhookEventData`, `WebhookResponse`, `WebhookRegistration`
+- **reports.py** — `ReportConversationRequest/Response`, `ReportPreview`, `ReportSaveRequest`, `ReportScheduleUpdateRequest`, `ReportResponse`, `ReportListResponse`, `ReportRunResponse`, `ReportRunListResponse`, `ReportPromptTemplateResponse/UpdateRequest`, `SqlQueryItem`, `DataResultItem`, `PublishReportRequest/Response`, `PublishedReportAuthRequest/Response`, `PublishedReportResponse`, `PublishedReportListItem/Response`, `PublishedReportLinkRequest/Response/OrderItem/UpdateRequest`, `PublicReportRunResponse`, `PublicReportResponse`
 
 ##### Эндпоинты (`app/api/v1/endpoints/`)
 - **auth.py** — POST `/login` — single-user аутентификация (email + password из .env), возвращает JWT access token
@@ -135,11 +165,23 @@
   - POST `/dashboard/{slug}/auth`, GET `/dashboard/{slug}`, GET `/dashboard/{slug}/chart/{dc_id}/data`
   - GET `/dashboard/{slug}/linked/{linked_slug}` — получение связанного дашборда (JWT главного)
   - GET `/dashboard/{slug}/linked/{linked_slug}/chart/{dc_id}/data` — данные чарта связанного дашборда
+  - POST `/report/{slug}/auth` — авторизация паролем → JWT с `type: "report"`
+  - GET `/report/{slug}` — данные опубликованного отчёта (runs + linked_reports, JWT)
+  - GET `/report/{slug}/linked/{linked_slug}` — данные связанного отчёта (JWT главного)
 - **schema_description.py** — GET `/describe`, GET `/tables`, GET `/history`, PATCH `/{id}`, GET `/list`
 - **sync.py** — GET `/config`, PUT `/config`, POST `/start/{entity}`, GET `/status`, GET `/running`
 - **webhooks.py** — POST `/register`, DELETE `/unregister`, GET `/registered`
 - **references.py** — GET `/types`, GET `/status`, POST `/sync/{ref_name}`, POST `/sync-all`
+- **reports.py** — POST `/converse`, POST `/save`, GET `/list`, GET `/{id}`, DELETE `/{id}`, PATCH `/{id}/schedule`, POST `/{id}/run`, POST `/{id}/pin`, GET `/{id}/runs`, GET `/{id}/runs/{run_id}`, GET `/prompt-template/report-context`, PUT `/prompt-template/report-context`, POST `/publish`, GET `/published`, DELETE `/published/{id}`, POST `/published/{id}/links`, DELETE `/published/{id}/links/{link_id}`, PUT `/published/{id}/links`
 - **status.py** — GET `/health`, GET `/stats`, GET `/history`, GET `/scheduler`
+
+#### Планировщик (`app/infrastructure/scheduler/`)
+- **scheduler.py** — APScheduler:
+  - Синхронизация: `IntervalTrigger` задачи для инкрементальных синков
+  - Отчёты: `report_execution_job(report_id)` — запуск отчёта по расписанию
+  - `build_report_trigger(schedule_type, schedule_config)` — создание CronTrigger
+  - `schedule_report_jobs()` — загрузка активных отчётов из БД и создание задач
+  - `reschedule_report(report_id, ...)` / `remove_report_job(report_id)` — управление задачами
 
 #### Зависимости (`pyproject.toml`)
 - FastAPI, SQLAlchemy[asyncio], asyncpg, aiomysql
@@ -156,10 +198,13 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **src/services/api.ts** — axios HTTP клиент (с 401 interceptor → redirect на /login), все типы и API объекты:
   - `syncApi`, `statusApi`, `webhooksApi`, `referencesApi`, `chartsApi` (с `updateConfig` для PATCH), `schemaApi`
   - `dashboardsApi` — publish, list, get, update, delete, updateLayout, updateChartOverride, removeChart, changePassword, getIframeCode, addLink, removeLink, updateLinks
-  - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData, getLinkedDashboard, getLinkedDashboardChartData
+  - `reportsApi` — converse, save, list, get, delete, updateSchedule, run, togglePin, getRuns, getRun, getPromptTemplate, updatePromptTemplate
+  - `publishedReportsApi` — publish, list, delete, addLink, removeLink, updateLinks
+  - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData, getLinkedDashboard, getLinkedDashboardChartData, authenticateReport, getPublicReport, getLinkedReport
 - **src/hooks/useSync.ts** — хуки синхронизации и справочников
 - **src/hooks/useCharts.ts** — хуки чартов (`useUpdateChartConfig` для PATCH config) и описаний схемы
 - **src/hooks/useDashboards.ts** — `usePublishDashboard`, `useDashboardList`, `useDashboard`, `useUpdateDashboard`, `useDeleteDashboard`, `useUpdateDashboardLayout`, `useUpdateChartOverride`, `useRemoveChartFromDashboard`, `useChangeDashboardPassword`, `useIframeCode`, `useAddDashboardLink`, `useRemoveDashboardLink`, `useUpdateDashboardLinks`
+- **src/hooks/useReports.ts** — хуки отчётов: `useReportConverse`, `useReportSave`, `useReports`, `useDeleteReport`, `useUpdateReportSchedule`, `useRunReport`, `useToggleReportPin`, `useReportRuns`, `useReportPromptTemplate`, `useUpdateReportPromptTemplate`, `usePublishReport`, `usePublishedReports`, `useDeletePublishedReport`, `useAddPublishedReportLink`, `useRemovePublishedReportLink`
 - **src/hooks/useAuth.ts** — хук авторизации
 
 #### Страницы (`src/pages/`)
@@ -167,11 +212,13 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **ConfigPage.tsx** — управление конфигурацией синхронизации
 - **MonitoringPage.tsx** — мониторинг и логи синхронизации
 - **ValidationPage.tsx** — валидация данных
-- **ChartsPage.tsx** — AI генерация чартов, сохранённые чарты, кнопка "Publish Dashboard", список опубликованных дашбордов
+- **ChartsPage.tsx** — AI генерация чартов, сохранённые чарты, кнопка "Publish Dashboard", список опубликованных дашбордов (подтаб AISubTabs)
+- **ReportsPage.tsx** — AI отчёты: чат-интерфейс генерации, сохранение отчёта (title/description), список сохранённых отчётов с карточками, секция опубликованных отчётов с кнопкой "Опубликовать" и списком PublishedReportCard, редактор промпта
 - **SchemaPage.tsx** — браузер схемы БД с AI описанием
 - **LoginPage.tsx** — авторизация
 - **EmbedChartPage.tsx** — standalone embed одного чарта (без навигации, публичный)
 - **EmbedDashboardPage.tsx** — публичный дашборд с password gate, JWT в sessionStorage, grid чартов, auto-refresh по интервалу (setInterval), индикатор обновления и "last updated", табы для связанных дашбордов (кеширование загруженных табов, auto-refresh для активного таба)
+- **EmbedReportPage.tsx** — публичная страница опубликованного отчёта: PasswordGate → JWT в sessionStorage, header (title + description), табы для связанных отчётов (кеш), список runs в виде аккордеона (ReactMarkdown + remarkGfm для таблиц)
 - **DashboardEditorPage.tsx** — редактор дашборда: drag & drop + resize чартов (react-grid-layout v2), inline редактирование title/description, удаление чартов, смена пароля, копирование ссылки, секция "Linked Dashboards" (добавление/удаление/перестановка связей)
 
 #### Компоненты (`src/components/`)
@@ -186,6 +233,14 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **dashboards/PublishModal.tsx** — модалка публикации дашборда (выбор чартов, title, description, refresh interval → пароль + URL)
 - **dashboards/DashboardCard.tsx** — карточка дашборда в списке (open, edit, link, delete)
 - **dashboards/PasswordGate.tsx** — форма ввода пароля для публичного дашборда
+- **ai/AISubTabs.tsx** — горизонтальные подтабы "Графики" | "Отчёты" (используется в ChartsPage и ReportsPage)
+- **reports/ReportChat.tsx** — чат-интерфейс диалога с LLM: список сообщений, поле ввода, индикатор генерации, кнопка нового чата
+- **reports/ReportCard.tsx** — карточка отчёта: статус, расписание, кнопки (запустить, результаты, расписание, закрепить, удалить)
+- **reports/ScheduleSelector.tsx** — редактор расписания: тип (once/daily/weekly/monthly), время, день недели/месяца, статус
+- **reports/ReportRunViewer.tsx** — просмотр запусков отчёта: список с бейджами статуса, 3 таба (Markdown через react-markdown, SQL запросы, сырые данные)
+- **reports/ReportPromptEditorModal.tsx** — модалка редактирования системного промпта для отчётов
+- **reports/PublishReportModal.tsx** — модалка публикации отчёта (выбор отчёта, title, description → URL + пароль)
+- **reports/PublishedReportCard.tsx** — карточка опубликованного отчёта (title, report_title, кнопки open/link/delete)
 
 #### State Management
 - **src/store/authStore.ts** — Zustand store авторизации
@@ -195,10 +250,16 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - `/login` → LoginPage (публичный)
 - `/embed/chart/:chartId` → EmbedChartPage (вне Layout, публичный)
 - `/embed/dashboard/:slug` → EmbedDashboardPage (вне Layout, публичный)
-- `/` → DashboardPage, `/config`, `/monitoring`, `/validation`, `/charts`, `/schema` (внутри Layout, ProtectedRoute)
+- `/embed/report/:slug` → EmbedReportPage (вне Layout, публичный)
+- `/` → DashboardPage, `/config`, `/monitoring`, `/validation`, `/schema` (внутри Layout, ProtectedRoute)
+- `/ai/charts` → ChartsPage, `/ai/reports` → ReportsPage, `/ai` → redirect на `/ai/charts`
 - `/dashboards/:id/edit` → DashboardEditorPage (внутри Layout, ProtectedRoute)
 - `ProtectedRoute` — auth guard: проверяет isAuthenticated, редиректит на /login
 
+#### Локализация (`src/i18n/`)
+- **types.ts** — типизированные ключи переводов: nav, common, dashboard, config, monitoring, validation, charts, schema, references, dashboards, ai, reports, embedReport
+- **locales/ru.ts** / **locales/en.ts** — русские и английские переводы
+
 #### Зависимости (`package.json`)
 - @tanstack/react-query, axios, react, react-dom, react-router-dom
-- recharts, react-markdown, zustand, react-grid-layout
+- recharts, react-markdown, remark-gfm, zustand, react-grid-layout

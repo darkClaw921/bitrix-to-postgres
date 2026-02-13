@@ -90,3 +90,19 @@ class DashboardAuthError(AppException):
     def __init__(self, message: str, details: dict[str, Any] | None = None):
         super().__init__(message, details)
         self.status_code = 401
+
+
+class ReportServiceError(AppException):
+    """Ошибки сервиса отчётов: невалидный SQL, ошибки выполнения, сохранения."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message, details)
+        self.status_code = 400
+
+
+class PublishedReportAuthError(AppException):
+    """Ошибки авторизации опубликованных отчётов: неверный пароль, невалидный токен."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message, details)
+        self.status_code = 401

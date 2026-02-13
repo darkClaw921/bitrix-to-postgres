@@ -1,4 +1,4 @@
-"""Public endpoints for chart embeds and dashboard access (no app auth)."""
+"""Public endpoints for chart embeds, dashboard access, and published reports (no app auth)."""
 
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
@@ -9,6 +9,13 @@ from app.api.v1.schemas.dashboards import (
     DashboardResponse,
 )
 from app.api.v1.schemas.charts import ChartDataResponse
+from app.api.v1.schemas.reports import (
+    PublicReportResponse,
+    PublicReportRunResponse,
+    PublishedReportAuthRequest,
+    PublishedReportAuthResponse,
+    PublishedReportLinkResponse,
+)
 from app.api.v1.schemas.selectors import (
     FilterRequest,
     SelectorListResponse,
@@ -16,10 +23,17 @@ from app.api.v1.schemas.selectors import (
     SelectorResponse,
 )
 from app.config import get_settings
-from app.core.exceptions import ChartServiceError, DashboardAuthError, DashboardServiceError
+from app.core.exceptions import (
+    ChartServiceError,
+    DashboardAuthError,
+    DashboardServiceError,
+    PublishedReportAuthError,
+    ReportServiceError,
+)
 from app.core.logging import get_logger
 from app.domain.services.chart_service import ChartService
 from app.domain.services.dashboard_service import DashboardService
+from app.domain.services.report_service import ReportService
 from app.domain.services.selector_service import SelectorService
 
 logger = get_logger(__name__)
@@ -27,6 +41,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 chart_service = ChartService()
 dashboard_service = DashboardService()
+report_service = ReportService()
 selector_service = SelectorService()
 
 
@@ -364,3 +379,95 @@ async def get_public_selector_options(
         return SelectorOptionsResponse(options=options)
     except DashboardServiceError as e:
         raise HTTPException(status_code=400, detail=e.message) from e
+
+
+# === Published Reports (public) ===
+
+
+def _verify_report_token(authorization: Optional[str], slug: str) -> None:
+    """Verify JWT token from Authorization header for published reports."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Требуется авторизация")
+
+    token = authorization[7:]
+    try:
+        token_slug = report_service.verify_report_token(token)
+        if token_slug != slug:
+            raise HTTPException(status_code=403, detail="Токен не для этого отчёта")
+    except PublishedReportAuthError as e:
+        raise HTTPException(status_code=401, detail=e.message) from e
+
+
+@router.post("/report/{slug}/auth", response_model=PublishedReportAuthResponse)
+async def authenticate_report(
+    slug: str, request: PublishedReportAuthRequest
+) -> PublishedReportAuthResponse:
+    """Verify published report password and return JWT."""
+    settings = get_settings()
+
+    try:
+        is_valid = await report_service.verify_published_report_password(slug, request.password)
+        if not is_valid:
+            raise HTTPException(status_code=401, detail="Неверный пароль")
+
+        token = report_service.generate_report_token(slug)
+        return PublishedReportAuthResponse(
+            token=token,
+            expires_in_minutes=settings.dashboard_token_expiry_minutes,
+        )
+    except ReportServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
+
+
+@router.get("/report/{slug}", response_model=PublicReportResponse)
+async def get_public_report(
+    slug: str,
+    authorization: Optional[str] = Header(None),
+) -> PublicReportResponse:
+    """Get published report data with runs and links (requires JWT)."""
+    _verify_report_token(authorization, slug)
+
+    pub = await report_service.get_published_report_by_slug(slug)
+    if not pub:
+        raise HTTPException(status_code=404, detail="Отчёт не найден")
+
+    if not pub.get("is_active"):
+        raise HTTPException(status_code=403, detail="Отчёт деактивирован")
+
+    return PublicReportResponse(
+        id=pub["id"],
+        slug=pub["slug"],
+        title=pub["title"],
+        description=pub.get("description"),
+        report_title=pub.get("report_title"),
+        runs=[PublicReportRunResponse(**r) for r in pub.get("runs", [])],
+        linked_reports=[PublishedReportLinkResponse(**link) for link in pub.get("linked_reports", [])],
+    )
+
+
+@router.get("/report/{slug}/linked/{linked_slug}", response_model=PublicReportResponse)
+async def get_linked_report(
+    slug: str,
+    linked_slug: str,
+    authorization: Optional[str] = Header(None),
+) -> PublicReportResponse:
+    """Get a linked published report (requires JWT for main slug)."""
+    _verify_report_token(authorization, slug)
+
+    is_linked = await report_service.verify_published_report_linked_access(slug, linked_slug)
+    if not is_linked:
+        raise HTTPException(status_code=403, detail="Связанный отчёт не найден или не активен")
+
+    pub = await report_service.get_published_report_by_slug(linked_slug)
+    if not pub:
+        raise HTTPException(status_code=404, detail="Отчёт не найден")
+
+    return PublicReportResponse(
+        id=pub["id"],
+        slug=pub["slug"],
+        title=pub["title"],
+        description=pub.get("description"),
+        report_title=pub.get("report_title"),
+        runs=[PublicReportRunResponse(**r) for r in pub.get("runs", [])],
+        linked_reports=[PublishedReportLinkResponse(**link) for link in pub.get("linked_reports", [])],
+    )

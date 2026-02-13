@@ -31,11 +31,15 @@ export interface Translations {
   }
   nav: {
     dashboard: string
-    aiCharts: string
+    ai: string
     configuration: string
     monitoring: string
     validation: string
     schema: string
+  }
+  ai: {
+    chartsTab: string
+    reportsTab: string
   }
   auth: {
     signIn: string
@@ -463,6 +467,69 @@ export interface Translations {
     page: string
     ofPages: string
     rowsCount: string
+  }
+  reports: {
+    title: string
+    chatPlaceholder: string
+    chatSend: string
+    chatSending: string
+    chatEmpty: string
+    chatWelcome: string
+    saveReport: string
+    savedReports: string
+    noSavedReports: string
+    reportRuns: string
+    noRuns: string
+    runNow: string
+    running: string
+    viewResults: string
+    scheduleOnce: string
+    scheduleDaily: string
+    scheduleWeekly: string
+    scheduleMonthly: string
+    scheduleTime: string
+    scheduleDay: string
+    scheduleDayOfWeek: string
+    statusDraft: string
+    statusActive: string
+    statusPaused: string
+    statusError: string
+    runStatusPending: string
+    runStatusRunning: string
+    runStatusCompleted: string
+    runStatusFailed: string
+    triggerManual: string
+    triggerScheduled: string
+    executionTime: string
+    sqlQueries: string
+    rawData: string
+    reportPreview: string
+    confirmDelete: string
+    promptEditor: string
+    pin: string
+    unpin: string
+    schedule: string
+    updateSchedule: string
+    publishReport: string
+    publishedReports: string
+    noPublishedReports: string
+    reportUrl: string
+    reportPassword: string
+    reportPasswordHelp: string
+    openReport: string
+    addLinkedReport: string
+    publishReportTitle: string
+    selectReport: string
+    publishing: string
+    reportPublished: string
+  }
+  embedReport: {
+    loadingReport: string
+    reportNotFound: string
+    reportAccess: string
+    noRuns: string
+    runOn: string
+    executionTime: string
   }
   designMode: {
     designMode: string

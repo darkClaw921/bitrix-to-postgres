@@ -806,6 +806,264 @@ export const publicApi = {
     publicAxios.get<{ options: unknown[] }>(`/public/dashboard/${slug}/selector/${selectorId}/options`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then((r) => r.data),
+
+  // Published Reports
+  authenticateReport: (slug: string, password: string) =>
+    publicAxios.post<PublishedReportAuthResponse>(`/public/report/${slug}/auth`, { password }).then((r) => r.data),
+
+  getPublicReport: (slug: string, token: string) =>
+    publicAxios.get<PublicReport>(`/public/report/${slug}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data),
+
+  getLinkedReport: (slug: string, linkedSlug: string, token: string) =>
+    publicAxios.get<PublicReport>(`/public/report/${slug}/linked/${linkedSlug}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data),
+}
+
+// === Reports Types ===
+
+export interface ReportConversationRequest {
+  session_id?: string
+  message: string
+}
+
+export interface SqlQueryItem {
+  sql: string
+  purpose: string
+}
+
+export interface DataResultItem {
+  sql: string
+  purpose: string
+  rows: Record<string, unknown>[]
+  row_count: number
+  time_ms: number
+  error?: string
+}
+
+export interface ReportPreview {
+  title: string
+  description?: string
+  sql_queries: SqlQueryItem[]
+  report_template: string
+  data_results: DataResultItem[]
+}
+
+export interface ReportConversationResponse {
+  session_id: string
+  content: string
+  is_complete: boolean
+  report_preview?: ReportPreview
+}
+
+export interface ReportSaveRequest {
+  session_id: string
+  title: string
+  description?: string
+  schedule_type?: string
+  schedule_config?: Record<string, unknown>
+}
+
+export interface ReportScheduleUpdateRequest {
+  schedule_type?: string
+  schedule_config?: Record<string, unknown>
+  status?: string
+}
+
+export interface Report {
+  id: number
+  title: string
+  description?: string
+  user_prompt: string
+  status: string
+  schedule_type: string
+  schedule_config?: Record<string, unknown>
+  next_run_at?: string
+  last_run_at?: string
+  sql_queries?: Record<string, unknown>[]
+  report_template?: string
+  is_pinned: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ReportListResponse {
+  reports: Report[]
+  total: number
+  page: number
+  per_page: number
+}
+
+export interface ReportRun {
+  id: number
+  report_id: number
+  status: string
+  trigger_type: string
+  result_markdown?: string
+  result_data?: Record<string, unknown>[]
+  sql_queries_executed?: Record<string, unknown>[]
+  error_message?: string
+  execution_time_ms?: number
+  started_at?: string
+  completed_at?: string
+  created_at: string
+}
+
+export interface ReportRunListResponse {
+  runs: ReportRun[]
+  total: number
+  page: number
+  per_page: number
+}
+
+export interface ReportPromptTemplate {
+  id: number
+  name: string
+  content: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// === Published Reports Types ===
+
+export interface PublishedReportLink {
+  id: number
+  sort_order: number
+  label?: string
+  linked_title?: string
+  linked_slug?: string
+}
+
+export interface PublishedReport {
+  id: number
+  slug: string
+  title: string
+  description?: string
+  report_id: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  linked_reports: PublishedReportLink[]
+}
+
+export interface PublishedReportListItem {
+  id: number
+  slug: string
+  title: string
+  description?: string
+  report_id: number
+  report_title?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface PublishedReportListResponse {
+  reports: PublishedReportListItem[]
+  total: number
+  page: number
+  per_page: number
+}
+
+export interface PublishReportRequest {
+  report_id: number
+  title?: string
+  description?: string
+}
+
+export interface PublishReportResponse {
+  published_report: PublishedReport
+  password: string
+}
+
+export interface PublicReportRun {
+  id: number
+  status: string
+  trigger_type: string
+  result_markdown?: string
+  execution_time_ms?: number
+  created_at: string
+  completed_at?: string
+}
+
+export interface PublicReport {
+  id: number
+  slug: string
+  title: string
+  description?: string
+  report_title?: string
+  runs: PublicReportRun[]
+  linked_reports: PublishedReportLink[]
+}
+
+export interface PublishedReportAuthResponse {
+  token: string
+  expires_in_minutes: number
+}
+
+// === Reports API ===
+
+export const reportsApi = {
+  converse: (data: ReportConversationRequest) =>
+    api.post<ReportConversationResponse>('/reports/converse', data, { timeout: 120_000 }).then((r) => r.data),
+
+  save: (data: ReportSaveRequest) =>
+    api.post<Report>('/reports/save', data).then((r) => r.data),
+
+  list: (page = 1, perPage = 20) =>
+    api.get<ReportListResponse>('/reports/list', { params: { page, per_page: perPage } }).then((r) => r.data),
+
+  get: (reportId: number) =>
+    api.get<Report>(`/reports/${reportId}`).then((r) => r.data),
+
+  delete: (reportId: number) =>
+    api.delete(`/reports/${reportId}`).then((r) => r.data),
+
+  updateSchedule: (reportId: number, data: ReportScheduleUpdateRequest) =>
+    api.patch<Report>(`/reports/${reportId}/schedule`, data).then((r) => r.data),
+
+  run: (reportId: number) =>
+    api.post<ReportRun>(`/reports/${reportId}/run`, null, { timeout: 300_000 }).then((r) => r.data),
+
+  togglePin: (reportId: number) =>
+    api.post<Report>(`/reports/${reportId}/pin`).then((r) => r.data),
+
+  listRuns: (reportId: number, page = 1, perPage = 20) =>
+    api.get<ReportRunListResponse>(`/reports/${reportId}/runs`, { params: { page, per_page: perPage } }).then((r) => r.data),
+
+  getRun: (reportId: number, runId: number) =>
+    api.get<ReportRun>(`/reports/${reportId}/runs/${runId}`).then((r) => r.data),
+
+  getPromptTemplate: () =>
+    api.get<ReportPromptTemplate>('/reports/prompt-template/report-context').then((r) => r.data),
+
+  updatePromptTemplate: (content: string) =>
+    api.put<ReportPromptTemplate>('/reports/prompt-template/report-context', { content }).then((r) => r.data),
+}
+
+// === Published Reports API (internal) ===
+
+export const publishedReportsApi = {
+  publish: (data: PublishReportRequest) =>
+    api.post<PublishReportResponse>('/reports/publish', data).then((r) => r.data),
+
+  list: (page = 1, perPage = 20) =>
+    api.get<PublishedReportListResponse>('/reports/published', { params: { page, per_page: perPage } }).then((r) => r.data),
+
+  delete: (pubId: number) =>
+    api.delete(`/reports/published/${pubId}`).then((r) => r.data),
+
+  addLink: (pubId: number, data: { linked_published_report_id: number; label?: string; sort_order?: number }) =>
+    api.post<PublishedReportLink>(`/reports/published/${pubId}/links`, data).then((r) => r.data),
+
+  removeLink: (pubId: number, linkId: number) =>
+    api.delete(`/reports/published/${pubId}/links/${linkId}`).then((r) => r.data),
+
+  updateLinks: (pubId: number, links: { id: number; sort_order: number }[]) =>
+    api.put<PublishedReportLink[]>(`/reports/published/${pubId}/links`, { links }).then((r) => r.data),
 }
 
 export default api

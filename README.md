@@ -3,7 +3,7 @@
 
 ![main](main.png)
 ![charts](charts.png)
-
+![reports](report.png)
 
 # Bitrix to Postgres Connector
 

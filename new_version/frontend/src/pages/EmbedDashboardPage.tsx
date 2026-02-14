@@ -4,10 +4,9 @@ import ChartRenderer from '../components/charts/ChartRenderer'
 import ExportButtons from '../components/charts/ExportButtons'
 import { getCardStyleClasses, getCardInlineStyle, getTitleSizeClass } from '../components/charts/cardStyleUtils'
 import PasswordGate from '../components/dashboards/PasswordGate'
-import SelectorBar from '../components/selectors/SelectorBar'
 import { useTranslation } from '../i18n'
 import { publicApi } from '../services/api'
-import type { Dashboard, DashboardChart, DashboardSelector, ChartSpec, ChartDataResponse, ChartDisplayConfig, FilterValue } from '../services/api'
+import type { Dashboard, DashboardChart, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
 
 const SESSION_KEY_PREFIX = 'dashboard_token_'
 
@@ -53,19 +52,6 @@ export default function EmbedDashboardPage() {
   const [linkedCache, setLinkedCache] = useState<Record<string, TabData>>({})
   const [linkedLoading, setLinkedLoading] = useState(false)
 
-  // Filter state — per-dashboard filter values (keyed by dashboard slug or 'main')
-  const [filterValues, setFilterValues] = useState<Record<string, Record<string, unknown>>>({})
-  const filterValuesRef = useRef(filterValues)
-  filterValuesRef.current = filterValues
-
-  const setActiveFilterValues = useCallback(
-    (values: Record<string, unknown>) => {
-      const key = activeTab === 'main' ? 'main' : activeTab
-      setFilterValues((prev) => ({ ...prev, [key]: values }))
-    },
-    [activeTab],
-  )
-
   const handleAuth = useCallback(
     async (password: string): Promise<string> => {
       if (!slug) throw new Error('No slug')
@@ -80,35 +66,16 @@ export default function EmbedDashboardPage() {
     setToken(t)
   }, [])
 
-  // Build filter array from current values
-  const buildFilterArray = useCallback((values: Record<string, unknown>): FilterValue[] => {
-    const filters: FilterValue[] = []
-    for (const [name, value] of Object.entries(values)) {
-      if (value !== null && value !== '' && value !== undefined && !(Array.isArray(value) && value.length === 0)) {
-        filters.push({ name, value })
-      }
-    }
-    return filters
-  }, [])
-
   const fetchAllChartData = useCallback(
-    async (dash: Dashboard, authToken: string, currentFilters?: Record<string, unknown>) => {
+    async (dash: Dashboard, authToken: string) => {
       if (!slug) return
       if (refreshingRef.current) return
       refreshingRef.current = true
       setRefreshing(true)
 
-      const filtersToUse = currentFilters ?? filterValuesRef.current['main'] ?? {}
-      const filterArray = buildFilterArray(filtersToUse)
-      const hasFilters = filterArray.length > 0
-
       try {
-        const promises = dash.charts.map((c) => {
-          const fetcher = hasFilters
-            ? publicApi.getDashboardChartDataFiltered(slug, c.id, authToken, filterArray)
-            : publicApi.getDashboardChartData(slug, c.id, authToken)
-
-          return fetcher
+        const promises = dash.charts.map((c) =>
+          publicApi.getDashboardChartData(slug, c.id, authToken)
             .then((data) => ({ dcId: c.id, data }))
             .catch((err) => {
               const axiosErr = err as { response?: { status?: number } }
@@ -117,7 +84,7 @@ export default function EmbedDashboardPage() {
               }
               return { dcId: c.id, data: null }
             })
-        })
+        )
         const results = await Promise.all(promises)
         const dataMap: Record<number, ChartDataResponse> = {}
         for (const r of results) {
@@ -136,7 +103,7 @@ export default function EmbedDashboardPage() {
         setRefreshing(false)
       }
     },
-    [slug, buildFilterArray],
+    [slug],
   )
 
   const fetchLinkedChartData = useCallback(
@@ -144,20 +111,11 @@ export default function EmbedDashboardPage() {
       linkedSlug: string,
       dash: Dashboard,
       authToken: string,
-      currentFilters?: Record<string, unknown>,
     ): Promise<Record<number, ChartDataResponse>> => {
       if (!slug) return {}
 
-      const filtersToUse = currentFilters ?? filterValuesRef.current[linkedSlug] ?? {}
-      const filterArray = buildFilterArray(filtersToUse)
-      const hasFilters = filterArray.length > 0
-
-      const promises = dash.charts.map((c) => {
-        const fetcher = hasFilters
-          ? publicApi.getLinkedDashboardChartDataFiltered(slug, linkedSlug, c.id, authToken, filterArray)
-          : publicApi.getLinkedDashboardChartData(slug, linkedSlug, c.id, authToken)
-
-        return fetcher
+      const promises = dash.charts.map((c) =>
+        publicApi.getLinkedDashboardChartData(slug, linkedSlug, c.id, authToken)
           .then((data) => ({ dcId: c.id, data }))
           .catch((err) => {
             const axiosErr = err as { response?: { status?: number } }
@@ -166,7 +124,7 @@ export default function EmbedDashboardPage() {
             }
             return { dcId: c.id, data: null }
           })
-      })
+      )
       const results = await Promise.all(promises)
       const dataMap: Record<number, ChartDataResponse> = {}
       for (const r of results) {
@@ -174,7 +132,7 @@ export default function EmbedDashboardPage() {
       }
       return dataMap
     },
-    [slug, buildFilterArray],
+    [slug],
   )
 
   const handleTabClick = useCallback(
@@ -211,30 +169,6 @@ export default function EmbedDashboardPage() {
     [activeTab, linkedCache, slug, token, fetchLinkedChartData],
   )
 
-  // Apply filters: re-fetch active tab's chart data
-  const handleApplyFilters = useCallback(() => {
-    if (!token || !slug) return
-
-    if (activeTab === 'main' && dashboard) {
-      const currentFilters = filterValuesRef.current['main'] || {}
-      fetchAllChartData(dashboard, token, currentFilters)
-    } else {
-      const cached = linkedCache[activeTab]
-      if (cached) {
-        const currentFilters = filterValuesRef.current[activeTab] || {}
-        fetchLinkedChartData(activeTab, cached.dashboard, token, currentFilters).then(
-          (freshData) => {
-            setLinkedCache((prev) => ({
-              ...prev,
-              [activeTab]: { ...prev[activeTab], chartData: freshData },
-            }))
-            setLastUpdatedAt(new Date())
-          },
-        ).catch(() => {})
-      }
-    }
-  }, [activeTab, dashboard, linkedCache, token, slug, fetchAllChartData, fetchLinkedChartData])
-
   // Load dashboard once authenticated
   useEffect(() => {
     if (!slug || !token) return
@@ -258,7 +192,7 @@ export default function EmbedDashboardPage() {
       .finally(() => setLoading(false))
   }, [slug, token, fetchAllChartData])
 
-  // Auto-refresh interval — refreshes active tab's charts with current filters
+  // Auto-refresh interval
   useEffect(() => {
     if (!dashboard || !token || !slug) return
 
@@ -307,20 +241,14 @@ export default function EmbedDashboardPage() {
   const linkedDashboards = dashboard.linked_dashboards || []
   const hasTabs = linkedDashboards.length > 0
 
-  // Determine active charts and selectors to display
+  // Determine active charts to display
   let activeCharts: DashboardChart[] = dashboard.charts
   let activeChartData: Record<number, ChartDataResponse> = chartData
-  let activeSelectors: DashboardSelector[] = dashboard.selectors || []
-  let activeFilterKey = 'main'
 
   if (activeTab !== 'main' && linkedCache[activeTab]) {
     activeCharts = linkedCache[activeTab].dashboard.charts
     activeChartData = linkedCache[activeTab].chartData
-    activeSelectors = linkedCache[activeTab].dashboard.selectors || []
-    activeFilterKey = activeTab
   }
-
-  const currentFilterValues = filterValues[activeFilterKey] || {}
 
   return (
     <div className="min-h-screen bg-gray-50 p-3 md:p-6">
@@ -370,18 +298,6 @@ export default function EmbedDashboardPage() {
         )}
 
         {!hasTabs && <div className="mb-4" />}
-
-        {/* Selector bar */}
-        {activeSelectors.length > 0 && token && slug && (
-          <SelectorBar
-            selectors={activeSelectors}
-            filterValues={currentFilterValues}
-            onFilterChange={setActiveFilterValues}
-            onApply={handleApplyFilters}
-            slug={slug}
-            token={token}
-          />
-        )}
 
         {linkedLoading ? (
           <div className="flex items-center justify-center h-64 text-gray-400">

@@ -20,7 +20,7 @@ const runStatusColors: Record<string, string> = {
 export default function ReportRunViewer({ reportId }: ReportRunViewerProps) {
   const { t } = useTranslation()
   const [selectedRun, setSelectedRun] = useState<ReportRun | null>(null)
-  const [activeTab, setActiveTab] = useState<'markdown' | 'sql' | 'data'>('markdown')
+  const [activeTab, setActiveTab] = useState<'markdown' | 'sql' | 'data' | 'prompt'>('markdown')
   const { data, isLoading } = useReportRuns(reportId)
 
   if (isLoading) {
@@ -103,6 +103,16 @@ export default function ReportRunViewer({ reportId }: ReportRunViewerProps) {
             >
               {t('reports.rawData')}
             </button>
+            <button
+              onClick={() => setActiveTab('prompt')}
+              className={`pb-2 text-sm font-medium border-b-2 ${
+                activeTab === 'prompt'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t('reports.fullPrompt')}
+            </button>
           </div>
 
           {/* Tab content */}
@@ -136,6 +146,18 @@ export default function ReportRunViewer({ reportId }: ReportRunViewerProps) {
               <pre className="text-xs font-mono whitespace-pre-wrap">
                 {JSON.stringify(selectedRun.result_data, null, 2)}
               </pre>
+            </div>
+          )}
+
+          {activeTab === 'prompt' && (
+            <div className="max-h-96 overflow-auto">
+              {selectedRun.llm_prompt ? (
+                <pre className="text-xs font-mono whitespace-pre-wrap bg-gray-50 rounded p-3">
+                  {selectedRun.llm_prompt}
+                </pre>
+              ) : (
+                <div className="text-sm text-gray-400">{t('reports.noPromptData')}</div>
+              )}
             </div>
           )}
         </div>

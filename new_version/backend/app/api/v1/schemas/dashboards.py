@@ -6,8 +6,6 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v1.schemas.selectors import SelectorResponse
-
 
 # --- Requests ---
 
@@ -143,7 +141,6 @@ class DashboardResponse(BaseModel):
     refresh_interval_minutes: int = 10
     charts: list[DashboardChartResponse] = []
     linked_dashboards: list[DashboardLinkResponse] = []
-    selectors: list[SelectorResponse] = []
     created_at: datetime
     updated_at: datetime
 

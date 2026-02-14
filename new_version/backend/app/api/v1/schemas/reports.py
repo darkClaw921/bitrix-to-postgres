@@ -148,6 +148,7 @@ class ReportRunResponse(BaseModel):
     sql_queries_executed: Optional[list[dict[str, Any]]] = None
     error_message: Optional[str] = None
     execution_time_ms: Optional[int] = None
+    llm_prompt: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime

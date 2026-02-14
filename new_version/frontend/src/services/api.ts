@@ -2,6 +2,9 @@ import axios from 'axios'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
+/** Таймаут для долгих AI-запросов (генерация графиков, отчётов) в мс */
+const AI_REQUEST_TIMEOUT = 300_000 // 5 минут
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -429,10 +432,10 @@ export interface ChartExecuteSqlRequest {
 
 export const chartsApi = {
   generate: (data: ChartGenerateRequest) =>
-    api.post<ChartGenerateResponse>('/charts/generate', data, { timeout: 120_000 }).then((r) => r.data),
+    api.post<ChartGenerateResponse>('/charts/generate', data, { timeout: AI_REQUEST_TIMEOUT }).then((r) => r.data),
 
   executeSql: (data: ChartExecuteSqlRequest) =>
-    api.post<ChartDataResponse>('/charts/execute-sql', data, { timeout: 120_000 }).then((r) => r.data),
+    api.post<ChartDataResponse>('/charts/execute-sql', data, { timeout: AI_REQUEST_TIMEOUT }).then((r) => r.data),
 
   save: (data: ChartSaveRequest) =>
     api.post<SavedChart>('/charts/save', data).then((r) => r.data),
@@ -522,7 +525,6 @@ export interface Dashboard {
   refresh_interval_minutes: number
   charts: DashboardChart[]
   linked_dashboards?: DashboardLink[]
-  selectors?: DashboardSelector[]
   created_at: string
   updated_at: string
 }
@@ -606,72 +608,6 @@ export interface PasswordChangeResponse {
   password: string
 }
 
-// === Selector Types ===
-
-export interface SelectorMapping {
-  id: number
-  selector_id: number
-  dashboard_chart_id: number
-  target_column: string
-  target_table?: string
-  operator_override?: string
-  created_at?: string
-}
-
-export interface DashboardSelector {
-  id: number
-  dashboard_id: number
-  name: string
-  label: string
-  selector_type: 'date_range' | 'single_date' | 'dropdown' | 'multi_select' | 'text'
-  operator: string
-  config?: {
-    source_table?: string
-    source_column?: string
-    static_options?: string[]
-    default_value?: unknown
-    placeholder?: string
-    label_table?: string
-    label_column?: string
-    label_value_column?: string
-  }
-  sort_order: number
-  is_required: boolean
-  mappings: SelectorMapping[]
-  created_at?: string
-}
-
-export interface SelectorCreateRequest {
-  name: string
-  label: string
-  selector_type: string
-  operator?: string
-  config?: Record<string, unknown>
-  sort_order?: number
-  is_required?: boolean
-  mappings?: {
-    dashboard_chart_id: number
-    target_column: string
-    target_table?: string
-    operator_override?: string
-  }[]
-}
-
-export interface SelectorUpdateRequest {
-  name?: string
-  label?: string
-  selector_type?: string
-  operator?: string
-  config?: Record<string, unknown>
-  sort_order?: number
-  is_required?: boolean
-}
-
-export interface FilterValue {
-  name: string
-  value: unknown
-}
-
 // === Dashboards API (internal) ===
 
 export const dashboardsApi = {
@@ -714,38 +650,6 @@ export const dashboardsApi = {
   updateLinks: (dashboardId: number, links: { id: number; sort_order: number }[]) =>
     api.put<DashboardLink[]>(`/dashboards/${dashboardId}/links`, { links }).then((r) => r.data),
 
-  // Selectors
-  createSelector: (dashboardId: number, data: SelectorCreateRequest) =>
-    api.post<DashboardSelector>(`/dashboards/${dashboardId}/selectors`, data).then((r) => r.data),
-
-  listSelectors: (dashboardId: number) =>
-    api.get<{ selectors: DashboardSelector[] }>(`/dashboards/${dashboardId}/selectors`).then((r) => r.data),
-
-  updateSelector: (dashboardId: number, selectorId: number, data: SelectorUpdateRequest) =>
-    api.put<DashboardSelector>(`/dashboards/${dashboardId}/selectors/${selectorId}`, data).then((r) => r.data),
-
-  deleteSelector: (dashboardId: number, selectorId: number) =>
-    api.delete(`/dashboards/${dashboardId}/selectors/${selectorId}`).then((r) => r.data),
-
-  addSelectorMapping: (dashboardId: number, selectorId: number, data: {
-    dashboard_chart_id: number
-    target_column: string
-    target_table?: string
-    operator_override?: string
-  }) =>
-    api.post<SelectorMapping>(`/dashboards/${dashboardId}/selectors/${selectorId}/mappings`, data).then((r) => r.data),
-
-  removeSelectorMapping: (dashboardId: number, selectorId: number, mappingId: number) =>
-    api.delete(`/dashboards/${dashboardId}/selectors/${selectorId}/mappings/${mappingId}`).then((r) => r.data),
-
-  getSelectorOptions: (dashboardId: number, selectorId: number) =>
-    api.get<{ options: unknown[] }>(`/dashboards/${dashboardId}/selectors/${selectorId}/options`).then((r) => r.data),
-
-  getChartColumns: (dashboardId: number, dcId: number) =>
-    api.get<{ columns: string[] }>(`/dashboards/${dashboardId}/charts/${dcId}/columns`).then((r) => r.data),
-
-  generateSelectors: (dashboardId: number) =>
-    api.post<{ selectors: DashboardSelector[] }>(`/dashboards/${dashboardId}/selectors/generate`).then((r) => r.data),
 }
 
 // === Public API (no auth interceptor) ===
@@ -782,28 +686,6 @@ export const publicApi = {
 
   getLinkedDashboardChartData: (slug: string, linkedSlug: string, dcId: number, token: string) =>
     publicAxios.get<ChartDataResponse>(`/public/dashboard/${slug}/linked/${linkedSlug}/chart/${dcId}/data`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then((r) => r.data),
-
-  // Filtered chart data (POST with filters)
-  getDashboardChartDataFiltered: (slug: string, dcId: number, token: string, filters: FilterValue[]) =>
-    publicAxios.post<ChartDataResponse>(`/public/dashboard/${slug}/chart/${dcId}/data`, { filters }, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then((r) => r.data),
-
-  getLinkedDashboardChartDataFiltered: (slug: string, linkedSlug: string, dcId: number, token: string, filters: FilterValue[]) =>
-    publicAxios.post<ChartDataResponse>(`/public/dashboard/${slug}/linked/${linkedSlug}/chart/${dcId}/data`, { filters }, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then((r) => r.data),
-
-  // Public selector endpoints
-  getDashboardSelectors: (slug: string, token: string) =>
-    publicAxios.get<{ selectors: DashboardSelector[] }>(`/public/dashboard/${slug}/selectors`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).then((r) => r.data),
-
-  getSelectorOptions: (slug: string, selectorId: number, token: string) =>
-    publicAxios.get<{ options: unknown[] }>(`/public/dashboard/${slug}/selector/${selectorId}/options`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then((r) => r.data),
 
@@ -914,6 +796,7 @@ export interface ReportRun {
   sql_queries_executed?: Record<string, unknown>[]
   error_message?: string
   execution_time_ms?: number
+  llm_prompt?: string
   started_at?: string
   completed_at?: string
   created_at: string
@@ -1016,7 +899,7 @@ export interface PublishedReportAuthResponse {
 
 export const reportsApi = {
   converse: (data: ReportConversationRequest) =>
-    api.post<ReportConversationResponse>('/reports/converse', data, { timeout: 120_000 }).then((r) => r.data),
+    api.post<ReportConversationResponse>('/reports/converse', data, { timeout: AI_REQUEST_TIMEOUT }).then((r) => r.data),
 
   save: (data: ReportSaveRequest) =>
     api.post<Report>('/reports/save', data).then((r) => r.data),
@@ -1037,7 +920,7 @@ export const reportsApi = {
     api.patch<Report>(`/reports/${reportId}/schedule`, data).then((r) => r.data),
 
   run: (reportId: number) =>
-    api.post<ReportRun>(`/reports/${reportId}/run`, null, { timeout: 300_000 }).then((r) => r.data),
+    api.post<ReportRun>(`/reports/${reportId}/run`, null, { timeout: AI_REQUEST_TIMEOUT }).then((r) => r.data),
 
   togglePin: (reportId: number) =>
     api.post<Report>(`/reports/${reportId}/pin`).then((r) => r.data),

@@ -35,7 +35,9 @@
       "Bash(python -m py_compile:*)",
       "Bash(cd:*)",
       "Bash(grep:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(python -c:*)",
+      "Bash(python:*)"
     ]
   }
 }

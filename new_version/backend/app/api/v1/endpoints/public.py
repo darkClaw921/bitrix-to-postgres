@@ -16,12 +16,6 @@ from app.api.v1.schemas.reports import (
     PublishedReportAuthResponse,
     PublishedReportLinkResponse,
 )
-from app.api.v1.schemas.selectors import (
-    FilterRequest,
-    SelectorListResponse,
-    SelectorOptionsResponse,
-    SelectorResponse,
-)
 from app.config import get_settings
 from app.core.exceptions import (
     ChartServiceError,
@@ -34,7 +28,6 @@ from app.core.logging import get_logger
 from app.domain.services.chart_service import ChartService
 from app.domain.services.dashboard_service import DashboardService
 from app.domain.services.report_service import ReportService
-from app.domain.services.selector_service import SelectorService
 
 logger = get_logger(__name__)
 
@@ -42,7 +35,6 @@ router = APIRouter()
 chart_service = ChartService()
 dashboard_service = DashboardService()
 report_service = ReportService()
-selector_service = SelectorService()
 
 
 @router.get("/chart/{chart_id}/meta")
@@ -247,137 +239,6 @@ async def get_linked_dashboard_chart_data(
             execution_time_ms=round(exec_time, 2),
         )
     except ChartServiceError as e:
-        raise HTTPException(status_code=400, detail=e.message) from e
-
-
-# === Filtered Chart Data (POST) ===
-
-
-async def _execute_filtered_chart(
-    dashboard: dict,
-    dc_id: int,
-    filter_values: dict,
-) -> ChartDataResponse:
-    """Shared logic for executing a chart query with filters applied."""
-    settings = get_settings()
-
-    dc_chart = None
-    for c in dashboard.get("charts", []):
-        if c["id"] == dc_id:
-            dc_chart = c
-            break
-
-    if not dc_chart:
-        raise HTTPException(status_code=404, detail="Чарт не найден в дашборде")
-
-    try:
-        sql = dc_chart["sql_query"]
-        chart_service.validate_sql_query(sql)
-
-        # Apply filters
-        bind_params = None
-        if filter_values:
-            filters = await selector_service.build_filters_for_chart(
-                dashboard["id"], dc_id, filter_values
-            )
-            if filters:
-                sql, bind_params = chart_service.apply_filters(sql, filters)
-
-        sql = chart_service.ensure_limit(sql, settings.chart_max_rows)
-        data, exec_time = await chart_service.execute_chart_query(sql, bind_params)
-
-        return ChartDataResponse(
-            data=data,
-            row_count=len(data),
-            execution_time_ms=round(exec_time, 2),
-        )
-    except DashboardServiceError as e:
-        raise HTTPException(status_code=400, detail=e.message) from e
-    except ChartServiceError as e:
-        raise HTTPException(status_code=400, detail=e.message) from e
-
-
-@router.post("/dashboard/{slug}/chart/{dc_id}/data", response_model=ChartDataResponse)
-async def get_dashboard_chart_data_filtered(
-    slug: str,
-    dc_id: int,
-    request: FilterRequest,
-    authorization: Optional[str] = Header(None),
-) -> ChartDataResponse:
-    """Get chart data with filters applied (requires JWT)."""
-    _verify_dashboard_token(authorization, slug)
-
-    dashboard = await dashboard_service.get_dashboard_by_slug(slug)
-    if not dashboard:
-        raise HTTPException(status_code=404, detail="Дашборд не найден")
-
-    filter_values = {f.name: f.value for f in request.filters}
-    return await _execute_filtered_chart(dashboard, dc_id, filter_values)
-
-
-@router.post(
-    "/dashboard/{slug}/linked/{linked_slug}/chart/{dc_id}/data",
-    response_model=ChartDataResponse,
-)
-async def get_linked_dashboard_chart_data_filtered(
-    slug: str,
-    linked_slug: str,
-    dc_id: int,
-    request: FilterRequest,
-    authorization: Optional[str] = Header(None),
-) -> ChartDataResponse:
-    """Get chart data from a linked dashboard with filters (requires JWT)."""
-    _verify_dashboard_token(authorization, slug)
-
-    is_linked = await dashboard_service.verify_linked_access(slug, linked_slug)
-    if not is_linked:
-        raise HTTPException(status_code=403, detail="Связанный дашборд не найден или не активен")
-
-    dashboard = await dashboard_service.get_dashboard_by_slug(linked_slug)
-    if not dashboard:
-        raise HTTPException(status_code=404, detail="Дашборд не найден")
-
-    filter_values = {f.name: f.value for f in request.filters}
-    return await _execute_filtered_chart(dashboard, dc_id, filter_values)
-
-
-# === Public Selector Endpoints ===
-
-
-@router.get("/dashboard/{slug}/selectors", response_model=SelectorListResponse)
-async def get_dashboard_selectors(
-    slug: str,
-    authorization: Optional[str] = Header(None),
-) -> SelectorListResponse:
-    """Get selectors for a public dashboard (requires JWT)."""
-    _verify_dashboard_token(authorization, slug)
-
-    dashboard = await dashboard_service.get_dashboard_by_slug(slug)
-    if not dashboard:
-        raise HTTPException(status_code=404, detail="Дашборд не найден")
-
-    selectors = await selector_service.get_selectors_for_dashboard(dashboard["id"])
-    return SelectorListResponse(
-        selectors=[SelectorResponse(**s) for s in selectors]
-    )
-
-
-@router.get(
-    "/dashboard/{slug}/selector/{selector_id}/options",
-    response_model=SelectorOptionsResponse,
-)
-async def get_public_selector_options(
-    slug: str,
-    selector_id: int,
-    authorization: Optional[str] = Header(None),
-) -> SelectorOptionsResponse:
-    """Get dropdown options for a selector on a public dashboard."""
-    _verify_dashboard_token(authorization, slug)
-
-    try:
-        options = await selector_service.get_selector_options(selector_id)
-        return SelectorOptionsResponse(options=options)
-    except DashboardServiceError as e:
         raise HTTPException(status_code=400, detail=e.message) from e
 
 

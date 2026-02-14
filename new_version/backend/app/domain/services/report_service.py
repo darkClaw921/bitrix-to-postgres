@@ -359,10 +359,20 @@ class ReportService:
 
             # Analyze data with LLM
             analysis_prompt = report.get("report_template", "")
-            result_markdown = await ai_service.analyze_report_data(
+            user_prompt = report.get("user_prompt", "")
+
+            # Load report_context from prompt templates
+            report_context = ""
+            tpl = await self.get_report_prompt_template("report_context")
+            if tpl and tpl.get("is_active"):
+                report_context = tpl.get("content", "")
+
+            result_markdown, llm_prompt = await ai_service.analyze_report_data(
                 report_title=report["title"],
                 sql_results=sql_results,
                 analysis_prompt=analysis_prompt,
+                user_prompt=user_prompt,
+                report_context=report_context,
             )
 
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
@@ -375,6 +385,7 @@ class ReportService:
                 result_data=sql_results,
                 sql_queries_executed=sql_results,
                 execution_time_ms=elapsed_ms,
+                llm_prompt=llm_prompt,
             )
 
             # Update report last_run_at
@@ -437,6 +448,7 @@ class ReportService:
         sql_queries_executed: list[dict[str, Any]] | None = None,
         error_message: str | None = None,
         execution_time_ms: int | None = None,
+        llm_prompt: str | None = None,
     ) -> None:
         """Update a report run record."""
         engine = get_engine()
@@ -449,12 +461,14 @@ class ReportService:
             "sql_queries_executed": json.dumps(sql_queries_executed, ensure_ascii=False, default=str) if sql_queries_executed else None,
             "error_message": error_message,
             "execution_time_ms": execution_time_ms,
+            "llm_prompt": llm_prompt,
         }
 
         query = text(
             "UPDATE ai_report_runs SET status = :status, result_markdown = :result_markdown, "
             "result_data = :result_data, sql_queries_executed = :sql_queries_executed, "
             "error_message = :error_message, execution_time_ms = :execution_time_ms, "
+            "llm_prompt = :llm_prompt, "
             "completed_at = NOW() WHERE id = :id"
         )
 
@@ -476,7 +490,7 @@ class ReportService:
         list_query = text(
             "SELECT id, report_id, status, trigger_type, result_markdown, result_data, "
             "sql_queries_executed, error_message, execution_time_ms, "
-            "started_at, completed_at, created_at "
+            "started_at, completed_at, created_at, llm_prompt "
             "FROM ai_report_runs "
             "WHERE report_id = :report_id "
             "ORDER BY created_at DESC "
@@ -499,7 +513,7 @@ class ReportService:
         query = text(
             "SELECT id, report_id, status, trigger_type, result_markdown, result_data, "
             "sql_queries_executed, error_message, execution_time_ms, "
-            "started_at, completed_at, created_at "
+            "started_at, completed_at, created_at, llm_prompt "
             "FROM ai_report_runs WHERE id = :id"
         )
 

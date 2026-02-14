@@ -42,37 +42,6 @@ Rules:
 11. For chart_type "horizontal_bar": same as "bar" but for scenarios with long category names or rankings. data_keys.x is the category column, data_keys.y is the value column. The bars are rendered horizontally.
 """
 
-SELECTOR_GENERATION_PROMPT = """You are an analytics dashboard configuration expert for a Bitrix24 CRM system.
-
-You need to analyze the SQL queries of charts on a dashboard and suggest relevant selectors (filters) that users can use to filter chart data dynamically.
-
-Charts on this dashboard:
-{charts_context}
-
-Database schema:
-{schema_context}
-
-Your task: generate a JSON object with a "selectors" array. Each selector has:
-- name (string): unique internal key in snake_case (e.g. "date_filter", "manager_filter", "stage_filter")
-- label (string): display label in Russian (e.g. "Период", "Менеджер", "Стадия")
-- selector_type (string): one of date_range, single_date, dropdown, multi_select, text
-- operator (string): one of equals, not_equals, in, not_in, between, gt, lt, gte, lte, like, not_like
-- config (object): optional, with source_table and source_column for dropdown/multi_select options
-- is_required (boolean): whether the filter is mandatory
-- mappings (array): chart mappings, each with:
-  - dashboard_chart_id (number): the ID of the chart on this dashboard
-  - target_column (string): the column in that chart's SQL to filter on
-
-Rules:
-1. Choose selector_type based on the data type of the columns (dates → date_range, text with few values → dropdown, text with many values → text, etc.)
-2. Match operator to selector_type: date_range → between, dropdown → equals, multi_select → in, text → like
-3. For dropdown/multi_select, set config.source_table and config.source_column to provide options
-4. Map the same selector to multiple charts if they share the same concept (e.g. date field) but possibly different column names
-5. Suggest 2-5 selectors that would be most useful for filtering the data
-6. Only suggest selectors for columns that actually exist in the charts' SQL queries
-7. Return valid JSON only
-"""
-
 REPORT_SYSTEM_PROMPT = """Ты — AI-аналитик для CRM-системы Bitrix24. Твоя задача — помогать пользователю создавать аналитические отчёты на основе данных из базы данных.
 
 Доступная схема базы данных:
@@ -120,6 +89,11 @@ REPORT_SYSTEM_PROMPT = """Ты — AI-аналитик для CRM-системы
 REPORT_ANALYSIS_PROMPT = """Ты — аналитик данных. Проанализируй результаты SQL-запросов и напиши аналитический отчёт в формате Markdown.
 
 Отчёт: {report_title}
+
+{report_context}
+
+Исходный запрос пользователя:
+{user_prompt}
 
 Результаты запросов:
 {sql_results_text}
@@ -312,63 +286,6 @@ class AIService:
         logger.info("Schema description generated", length=len(content))
         return content
 
-    async def generate_selectors(
-        self, charts_context: str, schema_context: str
-    ) -> list[dict]:
-        """Generate selector suggestions for a dashboard based on its charts.
-
-        Args:
-            charts_context: Formatted chart info (id, title, SQL).
-            schema_context: Formatted DB schema.
-
-        Returns:
-            List of selector dicts with name, label, type, operator, config, mappings.
-        """
-        system_message = SELECTOR_GENERATION_PROMPT.format(
-            charts_context=charts_context,
-            schema_context=schema_context,
-        )
-
-        logger.info("Generating selectors", model=self.model)
-
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {
-                        "role": "user",
-                        "content": "Предложи подходящие фильтры (селекторы) для этого дашборда на основе SQL-запросов чартов.",
-                    },
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                max_tokens=3000,
-            )
-        except openai.APIConnectionError as e:
-            logger.error("OpenAI connection error", error=str(e))
-            raise AIServiceError("Не удалось подключиться к OpenAI API") from e
-        except openai.RateLimitError as e:
-            logger.error("OpenAI rate limit", error=str(e))
-            raise AIServiceError("Превышен лимит запросов OpenAI") from e
-        except openai.APIStatusError as e:
-            logger.error("OpenAI API error", status=e.status_code, error=e.message)
-            raise AIServiceError(f"Ошибка OpenAI: {e.message}") from e
-
-        content = response.choices[0].message.content
-        if not content:
-            raise AIServiceError("AI вернул пустой ответ")
-
-        try:
-            result = json.loads(content)
-        except json.JSONDecodeError as e:
-            logger.error("Invalid JSON from AI", content=content)
-            raise AIServiceError("AI вернул невалидный JSON") from e
-
-        selectors = result.get("selectors", [])
-        logger.info("Selectors generated", count=len(selectors))
-        return selectors
-
     async def generate_report_step(
         self,
         conversation_history: list[dict[str, str]],
@@ -434,17 +351,24 @@ class AIService:
         report_title: str,
         sql_results: list[dict],
         analysis_prompt: str,
-    ) -> str:
+        user_prompt: str = "",
+        report_context: str = "",
+    ) -> tuple[str, str]:
         """Analyze SQL query results and generate a Markdown report.
 
         Args:
             report_title: Title of the report.
             sql_results: List of {sql, purpose, rows, row_count, time_ms, error?}.
             analysis_prompt: Additional instructions for analysis.
+            user_prompt: Original user request that created the report.
+            report_context: Custom report context from prompt templates.
 
         Returns:
-            Markdown string with the report.
+            Tuple of (markdown_content, full_prompt_sent_to_llm).
         """
+        if not report_context:
+            report_context = await self._get_report_context()
+
         # Format SQL results for the prompt
         results_parts = []
         for i, r in enumerate(sql_results, 1):
@@ -465,6 +389,8 @@ class AIService:
 
         system_message = REPORT_ANALYSIS_PROMPT.format(
             report_title=report_title,
+            report_context=report_context,
+            user_prompt=user_prompt or "(не указан)",
             sql_results_text=sql_results_text,
             analysis_prompt=analysis_prompt or "Проведи общий анализ данных.",
         )
@@ -499,4 +425,4 @@ class AIService:
             raise AIServiceError("AI вернул пустой ответ")
 
         logger.info("Report analysis generated", length=len(content))
-        return content
+        return content, system_message

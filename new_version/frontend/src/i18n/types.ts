@@ -236,35 +236,6 @@ export interface Translations {
     addDescription: string
     customTitle: string
     customDescription: string
-    selectorsFilters: string
-    generateWithAi: string
-    addSelector: string
-    selectorDescription: string
-    internalName: string
-    displayLabel: string
-    selectorType: string
-    operator: string
-    sourceTable: string
-    sourceColumn: string
-    labelTable: string
-    labelColumn: string
-    labelValueColumn: string
-    typeManually: string
-    pickFromList: string
-    selectTable: string
-    selectColumn: string
-    selectTableFirst: string
-    selectLabelTableFirst: string
-    createSelector: string
-    creating: string
-    chartMappings: string
-    noMappings: string
-    addMapping: string
-    targetColumn: string
-    selectChart: string
-    selectChartFirst: string
-    loadingColumns: string
-    noSelectors: string
     linkedDashboards: string
     linkedDescription: string
     dashboard: string
@@ -276,10 +247,7 @@ export interface Translations {
     moveDown: string
     removeLink: string
     selectDashboard: string
-    failedToGenerateSelectors: string
-    deleteSelector: string
     confirmRemoveChart: string
-    confirmDeleteSelector: string
     confirmDeleteChart: string
     design: string
     gridFormat: string
@@ -452,15 +420,6 @@ export interface Translations {
     charts: string
     confirmDelete: string
   }
-  selectors: {
-    from: string
-    to: string
-    select: string
-    selected: string
-    noOptions: string
-    selectDate: string
-    enterValue: string
-  }
   chartRenderer: {
     prev: string
     next: string
@@ -528,6 +487,8 @@ export interface Translations {
     tabLabel: string
     userPrompt: string
     editReport: string
+    fullPrompt: string
+    noPromptData: string
   }
   embedReport: {
     loadingReport: string

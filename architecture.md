@@ -51,7 +51,7 @@
   - `AIChart` — сохранённые AI-чарты
   - `ReportPromptTemplate` — системные промпты для AI отчётов
   - `AIReport` — определение AI-отчёта (title, user_prompt, status, schedule_type, schedule_config, sql_queries, report_template, is_pinned)
-  - `AIReportRun` — результат выполнения отчёта (status, trigger_type, result_markdown, result_data, sql_queries_executed, execution_time_ms)
+  - `AIReportRun` — результат выполнения отчёта (status, trigger_type, result_markdown, result_data, sql_queries_executed, execution_time_ms, llm_prompt)
   - `AIReportConversation` — история диалога генерации отчёта (session_id, role, content, metadata)
   - `PublishedDashboard` — опубликованные дашборды (slug, password_hash, is_active, refresh_interval_minutes)
   - `DashboardChart` — чарты в дашборде (layout позиции, title/description override)
@@ -72,6 +72,7 @@
 - **010_add_records_fetched_to_sync_logs.py** — добавление records_fetched в sync_logs
 - **011_create_reports_tables.py** — report_prompt_templates, ai_reports, ai_report_runs, ai_report_conversations (PG/MySQL dual dialect, default report_context промпт)
 - **012_create_published_reports_tables.py** — published_reports (slug, report_id FK, password_hash), published_report_links (PG/MySQL dual dialect)
+- **013_add_llm_prompt_to_report_runs.py** — добавление колонки llm_prompt (Text, nullable) в ai_report_runs для хранения полного промпта отправленного в LLM
 
 #### Очередь синхронизаций (`app/infrastructure/queue/`)
 - **sync_queue.py** — `SyncQueue`: центральная очередь с двумя каналами:
@@ -95,7 +96,7 @@
   - `generate_chart_spec(prompt, schema_context)` → JSON спецификация чарта
   - `generate_schema_description(schema_context)` → Markdown документация
   - `generate_report_step(conversation_history, schema_context)` → шаг диалога генерации отчёта (вопрос или готовая спецификация)
-  - `analyze_report_data(report_title, sql_results, analysis_prompt)` → Markdown-текст аналитического отчёта
+  - `analyze_report_data(report_title, sql_results, analysis_prompt, user_prompt, report_context)` → tuple[str, str] (markdown-отчёт, полный промпт отправленный в LLM)
   - `_get_report_context()` → системный промпт из report_prompt_templates
 - **report_service.py** — `ReportService`:
   - Диалог: `save_conversation_message()`, `get_conversation_history()`, `generate_session_id()`
@@ -141,7 +142,7 @@
 #### API (`app/api/v1/`)
 - **__init__.py** — регистрация роутеров с разделением на public и protected:
   - Публичные (без auth): auth, webhooks, public
-  - Защищённые (JWT `Depends(get_current_user)`): sync, status, charts, schema, references, dashboards, selectors, reports
+  - Защищённые (JWT `Depends(get_current_user)`): sync, status, charts, schema, references, dashboards, reports
 
 ##### Схемы (`app/api/v1/schemas/`)
 - **common.py** — `HealthResponse`, `ErrorResponse`, `SuccessResponse`, `PaginationParams`
@@ -237,12 +238,11 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **reports/ReportChat.tsx** — чат-интерфейс диалога с LLM: список сообщений, поле ввода, индикатор генерации, кнопка нового чата
 - **reports/ReportCard.tsx** — карточка отчёта: статус, расписание, кнопки (запустить, результаты, SQL, Prompt, расписание, закрепить, удалить), просмотр/редактирование SQL-запросов и промпта
 - **reports/ScheduleSelector.tsx** — редактор расписания: тип (once/daily/weekly/monthly), время, день недели/месяца, статус
-- **reports/ReportRunViewer.tsx** — просмотр запусков отчёта: список с бейджами статуса, 3 таба (Markdown через react-markdown + remarkGfm + markdownTableComponents, SQL запросы, сырые данные)
+- **reports/ReportRunViewer.tsx** — просмотр запусков отчёта: список с бейджами статуса, 4 таба (Markdown через react-markdown + remarkGfm + markdownTableComponents, SQL запросы, сырые данные, полный промпт)
 - **reports/markdownComponents.tsx** — общие кастомные компоненты ReactMarkdown для таблиц с рамками (table, thead, th, td)
 - **reports/ReportPromptEditorModal.tsx** — модалка редактирования системного промпта для отчётов
 - **reports/PublishReportModal.tsx** — модалка публикации отчёта (выбор отчёта, title, description → URL + пароль)
 - **reports/PublishedReportCard.tsx** — карточка опубликованного отчёта (title, report_title, кнопки open/link/связи/смена пароля/delete), управление связями (linked reports): список текущих связей с удалением, dropdown для добавления новых; смена пароля с отображением нового
-
 #### State Management
 - **src/store/authStore.ts** — Zustand store авторизации
 - **src/store/syncStore.ts** — Zustand store текущих синхронизаций

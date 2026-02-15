@@ -9,6 +9,7 @@ import ChartRenderer from '../components/charts/ChartRenderer'
 import ChartSettingsPanel from '../components/charts/ChartSettingsPanel'
 import DesignModeOverlay from '../components/charts/DesignModeOverlay'
 import DesignModeToolbar from '../components/charts/design/DesignModeToolbar'
+import SelectorEditorSection from '../components/selectors/SelectorEditorSection'
 import { useDesignMode } from '../hooks/useDesignMode'
 import { useUpdateChartConfig } from '../hooks/useCharts'
 import {
@@ -370,6 +371,9 @@ export default function DashboardEditorPage() {
           {t('editor.noCharts')}
         </div>
       )}
+
+      {/* Selectors Section */}
+      <SelectorEditorSection dashboardId={dashboardId} charts={dashboard.charts} />
 
       {/* Linked Dashboards Section */}
       <LinkedDashboardsSection

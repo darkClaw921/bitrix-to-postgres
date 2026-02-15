@@ -3,6 +3,7 @@ import { useAuthStore } from '../store/authStore'
 import { useHealth } from '../hooks/useSync'
 import { useTranslation } from '../i18n'
 import LanguageSwitcher from './LanguageSwitcher'
+import { UI_VERSION } from '../version'
 
 export default function Layout() {
   const location = useLocation()
@@ -82,6 +83,13 @@ export default function Layout() {
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <Outlet />
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-gray-200 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-end">
+          <span className="text-xs text-gray-400">{t('footer.version')} {UI_VERSION}</span>
+        </div>
+      </footer>
     </div>
   )
 }

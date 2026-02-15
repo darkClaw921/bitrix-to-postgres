@@ -513,4 +513,110 @@ export interface Translations {
     defaultPosition: string
     dragHint: string
   }
+  selectors: {
+    title: string
+    addSelector: string
+    noSelectors: string
+    editSelector: string
+    deleteSelector: string
+    confirmDelete: string
+    selectorName: string
+    selectorNameHint: string
+    selectorLabel: string
+    selectorLabelHint: string
+    selectorType: string
+    selectorTypeHint: string
+    operator: string
+    operatorHint: string
+    required: string
+    requiredHint: string
+    // Types
+    typeDropdown: string
+    typeDropdownDesc: string
+    typeMultiSelect: string
+    typeMultiSelectDesc: string
+    typeDateRange: string
+    typeDateRangeDesc: string
+    typeSingleDate: string
+    typeSingleDateDesc: string
+    typeText: string
+    typeTextDesc: string
+    // Operators
+    opEquals: string
+    opIn: string
+    opBetween: string
+    opLike: string
+    opGt: string
+    opLt: string
+    opGte: string
+    opLte: string
+    // Steps
+    step1Title: string
+    step2Title: string
+    step3Title: string
+    next: string
+    previous: string
+    finish: string
+    // Step 2 — Data source
+    staticValues: string
+    staticValuesHint: string
+    fromDatabase: string
+    fromDatabaseHint: string
+    addValue: string
+    sourceTable: string
+    sourceTableHint: string
+    sourceColumn: string
+    sourceColumnHint: string
+    showLabelsFrom: string
+    showLabelsHint: string
+    labelTable: string
+    labelTableHint: string
+    labelColumn: string
+    labelColumnHint: string
+    labelValueColumn: string
+    labelValueColumnHint: string
+    previewOptions: string
+    // Step 3 — Chart mappings
+    selectCharts: string
+    selectChartsHint: string
+    targetColumn: string
+    targetColumnHint: string
+    targetTable: string
+    targetTableHint: string
+    operatorOverride: string
+    operatorOverrideHint: string
+    noTablesInQuery: string
+    // Selector bar
+    applyFilters: string
+    resetFilters: string
+    allValues: string
+    selected: string
+    search: string
+    selectAll: string
+    deselectAll: string
+    // Date presets
+    today: string
+    last7Days: string
+    lastMonth: string
+    lastQuarter: string
+    from: string
+    to: string
+    // Misc
+    moveUp: string
+    moveDown: string
+    mappedCharts: string
+    // Board dialog
+    boardTitle: string
+    configPanel: string
+    sqlPreview: string
+    sqlOriginal: string
+    sqlFiltered: string
+    dragToConnect: string
+    clickEdgeToConfig: string
+    deleteMapping: string
+    noMappings: string
+  }
+  footer: {
+    version: string
+  }
 }

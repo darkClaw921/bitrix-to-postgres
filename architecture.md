@@ -66,6 +66,7 @@
 - **004_create_dashboards_tables.py** — published_dashboards, dashboard_charts (FK cascade)
 - **005_add_refresh_interval.py** — добавление refresh_interval_minutes в published_dashboards
 - **006_create_dashboard_links_table.py** — dashboard_links (FK → published_dashboards CASCADE, unique constraint)
+- **007_create_dashboard_selectors_tables.py** — dashboard_selectors (FK → published_dashboards CASCADE, config JSON, sort_order, is_required), selector_chart_mappings (FK → dashboard_selectors CASCADE, FK → dashboard_charts CASCADE, target_column, target_table, operator_override)
 - **007_create_chart_prompt_templates.py** — chart_prompt_templates
 - **008_add_sql_history.py** — sql_query_history
 - **009_create_chart_prompts_table.py** — chart_prompt_templates (промпт-шаблоны для чартов)
@@ -117,6 +118,8 @@
 - **dashboard_service.py** — `DashboardService`:
   - `create_dashboard(title, chart_ids, refresh_interval_minutes)` → slug + bcrypt password
   - `get_dashboards(page, per_page)`, `get_dashboard_by_id/slug` → с join charts
+  - `get_dashboard_id_by_slug(slug)` — лёгкий запрос только ID (без charts/selectors)
+  - `get_chart_sql_by_slug(slug, dc_id)` — лёгкий запрос SQL одного чарта (1 JOIN, без загрузки всего дашборда)
   - `verify_password(slug, password)` → bcrypt verify
   - `generate_token(slug)` / `verify_token(token)` → JWT (HS256, python-jose)
   - `update_dashboard`, `update_layout`, `update_chart_override`
@@ -124,6 +127,15 @@
   - `add_link(dashboard_id, linked_dashboard_id, label?, sort_order?)` — связывание дашбордов для табов
   - `remove_link(link_id)`, `get_links(dashboard_id)`, `update_link_order(dashboard_id, links)`
   - `verify_linked_access(main_slug, linked_slug)` — проверка связи + активности обоих дашбордов
+  - `_get_selectors(dashboard_id)` — загрузка селекторов через SelectorService (lazy import)
+- **selector_service.py** — `SelectorService`:
+  - CRUD: `create_selector()`, `get_selector_by_id()`, `get_selectors_for_dashboard()`, `update_selector()`, `delete_selector()`
+  - `get_selectors_for_dashboard()` — один JOIN-запрос (selectors + mappings), без N+1
+  - Маппинги: `add_mapping()`, `remove_mapping()`, `_replace_mappings()` — полная перезапись маппингов
+  - Фильтрация: `build_filters_for_chart(dashboard_id, dc_id, filter_values, selectors?)` → список фильтров для `ChartService.apply_filters()`, принимает предзагруженные селекторы
+  - Опции: `get_selector_options(selector_id)`, `get_all_selector_options(dashboard_id)` (batch), `_resolve_options(selector)` — SELECT DISTINCT с опциональным LEFT JOIN для label-таблицы, или static_values из config
+  - Колонки: `get_chart_columns(dc_id)` → column names через LIMIT 0 subquery
+  - Preview: `preview_filter(dc_id, target_column, operator, target_table?, sample_value?)` → original_sql, filtered_sql, where_clause для визуализации на доске
 
 #### Доменные сущности (`app/domain/entities/`)
 - **base.py** — `BitrixEntity` базовый класс, `EntityType` enum (deal, contact, lead, company, user, task)
@@ -142,12 +154,13 @@
 #### API (`app/api/v1/`)
 - **__init__.py** — регистрация роутеров с разделением на public и protected:
   - Публичные (без auth): auth, webhooks, public
-  - Защищённые (JWT `Depends(get_current_user)`): sync, status, charts, schema, references, dashboards, reports
+  - Защищённые (JWT `Depends(get_current_user)`): sync, status, charts, schema, references, dashboards, selectors, reports
 
 ##### Схемы (`app/api/v1/schemas/`)
 - **common.py** — `HealthResponse`, `ErrorResponse`, `SuccessResponse`, `PaginationParams`
 - **charts.py** — `ChartGenerateRequest`, `ChartConfigUpdateRequest`, `ChartSpec`, `ChartGenerateResponse`, `ChartResponse`, `ChartListResponse`, `ChartDataResponse`
-- **dashboards.py** — `DashboardPublishRequest`, `DashboardUpdateRequest`, `LayoutItem`, `DashboardLayoutUpdateRequest`, `ChartOverrideUpdateRequest`, `DashboardAuthRequest`, `IframeCodeRequest`, `DashboardLinkRequest`, `DashboardLinkOrderItem`, `DashboardLinkUpdateRequest`, `DashboardChartResponse`, `DashboardLinkResponse`, `DashboardResponse` (с `linked_dashboards`), `DashboardListResponse`, `DashboardPublishResponse`, `DashboardAuthResponse`, `PasswordChangeResponse`, `IframeCodeResponse`
+- **dashboards.py** — `DashboardPublishRequest`, `DashboardUpdateRequest`, `LayoutItem`, `DashboardLayoutUpdateRequest`, `ChartOverrideUpdateRequest`, `DashboardAuthRequest`, `IframeCodeRequest`, `DashboardLinkRequest`, `DashboardLinkOrderItem`, `DashboardLinkUpdateRequest`, `DashboardChartResponse`, `DashboardLinkResponse`, `DashboardResponse` (с `linked_dashboards`, `selectors`), `DashboardListResponse`, `DashboardPublishResponse`, `DashboardAuthResponse`, `PasswordChangeResponse`, `IframeCodeResponse`
+- **selectors.py** — `SelectorCreateRequest`, `SelectorUpdateRequest`, `MappingCreateRequest`, `FilterValue`, `FilterRequest`, `SelectorResponse`, `MappingResponse`, `SelectorListResponse`, `SelectorOptionItem`, `SelectorOptionsResponse`, `ChartColumnsResponse`, `ChartTablesResponse`, `FilterPreviewRequest`, `FilterPreviewResponse`
 - **schema_description.py** — `ColumnInfo`, `TableInfo`, `SchemaTablesResponse`, `SchemaDescriptionResponse`
 - **sync.py** — `SyncConfigItem`, `BitrixFilter`, `SyncStartRequest/Response` (с optional filter), `SyncStatusItem/Response`, `SyncHistoryResponse`
 - **webhooks.py** — `WebhookEventData`, `WebhookResponse`, `WebhookRegistration`
@@ -169,6 +182,20 @@
   - POST `/report/{slug}/auth` — авторизация паролем → JWT с `type: "report"`
   - GET `/report/{slug}` — данные опубликованного отчёта (runs + linked_reports, JWT)
   - GET `/report/{slug}/linked/{linked_slug}` — данные связанного отчёта (JWT главного)
+  - POST `/dashboard/{slug}/chart/{dc_id}/data` — данные чарта с фильтрами (FilterRequest body, JWT)
+  - POST `/dashboard/{slug}/linked/{linked_slug}/chart/{dc_id}/data` — данные чарта linked дашборда с фильтрами
+  - GET `/dashboard/{slug}/selectors` — список селекторов публичного дашборда (JWT)
+  - GET `/dashboard/{slug}/selector/{selector_id}/options` — опции для dropdown/multi-select (JWT)
+  - GET `/dashboard/{slug}/selector-options` — batch-опции всех селекторов дашборда за один запрос (JWT)
+- **selectors.py** (internal, prefix `/dashboards`):
+  - POST `/{dashboard_id}/selectors` — создание селектора с маппингами
+  - GET `/{dashboard_id}/selectors` — список селекторов дашборда
+  - PUT `/{dashboard_id}/selectors/{selector_id}` — обновление (включая полную перезапись маппингов)
+  - DELETE `/{dashboard_id}/selectors/{selector_id}` — удаление
+  - GET `/{dashboard_id}/selectors/{selector_id}/options` — опции dropdown
+  - GET `/{dashboard_id}/charts/{dc_id}/columns` — колонки SQL-запроса чарта
+  - GET `/{dashboard_id}/charts/{dc_id}/tables` — таблицы из SQL-запроса чарта (FROM/JOIN)
+  - POST `/{dashboard_id}/charts/{dc_id}/preview-filter` — превью SQL с фильтром (FilterPreviewRequest → FilterPreviewResponse)
 - **schema_description.py** — GET `/describe`, GET `/tables`, GET `/history`, PATCH `/{id}`, GET `/list`
 - **sync.py** — GET `/config`, PUT `/config`, POST `/start/{entity}`, GET `/status`, GET `/running`
 - **webhooks.py** — POST `/register`, DELETE `/unregister`, GET `/registered`
@@ -198,14 +225,15 @@ React 18 + TypeScript + Vite + Tailwind CSS
 #### Сервисы и хуки
 - **src/services/api.ts** — axios HTTP клиент (с 401 interceptor → redirect на /login), все типы и API объекты:
   - `syncApi`, `statusApi`, `webhooksApi`, `referencesApi`, `chartsApi` (с `updateConfig` для PATCH), `schemaApi`
-  - `dashboardsApi` — publish, list, get, update, delete, updateLayout, updateChartOverride, removeChart, changePassword, getIframeCode, addLink, removeLink, updateLinks
+  - `dashboardsApi` — publish, list, get, update, delete, updateLayout, updateChartOverride, removeChart, changePassword, getIframeCode, addLink, removeLink, updateLinks, listSelectors, createSelector, updateSelector, deleteSelector, getSelectorOptions, getChartColumns, getChartTables, previewFilter
   - `reportsApi` — converse, save, list, get, delete, update, updateSchedule, run, togglePin, getRuns, getRun, getPromptTemplate, updatePromptTemplate
   - `publishedReportsApi` — publish, list, get, delete, changePassword, addLink, removeLink, updateLinks
-  - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData, getLinkedDashboard, getLinkedDashboardChartData, authenticateReport, getPublicReport, getLinkedReport
+  - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData, getLinkedDashboard, getLinkedDashboardChartData, getDashboardChartDataFiltered, getLinkedDashboardChartDataFiltered, getPublicSelectors, getPublicSelectorOptions, authenticateReport, getPublicReport, getLinkedReport
 - **src/hooks/useSync.ts** — хуки синхронизации и справочников
 - **src/hooks/useCharts.ts** — хуки чартов (`useUpdateChartConfig` для PATCH config) и описаний схемы
 - **src/hooks/useDashboards.ts** — `usePublishDashboard`, `useDashboardList`, `useDashboard`, `useUpdateDashboard`, `useDeleteDashboard`, `useUpdateDashboardLayout`, `useUpdateChartOverride`, `useRemoveChartFromDashboard`, `useChangeDashboardPassword`, `useIframeCode`, `useAddDashboardLink`, `useRemoveDashboardLink`, `useUpdateDashboardLinks`
 - **src/hooks/useReports.ts** — хуки отчётов: `useReportConverse`, `useReportSave`, `useReports`, `useDeleteReport`, `useUpdateReport`, `useUpdateReportSchedule`, `useRunReport`, `useToggleReportPin`, `useReportRuns`, `useReportPromptTemplate`, `useUpdateReportPromptTemplate`, `usePublishReport`, `usePublishedReport`, `usePublishedReports`, `useDeletePublishedReport`, `useChangePublishedReportPassword`, `useAddPublishedReportLink`, `useRemovePublishedReportLink`
+- **src/hooks/useSelectors.ts** — `useDashboardSelectors`, `useCreateSelector`, `useUpdateSelector`, `useDeleteSelector`, `useSelectorOptions`, `useChartColumns`, `useFilterPreview`
 - **src/hooks/useAuth.ts** — хук авторизации
 
 #### Страницы (`src/pages/`)
@@ -218,12 +246,12 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **SchemaPage.tsx** — браузер схемы БД с AI описанием
 - **LoginPage.tsx** — авторизация
 - **EmbedChartPage.tsx** — standalone embed одного чарта (без навигации, публичный)
-- **EmbedDashboardPage.tsx** — публичный дашборд с password gate, JWT в sessionStorage, grid чартов, auto-refresh по интервалу (setInterval), индикатор обновления и "last updated", табы для связанных дашбордов (кеширование загруженных табов, auto-refresh для активного таба)
+- **EmbedDashboardPage.tsx** — публичный дашборд с password gate, JWT в sessionStorage, grid чартов, auto-refresh по интервалу (setInterval), индикатор обновления и "last updated", табы для связанных дашбордов (кеширование загруженных табов, auto-refresh для активного таба), SelectorBar с фильтрами (POST с FilterValue[] при активных фильтрах, сброс при переключении таба), footer с версией UI
 - **EmbedReportPage.tsx** — публичная страница опубликованного отчёта: PasswordGate → JWT в sessionStorage, header (title + description), табы для связанных отчётов (кеш), список runs в виде аккордеона (ReactMarkdown + remarkGfm + markdownTableComponents для таблиц с рамками)
-- **DashboardEditorPage.tsx** — редактор дашборда: drag & drop + resize чартов (react-grid-layout v2), inline редактирование title/description, удаление чартов, смена пароля, копирование ссылки, секция "Linked Dashboards" (добавление/удаление/перестановка связей)
+- **DashboardEditorPage.tsx** — редактор дашборда: drag & drop + resize чартов (react-grid-layout v2), inline редактирование title/description, удаление чартов, смена пароля, копирование ссылки, секция SelectorEditorSection (CRUD селекторов через wizard-модалку из 3 шагов), секция "Linked Dashboards" (добавление/удаление/перестановка связей)
 
 #### Компоненты (`src/components/`)
-- **Layout.tsx** — навигация, health индикатор, outlet
+- **Layout.tsx** — навигация, health индикатор, outlet, footer с версией UI
 - **SyncCard.tsx** — карточка синхронизации сущности с обнаружением OPERATION_TIME_LIMIT и интеграцией FilterDialog
 - **FilterDialog.tsx** — модальное окно фильтра для повторной синхронизации с ограничением по дате (поле, оператор, значение)
 - **ReferenceCard.tsx** — карточка справочника
@@ -243,6 +271,23 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **reports/ReportPromptEditorModal.tsx** — модалка редактирования системного промпта для отчётов
 - **reports/PublishReportModal.tsx** — модалка публикации отчёта (выбор отчёта, title, description → URL + пароль)
 - **reports/PublishedReportCard.tsx** — карточка опубликованного отчёта (title, report_title, кнопки open/link/связи/смена пароля/delete), управление связями (linked reports): список текущих связей с удалением, dropdown для добавления новых; смена пароля с отображением нового
+- **selectors/SelectorBar.tsx** — горизонтальная полоса фильтров для публичного дашборда: загрузка опций, 5 типов виджетов, кнопки "Применить"/"Сбросить"
+- **selectors/SelectorEditorSection.tsx** — секция управления селекторами в редакторе дашборда: список с сортировкой, кнопки edit/delete, открытие SelectorBoardDialog
+- **selectors/SelectorModal.tsx** — (legacy) wizard из 3 шагов: основные настройки (тип, имя, оператор), источник данных (static/DB с JOIN), привязка к графикам (чекбоксы + выбор колонки)
+- **selectors/SelectorBoardDialog.tsx** — интерактивная доска (React Flow) для настройки маппингов фильтра к графикам: drag-to-connect от селектора к колонкам чартов, edge popup для operator_override, SQL preview
+- **selectors/SelectorConfigPanel.tsx** — левая панель 280px: настройки типа, имени, оператора, источника данных (static/database) — всё на одном экране
+- **selectors/SqlPreviewPanel.tsx** — нижняя сворачиваемая панель: оригинальный и модифицированный SQL с подсветкой WHERE clause
+- **selectors/nodes/SelectorNode.tsx** — кастомный React Flow node: голубая карточка селектора с label, type, operator, source handle справа
+- **selectors/nodes/ChartNode.tsx** — кастомный React Flow node: белая карточка чарта с заголовком и списком колонок, каждая колонка — target handle слева
+- **selectors/nodes/MappingEdge.tsx** — кастомный React Flow edge (Bezier) с label на середине: target_column + operator_override, кнопка удаления при выделении
+- **selectors/DropdownSelector.tsx** — select с кнопкой очистки
+- **selectors/MultiSelectSelector.tsx** — dropdown с чекбоксами, поиском, select all/deselect all
+- **selectors/DateRangeSelector.tsx** — два input[date] + пресеты (сегодня, 7 дней, месяц, квартал)
+- **selectors/SingleDateSelector.tsx** — input[date] с кнопкой очистки
+- **selectors/TextSelector.tsx** — input[text] с debounce 300ms
+#### Версионирование UI
+- **src/version.ts** — константа `UI_VERSION`, обновляется при каждом изменении UI
+
 #### State Management
 - **src/store/authStore.ts** — Zustand store авторизации
 - **src/store/syncStore.ts** — Zustand store текущих синхронизаций
@@ -258,7 +303,7 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - `ProtectedRoute` — auth guard: проверяет isAuthenticated, редиректит на /login
 
 #### Локализация (`src/i18n/`)
-- **types.ts** — типизированные ключи переводов: nav, common, dashboard, config, monitoring, validation, charts, schema, references, dashboards, ai, reports, embedReport
+- **types.ts** — типизированные ключи переводов: nav, common, dashboard, config, monitoring, validation, charts, schema, references, dashboards, ai, reports, embedReport, selectors, footer
 - **locales/ru.ts** / **locales/en.ts** — русские и английские переводы
 
 #### Зависимости (`package.json`)

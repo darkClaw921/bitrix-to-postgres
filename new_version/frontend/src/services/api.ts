@@ -516,6 +516,84 @@ export interface DashboardLink {
   linked_slug?: string
 }
 
+export interface SelectorMapping {
+  id: number
+  selector_id: number
+  dashboard_chart_id: number
+  target_column: string
+  target_table?: string
+  operator_override?: string
+  created_at?: string
+}
+
+export interface DashboardSelector {
+  id: number
+  dashboard_id: number
+  name: string
+  label: string
+  selector_type: string
+  operator: string
+  config?: Record<string, unknown>
+  sort_order: number
+  is_required: boolean
+  mappings: SelectorMapping[]
+  created_at?: string
+}
+
+export interface SelectorMappingRequest {
+  dashboard_chart_id: number
+  target_column: string
+  target_table?: string
+  operator_override?: string
+}
+
+export interface SelectorCreateRequest {
+  name: string
+  label: string
+  selector_type: string
+  operator?: string
+  config?: Record<string, unknown>
+  sort_order?: number
+  is_required?: boolean
+  mappings?: SelectorMappingRequest[]
+}
+
+export interface SelectorUpdateRequest {
+  name?: string
+  label?: string
+  selector_type?: string
+  operator?: string
+  config?: Record<string, unknown>
+  sort_order?: number
+  is_required?: boolean
+  mappings?: SelectorMappingRequest[]
+}
+
+export interface SelectorOption {
+  value: unknown
+  label: string
+}
+
+export interface FilterValue {
+  name: string
+  value: unknown
+}
+
+export interface FilterPreviewRequest {
+  selector_name: string
+  selector_type: string
+  operator: string
+  target_column: string
+  target_table?: string
+  sample_value?: string
+}
+
+export interface FilterPreviewResponse {
+  original_sql: string
+  filtered_sql: string
+  where_clause: string
+}
+
 export interface Dashboard {
   id: number
   slug: string
@@ -525,6 +603,7 @@ export interface Dashboard {
   refresh_interval_minutes: number
   charts: DashboardChart[]
   linked_dashboards?: DashboardLink[]
+  selectors?: DashboardSelector[]
   created_at: string
   updated_at: string
 }
@@ -650,6 +729,31 @@ export const dashboardsApi = {
   updateLinks: (dashboardId: number, links: { id: number; sort_order: number }[]) =>
     api.put<DashboardLink[]>(`/dashboards/${dashboardId}/links`, { links }).then((r) => r.data),
 
+  // Selectors
+  listSelectors: (dashboardId: number) =>
+    api.get<{ selectors: DashboardSelector[] }>(`/dashboards/${dashboardId}/selectors`).then((r) => r.data.selectors),
+
+  createSelector: (dashboardId: number, data: SelectorCreateRequest) =>
+    api.post<DashboardSelector>(`/dashboards/${dashboardId}/selectors`, data).then((r) => r.data),
+
+  updateSelector: (dashboardId: number, selectorId: number, data: SelectorUpdateRequest) =>
+    api.put<DashboardSelector>(`/dashboards/${dashboardId}/selectors/${selectorId}`, data).then((r) => r.data),
+
+  deleteSelector: (dashboardId: number, selectorId: number) =>
+    api.delete(`/dashboards/${dashboardId}/selectors/${selectorId}`).then((r) => r.data),
+
+  getSelectorOptions: (dashboardId: number, selectorId: number) =>
+    api.get<{ options: SelectorOption[] }>(`/dashboards/${dashboardId}/selectors/${selectorId}/options`).then((r) => r.data.options),
+
+  getChartColumns: (dashboardId: number, dcId: number) =>
+    api.get<{ columns: string[] }>(`/dashboards/${dashboardId}/charts/${dcId}/columns`).then((r) => r.data.columns),
+
+  getChartTables: (dashboardId: number, dcId: number) =>
+    api.get<{ tables: string[] }>(`/dashboards/${dashboardId}/charts/${dcId}/tables`).then((r) => r.data.tables),
+
+  previewFilter: (dashboardId: number, dcId: number, data: FilterPreviewRequest) =>
+    api.post<FilterPreviewResponse>(`/dashboards/${dashboardId}/charts/${dcId}/preview-filter`, data).then((r) => r.data),
+
 }
 
 // === Public API (no auth interceptor) ===
@@ -688,6 +792,33 @@ export const publicApi = {
     publicAxios.get<ChartDataResponse>(`/public/dashboard/${slug}/linked/${linkedSlug}/chart/${dcId}/data`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then((r) => r.data),
+
+  // Filtered chart data (POST)
+  getDashboardChartDataFiltered: (slug: string, dcId: number, token: string, filters: FilterValue[]) =>
+    publicAxios.post<ChartDataResponse>(`/public/dashboard/${slug}/chart/${dcId}/data`, { filters }, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data),
+
+  getLinkedDashboardChartDataFiltered: (slug: string, linkedSlug: string, dcId: number, token: string, filters: FilterValue[]) =>
+    publicAxios.post<ChartDataResponse>(`/public/dashboard/${slug}/linked/${linkedSlug}/chart/${dcId}/data`, { filters }, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data),
+
+  // Public selectors
+  getPublicSelectors: (slug: string, token: string) =>
+    publicAxios.get<{ selectors: DashboardSelector[] }>(`/public/dashboard/${slug}/selectors`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data.selectors),
+
+  getPublicSelectorOptions: (slug: string, selectorId: number, token: string) =>
+    publicAxios.get<{ options: SelectorOption[] }>(`/public/dashboard/${slug}/selector/${selectorId}/options`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data.options),
+
+  getPublicSelectorOptionsBatch: (slug: string, token: string) =>
+    publicAxios.get<{ options: Record<number, SelectorOption[]> }>(`/public/dashboard/${slug}/selector-options`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.data.options),
 
   // Published Reports
   authenticateReport: (slug: string, password: string) =>

@@ -168,6 +168,7 @@ class DashboardService:
         dashboard = dict(zip(list(result.keys()), row))
         dashboard["charts"] = await self._get_dashboard_charts(dashboard_id)
         dashboard["linked_dashboards"] = await self.get_links(dashboard_id)
+        dashboard["selectors"] = await self._get_selectors(dashboard_id)
         return dashboard
 
     async def get_dashboard_by_slug(self, slug: str) -> dict[str, Any] | None:
@@ -188,6 +189,7 @@ class DashboardService:
         dashboard = dict(zip(list(result.keys()), row))
         dashboard["charts"] = await self._get_dashboard_charts(dashboard["id"])
         dashboard["linked_dashboards"] = await self.get_links(dashboard["id"])
+        dashboard["selectors"] = await self._get_selectors(dashboard["id"])
         return dashboard
 
     async def _get_dashboard_charts(self, dashboard_id: int) -> list[dict[str, Any]]:
@@ -215,6 +217,37 @@ class DashboardService:
                 chart["chart_config"] = json_mod.loads(chart["chart_config"])
 
         return charts
+
+    async def get_dashboard_id_by_slug(self, slug: str) -> int | None:
+        """Get dashboard ID by slug (lightweight, no charts/selectors)."""
+        engine = get_engine()
+        query = text("SELECT id FROM published_dashboards WHERE slug = :slug AND is_active = true")
+        async with engine.begin() as conn:
+            result = await conn.execute(query, {"slug": slug})
+            row = result.fetchone()
+        return row[0] if row else None
+
+    async def get_chart_sql_by_slug(
+        self, slug: str, dc_id: int
+    ) -> dict[str, Any] | None:
+        """Get a single chart's SQL and dashboard_id by slug + dc_id (lightweight)."""
+        engine = get_engine()
+
+        query = text(
+            "SELECT pd.id AS dashboard_id, dc.id AS dc_id, c.sql_query "
+            "FROM published_dashboards pd "
+            "JOIN dashboard_charts dc ON dc.dashboard_id = pd.id "
+            "JOIN ai_charts c ON c.id = dc.chart_id "
+            "WHERE pd.slug = :slug AND dc.id = :dc_id AND pd.is_active = true"
+        )
+        async with engine.begin() as conn:
+            result = await conn.execute(query, {"slug": slug, "dc_id": dc_id})
+            row = result.fetchone()
+
+        if not row:
+            return None
+        cols = list(result.keys())
+        return dict(zip(cols, row))
 
     async def verify_password(self, slug: str, password: str) -> bool:
         engine = get_engine()
@@ -503,3 +536,10 @@ class DashboardService:
                 "linked_slug": linked_slug,
             })
             return result.fetchone() is not None
+
+    async def _get_selectors(self, dashboard_id: int) -> list[dict[str, Any]]:
+        """Load selectors for a dashboard (delegated to SelectorService)."""
+        from app.domain.services.selector_service import SelectorService
+
+        svc = SelectorService()
+        return await svc.get_selectors_for_dashboard(dashboard_id)

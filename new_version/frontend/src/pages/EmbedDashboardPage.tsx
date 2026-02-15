@@ -4,9 +4,11 @@ import ChartRenderer from '../components/charts/ChartRenderer'
 import ExportButtons from '../components/charts/ExportButtons'
 import { getCardStyleClasses, getCardInlineStyle, getTitleSizeClass } from '../components/charts/cardStyleUtils'
 import PasswordGate from '../components/dashboards/PasswordGate'
+import SelectorBar from '../components/selectors/SelectorBar'
 import { useTranslation } from '../i18n'
 import { publicApi } from '../services/api'
-import type { Dashboard, DashboardChart, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
+import type { Dashboard, DashboardChart, FilterValue, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
+import { UI_VERSION } from '../version'
 
 const SESSION_KEY_PREFIX = 'dashboard_token_'
 
@@ -47,6 +49,9 @@ export default function EmbedDashboardPage() {
   const [refreshing, setRefreshing] = useState(false)
   const refreshingRef = useRef(false)
 
+  // Filter state
+  const [filterValues, setFilterValues] = useState<Record<string, unknown>>({})
+
   // Tab state
   const [activeTab, setActiveTab] = useState<string>('main')
   const [linkedCache, setLinkedCache] = useState<Record<string, TabData>>({})
@@ -67,15 +72,24 @@ export default function EmbedDashboardPage() {
   }, [])
 
   const fetchAllChartData = useCallback(
-    async (dash: Dashboard, authToken: string) => {
+    async (dash: Dashboard, authToken: string, filters?: Record<string, unknown>) => {
       if (!slug) return
       if (refreshingRef.current) return
       refreshingRef.current = true
       setRefreshing(true)
 
+      const activeFilters = filters || {}
+      const hasFilters = Object.keys(activeFilters).length > 0
+      const filterList: FilterValue[] = hasFilters
+        ? Object.entries(activeFilters).map(([name, value]) => ({ name, value }))
+        : []
+
       try {
-        const promises = dash.charts.map((c) =>
-          publicApi.getDashboardChartData(slug, c.id, authToken)
+        const promises = dash.charts.map((c) => {
+          const fetcher = hasFilters
+            ? publicApi.getDashboardChartDataFiltered(slug, c.id, authToken, filterList)
+            : publicApi.getDashboardChartData(slug, c.id, authToken)
+          return fetcher
             .then((data) => ({ dcId: c.id, data }))
             .catch((err) => {
               const axiosErr = err as { response?: { status?: number } }
@@ -84,7 +98,7 @@ export default function EmbedDashboardPage() {
               }
               return { dcId: c.id, data: null }
             })
-        )
+        })
         const results = await Promise.all(promises)
         const dataMap: Record<number, ChartDataResponse> = {}
         for (const r of results) {
@@ -135,10 +149,22 @@ export default function EmbedDashboardPage() {
     [slug],
   )
 
+  const handleFilterApply = useCallback(
+    (values: Record<string, unknown>) => {
+      setFilterValues(values)
+      if (dashboard && token) {
+        fetchAllChartData(dashboard, token, values)
+      }
+    },
+    [dashboard, token, fetchAllChartData],
+  )
+
   const handleTabClick = useCallback(
     async (tabSlug: string) => {
       if (tabSlug === activeTab) return
       setActiveTab(tabSlug)
+      // Reset filters on tab switch
+      setFilterValues({})
 
       // Main tab: data already loaded
       if (tabSlug === 'main') return
@@ -190,7 +216,8 @@ export default function EmbedDashboardPage() {
         }
       })
       .finally(() => setLoading(false))
-  }, [slug, token, fetchAllChartData])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, token])
 
   // Auto-refresh interval
   useEffect(() => {
@@ -299,6 +326,17 @@ export default function EmbedDashboardPage() {
 
         {!hasTabs && <div className="mb-4" />}
 
+        {/* Selector bar */}
+        {activeTab === 'main' && dashboard.selectors && dashboard.selectors.length > 0 && token && slug && (
+          <SelectorBar
+            selectors={dashboard.selectors}
+            slug={slug}
+            token={token}
+            filterValues={filterValues}
+            onApply={handleFilterApply}
+          />
+        )}
+
         {linkedLoading ? (
           <div className="flex items-center justify-center h-64 text-gray-400">
             {t('embed.loadingTab')}
@@ -320,6 +358,11 @@ export default function EmbedDashboardPage() {
             ))}
           </div>
         )}
+
+        {/* Footer */}
+        <div className="mt-6 pt-3 border-t border-gray-200 flex justify-end">
+          <span className="text-xs text-gray-300">{t('footer.version')} {UI_VERSION}</span>
+        </div>
       </div>
     </div>
   )

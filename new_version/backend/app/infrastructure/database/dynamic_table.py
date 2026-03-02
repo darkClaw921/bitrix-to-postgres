@@ -7,6 +7,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    Text,
     func,
     text,
 )
@@ -53,6 +54,7 @@ class DynamicTableBuilder:
         ]
 
         seen_descriptions: set[str] = set()
+        dialect = get_dialect()
 
         for field in fields:
             col_name = field.column_name
@@ -64,14 +66,16 @@ class DynamicTableBuilder:
                 description = f"{description}_{col_name}"
             seen_descriptions.add(description)
 
-            col = Column(
-                col_name,
-                field.sqlalchemy_type,
-                comment=description,
-            )
+            col_type = field.sqlalchemy_type
+            # In MySQL, VARCHAR(255) columns count toward the 65535-byte DDL row size limit
+            # (255 chars × 4 bytes utf8mb4 = 1020 bytes each). TEXT columns are stored
+            # off-page and are excluded from this check, so we use TEXT for string fields.
+            if dialect == "mysql" and isinstance(col_type, String) and not isinstance(col_type, Text):
+                col_type = Text()
+
+            col = Column(col_name, col_type, comment=description)
             columns.append(col)
 
-        dialect = get_dialect()
         if dialect == "mysql":
             table = Table(table_name, metadata, *columns, mysql_row_format="DYNAMIC")
         else:
@@ -98,6 +102,9 @@ class DynamicTableBuilder:
         engine = get_engine()
         col_name = field.column_name
         sql_type = field.sql_type_name
+        # Mirror the same VARCHAR→TEXT conversion used in create_table_from_fields
+        if get_dialect() == "mysql" and sql_type == "VARCHAR(255)":
+            sql_type = "TEXT"
 
         try:
             async with engine.begin() as conn:

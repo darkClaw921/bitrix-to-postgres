@@ -217,7 +217,6 @@ class AIService:
                     {"role": "user", "content": prompt},
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.1,
                 max_completion_tokens=2000,
             )
         except openai.APIConnectionError as e:
@@ -266,7 +265,6 @@ class AIService:
                         "content": "Сгенерируй подробное описание всех таблиц и полей в формате markdown.",
                     },
                 ],
-                temperature=0.3,
                 max_completion_tokens=10000,
             )
         except openai.APIConnectionError as e:
@@ -320,7 +318,6 @@ class AIService:
                 model=self.model,
                 messages=messages,
                 response_format={"type": "json_object"},
-                temperature=0.2,
                 max_completion_tokens=4000,
             )
         except openai.APIConnectionError as e:
@@ -407,7 +404,6 @@ class AIService:
                         "content": "Проанализируй данные и сгенерируй отчёт в формате Markdown.",
                     },
                 ],
-                temperature=0.3,
                 max_completion_tokens=6000,
             )
         except openai.APIConnectionError as e:

@@ -85,9 +85,21 @@ REPORT_SYSTEM_PROMPT = """Ты — AI-аналитик для CRM-системы
 6. Возвращай ТОЛЬКО валидный JSON
 7. Если запрос пользователя слишком расплывчатый — задай уточняющий вопрос
 8. SQL-запросы должны быть оптимальными и не вызывать таймаутов
+
+## Критические правила по статусам задач (bitrix_tasks)
+- Поля real_status и status содержат ЧИСЛА, а не строки. НИКОГДА не сравнивай с текстом вроде 'Завершена', 'Выполняется'
+- real_status: 2=ждёт выполнения, 3=выполняется, 4=ожидает контроля, 5=завершена, 6=отложена
+- status (с мета-статусами): -3=почти просрочена, -2=непросмотренная, -1=просроченная
+- Просроченные задачи: WHERE status = -1 (не WHERE status = 'Просрочена')
+- Завершённые задачи: WHERE real_status = 5
+
+## Критические правила по комментариям задач (bitrix_tasks)
+- Поле new_comments_count ВСЕГДА равно 0 после синхронизации (это счётчик непрочитанных, который сбрасывается в реальном времени)
+- Для анализа коммуникаций используй поле comments_count (общее число комментариев к задаче)
+- Пример: доля задач с хотя бы одним комментарием = COUNT(CASE WHEN comments_count > 0 THEN 1 END)
 """
 
-REPORT_ANALYSIS_PROMPT = """Ты — аналитик данных. Проанализируй результаты SQL-запросов и напиши аналитический отчёт в формате Markdown.
+REPORT_ANALYSIS_PROMPT = """Ты — аналитик данных. Проанализируй результаты запросов и напиши аналитический отчёт в формате Markdown для руководителя.
 
 Отчёт: {report_title}
 
@@ -106,7 +118,10 @@ REPORT_ANALYSIS_PROMPT = """Ты — аналитик данных. Проана
 - Используй заголовки, списки, таблицы Markdown
 - Включи ключевые показатели и метрики
 - Сделай выводы и рекомендации
-- Если есть ошибки в запросах — укажи это
+- ЗАПРЕЩЕНО включать SQL-запросы в текст отчёта — отчёт читает руководитель, технические детали не нужны
+- ЗАПРЕЩЕНО цитировать поля "SQL:", "Запрос N:" из входных данных — используй только смысловые названия ("Активность по задачам", "Топ создателей" и т.п.)
+- Если данные выглядят некорректно (все нули при большом объёме, подозрительные значения) — явно укажи, что данные требуют проверки, не выдавай нули за реальный результат
+- Не упоминай технические термины: таблицы БД, поля, SQL, запросы, ошибки парсинга
 """
 
 SCHEMA_DESCRIPTION_PROMPT = """You are a database documentation specialist for a Bitrix24 CRM system.
@@ -378,20 +393,22 @@ class AIService:
         if not report_context:
             report_context = await self._get_report_context()
 
-        # Format SQL results for the prompt
+        # Format SQL results for the prompt (no raw SQL shown to keep report manager-friendly)
         results_parts = []
         for i, r in enumerate(sql_results, 1):
-            part = f"### Запрос {i}: {r.get('purpose', 'N/A')}\n"
-            part += f"SQL: `{r.get('sql', 'N/A')}`\n"
+            part = f"### Блок данных {i}: {r.get('purpose', 'N/A')}\n"
             if r.get("error"):
-                part += f"**Ошибка:** {r['error']}\n"
+                part += f"**Данные недоступны (ошибка получения):** {r['error']}\n"
             else:
-                part += f"Получено строк: {r.get('row_count', 0)}, время: {r.get('time_ms', 0)}мс\n"
+                row_count = r.get('row_count', 0)
+                part += f"Получено записей: {row_count}\n"
                 rows = r.get("rows", [])
                 if rows:
                     # Show first 20 rows as JSON for brevity
                     sample = rows[:20]
-                    part += f"Данные (первые {len(sample)} строк):\n```json\n{json.dumps(sample, ensure_ascii=False, default=str, indent=2)}\n```\n"
+                    part += f"Данные (первые {len(sample)} из {row_count}):\n```json\n{json.dumps(sample, ensure_ascii=False, default=str, indent=2)}\n```\n"
+                elif row_count == 0:
+                    part += "Данных не найдено (возможно, ошибка в логике получения или данные отсутствуют).\n"
             results_parts.append(part)
 
         sql_results_text = "\n".join(results_parts)

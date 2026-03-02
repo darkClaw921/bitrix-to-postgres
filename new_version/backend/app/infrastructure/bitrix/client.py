@@ -336,34 +336,60 @@ class BitrixClient:
         filter_params: dict[str, Any] | None = None,
         select: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Get all tasks via tasks.task.list.
+        """Get all tasks via tasks.task.list with manual pagination.
 
-        tasks.task.list returns {tasks: [...]} inside result,
-        so we need to unwrap the response.
+        tasks.task.list returns {result: {tasks: [...]}, next: N} — the nested
+        structure is incompatible with fast-bitrix24's get_all batch mechanism,
+        which causes "All attempts exhausted" errors on large datasets.
+        We use direct paginated calls instead.
         """
-        params: dict[str, Any] = {}
+        all_tasks: list[dict[str, Any]] = []
+        start = 0
+
+        base_params: dict[str, Any] = {}
         if filter_params:
-            params["filter"] = filter_params
+            base_params["filter"] = filter_params
         if select:
-            params["select"] = select
+            base_params["select"] = select
 
         try:
             logger.info("Fetching all tasks")
-            result = await self._client.get_all("tasks.task.list", params=params)
+            while True:
+                raw = await self._client.call(
+                    "tasks.task.list",
+                    items={**base_params, "start": start},
+                    raw=True,
+                )
 
-            # fast-bitrix24 may return list directly or dict with 'tasks' key
-            if isinstance(result, list):
-                # If each item is a dict with 'tasks' key, unwrap
-                if result and isinstance(result[0], dict) and "tasks" in result[0]:
-                    tasks = []
-                    for batch in result:
-                        tasks.extend(batch.get("tasks", []))
-                    return _normalize_task_records(tasks)
-                return _normalize_task_records(result)
-            if isinstance(result, dict) and "tasks" in result:
-                return _normalize_task_records(result["tasks"])
-            return _normalize_task_records(result)
-        except BitrixOperationTimeLimitError:
+                if isinstance(raw, dict) and "error" in raw:
+                    error_code = raw.get("error", "")
+                    error_msg = raw.get("error_description", str(raw))
+                    if "OPERATION_TIME_LIMIT" in str(error_code):
+                        raise BitrixOperationTimeLimitError(
+                            f"OPERATION_TIME_LIMIT: сервер Bitrix24 не успел обработать запрос задач. "
+                            f"Попробуйте использовать фильтр (например, CHANGED_DATE > 2024-01-01)."
+                        )
+                    if "QUERY_LIMIT_EXCEEDED" in str(error_code):
+                        raise BitrixRateLimitError(f"Rate limit exceeded: {error_msg}")
+                    raise BitrixAPIError(f"Bitrix API error: {error_msg}")
+
+                result = raw.get("result", {}) if isinstance(raw, dict) else {}
+                page = result.get("tasks", []) if isinstance(result, dict) else []
+
+                if not page:
+                    break
+
+                all_tasks.extend(page)
+
+                next_start = raw.get("next") if isinstance(raw, dict) else None
+                if next_start is None:
+                    break
+                start = next_start
+
+            logger.info("Fetched tasks", count=len(all_tasks))
+            return _normalize_task_records(all_tasks)
+
+        except (BitrixOperationTimeLimitError, BitrixRateLimitError, BitrixAPIError):
             raise
         except Exception as e:
             if "OPERATION_TIME_LIMIT" in str(e):

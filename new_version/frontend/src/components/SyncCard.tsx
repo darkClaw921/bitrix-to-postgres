@@ -49,7 +49,7 @@ export default function SyncCard({
   }
 
   const handleFullSyncClick = () => {
-    if (isTimeLimitError) {
+    if (isFailed) {
       setShowFilterDialog(true)
     } else {
       onStartSync('full')
@@ -110,7 +110,8 @@ export default function SyncCard({
       {/* Regular error (red), but not for OPERATION_TIME_LIMIT */}
       {isFailed && !isTimeLimitError && status?.error_message && (
         <div className="mb-4 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-          {status.error_message}
+          <div>{status.error_message}</div>
+          <div className="mt-1 text-xs text-red-600">{t('syncCard.useFilter')}</div>
         </div>
       )}
 
@@ -120,9 +121,9 @@ export default function SyncCard({
           disabled={isRunning || isQueued || isStarting || !config.enabled}
           className="btn btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isRunning ? t('syncCard.syncing') : isQueued ? t('syncCard.queued') : isTimeLimitError ? t('syncCard.useFilter') : t('syncCard.fullSync')}
+          {isRunning ? t('syncCard.syncing') : isQueued ? t('syncCard.queued') : isFailed ? t('syncCard.useFilter') : t('syncCard.fullSync')}
         </button>
-        {isTimeLimitError && (
+        {isFailed && (
           <button
             onClick={() => setShowFilterDialog(true)}
             disabled={isRunning || isQueued || isStarting || !config.enabled}

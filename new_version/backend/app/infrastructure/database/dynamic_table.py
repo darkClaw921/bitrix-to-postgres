@@ -71,7 +71,11 @@ class DynamicTableBuilder:
             )
             columns.append(col)
 
-        table = Table(table_name, metadata, *columns)
+        dialect = get_dialect()
+        if dialect == "mysql":
+            table = Table(table_name, metadata, *columns, mysql_row_format="DYNAMIC")
+        else:
+            table = Table(table_name, metadata, *columns)
 
         async with engine.begin() as conn:
             await conn.run_sync(metadata.create_all)

@@ -165,6 +165,48 @@ class AIService:
         )
         self.model = settings.openai_model
 
+    async def _complete(
+        self,
+        system: str,
+        input_: "str | list[dict]",
+        max_output_tokens: int,
+    ) -> str:
+        """Call Responses API and return text content.
+
+        Uses /v1/responses (new API) instead of /v1/chat/completions.
+        Supports both gpt-5-mini/o-series (Responses API) and legacy models.
+        """
+        try:
+            response = await self.client.responses.create(
+                model=self.model,
+                instructions=system,
+                input=input_,
+                max_output_tokens=max_output_tokens,
+            )
+        except openai.APIConnectionError as e:
+            logger.error("OpenAI connection error", error=str(e))
+            raise AIServiceError("Не удалось подключиться к OpenAI API") from e
+        except openai.RateLimitError as e:
+            logger.error("OpenAI rate limit", error=str(e))
+            raise AIServiceError("Превышен лимит запросов OpenAI") from e
+        except openai.APIStatusError as e:
+            logger.error("OpenAI API error", status=e.status_code, error=e.message)
+            raise AIServiceError(f"Ошибка OpenAI: {e.message}") from e
+
+        # output_text is the SDK convenience accessor for Responses API
+        content = getattr(response, "output_text", None)
+        if not content:
+            # Manual extraction fallback: iterate output items
+            for item in getattr(response, "output", []):
+                if getattr(item, "type", None) == "message":
+                    for block in getattr(item, "content", []):
+                        if getattr(block, "type", None) == "output_text":
+                            content = block.text
+                            break
+                if content:
+                    break
+        return content or ""
+
     async def _get_report_context(self) -> str:
         """Get active report context prompt from database."""
         engine = get_engine()
@@ -235,26 +277,7 @@ class AIService:
 
         logger.info("Generating chart spec", prompt=prompt, model=self.model, has_bitrix_context=bool(bitrix_context))
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": prompt},
-                ],
-                max_completion_tokens=2000,
-            )
-        except openai.APIConnectionError as e:
-            logger.error("OpenAI connection error", error=str(e))
-            raise AIServiceError("Не удалось подключиться к OpenAI API") from e
-        except openai.RateLimitError as e:
-            logger.error("OpenAI rate limit", error=str(e))
-            raise AIServiceError("Превышен лимит запросов OpenAI") from e
-        except openai.APIStatusError as e:
-            logger.error("OpenAI API error", status=e.status_code, error=e.message)
-            raise AIServiceError(f"Ошибка OpenAI: {e.message}") from e
-
-        content = response.choices[0].message.content
+        content = await self._complete(system_message, prompt, 2000)
         if not content:
             raise AIServiceError("AI вернул пустой ответ")
 
@@ -281,29 +304,11 @@ class AIService:
 
         logger.info("Generating schema description", model=self.model)
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {
-                        "role": "user",
-                        "content": "Сгенерируй подробное описание всех таблиц и полей в формате markdown.",
-                    },
-                ],
-                max_completion_tokens=10000,
-            )
-        except openai.APIConnectionError as e:
-            logger.error("OpenAI connection error", error=str(e))
-            raise AIServiceError("Не удалось подключиться к OpenAI API") from e
-        except openai.RateLimitError as e:
-            logger.error("OpenAI rate limit", error=str(e))
-            raise AIServiceError("Превышен лимит запросов OpenAI") from e
-        except openai.APIStatusError as e:
-            logger.error("OpenAI API error", status=e.status_code, error=e.message)
-            raise AIServiceError(f"Ошибка OpenAI: {e.message}") from e
-
-        content = response.choices[0].message.content
+        content = await self._complete(
+            system_message,
+            "Сгенерируй подробное описание всех таблиц и полей в формате markdown.",
+            10000,
+        )
         if not content:
             raise AIServiceError("AI вернул пустой ответ")
 
@@ -330,32 +335,13 @@ class AIService:
             report_context=report_context,
         )
 
-        messages = [{"role": "system", "content": system_message}]
-        messages.extend(conversation_history)
-
         logger.info(
             "Generating report step",
             model=self.model,
             history_len=len(conversation_history),
         )
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_completion_tokens=4000,
-            )
-        except openai.APIConnectionError as e:
-            logger.error("OpenAI connection error", error=str(e))
-            raise AIServiceError("Не удалось подключиться к OpenAI API") from e
-        except openai.RateLimitError as e:
-            logger.error("OpenAI rate limit", error=str(e))
-            raise AIServiceError("Превышен лимит запросов OpenAI") from e
-        except openai.APIStatusError as e:
-            logger.error("OpenAI API error", status=e.status_code, error=e.message)
-            raise AIServiceError(f"Ошибка OpenAI: {e.message}") from e
-
-        content = response.choices[0].message.content
+        content = await self._complete(system_message, conversation_history, 4000)
         if not content:
             raise AIServiceError("AI вернул пустой ответ")
 
@@ -420,29 +406,11 @@ class AIService:
 
         logger.info("Analyzing report data", model=self.model, title=report_title)
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {
-                        "role": "user",
-                        "content": "Проанализируй данные и сгенерируй отчёт в формате Markdown.",
-                    },
-                ],
-                max_completion_tokens=6000,
-            )
-        except openai.APIConnectionError as e:
-            logger.error("OpenAI connection error", error=str(e))
-            raise AIServiceError("Не удалось подключиться к OpenAI API") from e
-        except openai.RateLimitError as e:
-            logger.error("OpenAI rate limit", error=str(e))
-            raise AIServiceError("Превышен лимит запросов OpenAI") from e
-        except openai.APIStatusError as e:
-            logger.error("OpenAI API error", status=e.status_code, error=e.message)
-            raise AIServiceError(f"Ошибка OpenAI: {e.message}") from e
-
-        content = response.choices[0].message.content
+        content = await self._complete(
+            system_message,
+            "Проанализируй данные и сгенерируй отчёт в формате Markdown.",
+            6000,
+        )
         if not content:
             raise AIServiceError("AI вернул пустой ответ")
 

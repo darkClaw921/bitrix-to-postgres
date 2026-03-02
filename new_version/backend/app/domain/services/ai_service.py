@@ -218,7 +218,7 @@ class AIService:
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.1,
-                max_tokens=2000,
+                max_completion_tokens=2000,
             )
         except openai.APIConnectionError as e:
             logger.error("OpenAI connection error", error=str(e))
@@ -267,7 +267,7 @@ class AIService:
                     },
                 ],
                 temperature=0.3,
-                max_tokens=10000,
+                max_completion_tokens=10000,
             )
         except openai.APIConnectionError as e:
             logger.error("OpenAI connection error", error=str(e))
@@ -321,7 +321,7 @@ class AIService:
                 messages=messages,
                 response_format={"type": "json_object"},
                 temperature=0.2,
-                max_tokens=4000,
+                max_completion_tokens=4000,
             )
         except openai.APIConnectionError as e:
             logger.error("OpenAI connection error", error=str(e))
@@ -408,7 +408,7 @@ class AIService:
                     },
                 ],
                 temperature=0.3,
-                max_tokens=6000,
+                max_completion_tokens=6000,
             )
         except openai.APIConnectionError as e:
             logger.error("OpenAI connection error", error=str(e))

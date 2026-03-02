@@ -25,3 +25,6 @@ pnpm-debug.log*
 # System
 .DS_Store
 *.local
+.claude/*
+MEMORY.md
+agents/*

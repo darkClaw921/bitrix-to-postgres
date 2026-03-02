@@ -1,6 +1,7 @@
 """AI service for interaction with OpenAI API."""
 
 import json
+import re
 
 import openai
 from openai import AsyncOpenAI
@@ -128,6 +129,31 @@ Use your knowledge of Bitrix24 CRM fields to provide accurate descriptions.
 """
 
 
+def _extract_json(content: str) -> str:
+    """Extract JSON from model response, handling markdown code blocks.
+
+    Newer models may wrap JSON in ```json ... ``` even without response_format.
+    Tries: raw JSON → ```json block → ``` block → first {...} substring.
+    """
+    content = content.strip()
+    # Already raw JSON
+    if content.startswith("{") or content.startswith("["):
+        return content
+    # ```json ... ``` block
+    m = re.search(r"```json\s*([\s\S]+?)\s*```", content)
+    if m:
+        return m.group(1).strip()
+    # ``` ... ``` block
+    m = re.search(r"```\s*([\s\S]+?)\s*```", content)
+    if m:
+        return m.group(1).strip()
+    # First {...} substring as fallback
+    m = re.search(r"\{[\s\S]+\}", content)
+    if m:
+        return m.group(0)
+    return content
+
+
 class AIService:
     """Service for generating chart specs and schema descriptions via OpenAI."""
 
@@ -216,7 +242,6 @@ class AIService:
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": prompt},
                 ],
-                response_format={"type": "json_object"},
                 max_completion_tokens=2000,
             )
         except openai.APIConnectionError as e:
@@ -233,6 +258,7 @@ class AIService:
         if not content:
             raise AIServiceError("AI вернул пустой ответ")
 
+        content = _extract_json(content)
         try:
             spec = json.loads(content)
         except json.JSONDecodeError as e:
@@ -317,7 +343,6 @@ class AIService:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                response_format={"type": "json_object"},
                 max_completion_tokens=4000,
             )
         except openai.APIConnectionError as e:
@@ -334,6 +359,7 @@ class AIService:
         if not content:
             raise AIServiceError("AI вернул пустой ответ")
 
+        content = _extract_json(content)
         try:
             result = json.loads(content)
         except json.JSONDecodeError as e:

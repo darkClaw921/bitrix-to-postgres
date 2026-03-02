@@ -41,6 +41,8 @@ Rules:
 9. For chart_type "table": SQL returns tabular data with all columns displayed. data_keys.x is not required. All columns from the query result will be shown in the table.
 10. For chart_type "funnel": SQL must return stages with names and values, ordered from largest to smallest. data_keys.x is the stage name column, data_keys.y is the value column. Used for sales funnels, conversion funnels.
 11. For chart_type "horizontal_bar": same as "bar" but for scenarios with long category names or rankings. data_keys.x is the category column, data_keys.y is the value column. The bars are rendered horizontally.
+12. MySQL CAST compatibility: use CHAR (not varchar) inside CAST — correct: CAST(col AS CHAR), wrong: CAST(col AS varchar)
+13. MySQL identifier quoting: use backticks for column aliases with spaces or Cyrillic characters — correct: COUNT(*) AS `Количество`, wrong: COUNT(*) AS "Количество". Also use backticks in ORDER BY when referencing aliases: ORDER BY `Количество` DESC
 """
 
 REPORT_SYSTEM_PROMPT = """Ты — AI-аналитик для CRM-системы Bitrix24. Твоя задача — помогать пользователю создавать аналитические отчёты на основе данных из базы данных.

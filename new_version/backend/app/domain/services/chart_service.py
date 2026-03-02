@@ -562,6 +562,31 @@ class ChartService:
 
         return modified_sql, bind_params
 
+    # === MySQL SQL Compatibility ===
+
+    @staticmethod
+    def fix_sql_for_mysql(sql: str) -> str:
+        """Fix common MySQL incompatibilities in AI-generated SQL.
+
+        Handles two known issues:
+        1. CAST(... AS varchar) → CAST(... AS CHAR)
+           MySQL does not support 'varchar' as a type in CAST expressions.
+        2. Double-quoted identifiers "alias" → `alias`
+           AI models trained on PostgreSQL/ANSI SQL use double quotes for identifiers.
+           MySQL (without ANSI_QUOTES mode) treats double quotes as string literals,
+           which breaks ORDER BY "alias" and AS "alias" patterns.
+
+        Note: assumes string literals in WHERE/HAVING use single quotes (standard practice).
+        """
+        # Fix CAST AS varchar → CHAR (MySQL-specific CAST type)
+        sql = re.sub(r"\bAS\s+varchar\b", "AS CHAR", sql, flags=re.IGNORECASE)
+
+        # Fix double-quoted identifiers → backtick identifiers
+        # Replaces all "text" patterns; safe because AI SQL uses single quotes for string literals
+        sql = re.sub(r'"([^"]+)"', r"`\1`", sql)
+
+        return sql
+
     # === Query Execution ===
 
     async def execute_chart_query(
@@ -579,6 +604,10 @@ class ChartService:
         dialect = get_dialect()
         settings = get_settings()
         timeout = settings.chart_query_timeout_seconds
+
+        # Apply MySQL-specific fixes for AI-generated SQL incompatibilities
+        if dialect == "mysql":
+            sql = self.fix_sql_for_mysql(sql)
 
         start = time.monotonic()
 

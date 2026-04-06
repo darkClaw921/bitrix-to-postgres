@@ -12,6 +12,8 @@ import DesignModeToolbar from '../components/charts/design/DesignModeToolbar'
 import SelectorEditorSection from '../components/selectors/SelectorEditorSection'
 import HeadingItem from '../components/dashboards/HeadingItem'
 import { useDesignMode } from '../hooks/useDesignMode'
+import { useTvMode } from '../hooks/useTvMode'
+import { useElementSize } from '../hooks/useElementSize'
 import { useUpdateChartConfig } from '../hooks/useCharts'
 import {
   useDashboard,
@@ -95,8 +97,51 @@ export default function DashboardEditorPage() {
   const [gridLayout, setGridLayout] = useState<Layout>([])
   const [layoutDirty, setLayoutDirty] = useState(false)
 
-  // react-grid-layout v2 container width
-  const { containerRef, width: containerWidth, mounted } = useContainerWidth()
+  // TV mode — relaxes min-size constraints and enables font auto-scaling inside chart cards
+  const { tvMode, setTvMode } = useTvMode()
+
+  // react-grid-layout v2 container width (used in non-TV mode where the page sits
+  // inside Layout's <main className="max-w-7xl"> and the actual width depends on
+  // the column constraint).
+  const { containerRef, width: measuredContainerWidth, mounted, measureWidth } = useContainerWidth()
+
+  // Direct viewport width for TV mode. Bypasses useContainerWidth's measurement
+  // entirely because in TV mode the editor is rendered through a portal directly
+  // into document.body, so we know the grid is always the full viewport width
+  // minus the root div's p-2 padding (8px each side = 16px total). Reading from
+  // window.innerWidth on mount + updating on resize is more reliable than
+  // racing react-grid-layout's hardcoded 1280px initial state on page refresh
+  // with ?tv=1.
+  const [viewportWidth, setViewportWidth] = useState<number>(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1280,
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = (): void => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+
+  // Effective grid width: in TV mode, viewport minus padding (p-2 = 8px each
+  // side); otherwise the width measured against Layout's max-w-7xl container.
+  const containerWidth = tvMode ? Math.max(0, viewportWidth - 16) : measuredContainerWidth
+
+  // Stable ref to measureWidth so the re-measure effect below doesn't loop
+  const measureWidthRef = useRef(measureWidth)
+  useEffect(() => {
+    measureWidthRef.current = measureWidth
+  }, [measureWidth])
+
+  // Re-measure non-TV grid width when TV mode toggles off — the page transitions
+  // back from fullscreen overlay to the Layout-bound container and ReactGridLayout
+  // needs a fresh width to reposition charts inside the max-w-7xl frame.
+  useEffect(() => {
+    if (tvMode) return
+    const timer = setTimeout(() => {
+      measureWidthRef.current?.()
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [tvMode])
 
   useEffect(() => {
     if (dashboard) {
@@ -255,10 +300,18 @@ export default function DashboardEditorPage() {
     return <div className="text-center text-gray-500 py-12">{t('embed.dashboardNotFound')}</div>
   }
 
-  return (
-    <div className="space-y-6">
+  // In TV mode we render the editor through a portal directly into document.body.
+  // The default route is wrapped in <main className="max-w-7xl mx-auto …"> from
+  // Layout.tsx which constrains the available width. `position: fixed` alone is
+  // not enough on initial mount with `?tv=1` (page refresh) because react-grid-
+  // layout's first width measurement can lock to the parent-constrained width
+  // before the fixed positioning settles, leaving a permanent right margin.
+  // The portal moves the DOM out from under <main> entirely so containerWidth
+  // is always measured against the viewport.
+  const editorTree = (
+    <div className={tvMode ? 'fixed inset-0 z-40 bg-gray-50 overflow-auto p-2 space-y-2' : 'space-y-6'}>
       {/* Header */}
-      <div className="card">
+      <div className={tvMode ? 'card py-2 px-3' : 'card'}>
         <div className="flex justify-between items-start">
           <div className="flex-1">
             {editingTitle ? (
@@ -357,6 +410,15 @@ export default function DashboardEditorPage() {
             <button onClick={handleChangePassword} className="btn btn-secondary text-sm">
               {t('editor.changePassword')}
             </button>
+            <label className="flex items-center space-x-1 text-sm text-gray-600 cursor-pointer select-none ml-2">
+              <input
+                type="checkbox"
+                checked={tvMode}
+                onChange={(e) => setTvMode(e.target.checked)}
+                className="h-4 w-4 cursor-pointer"
+              />
+              <span>{t('embed.tvMode')}</span>
+            </label>
             {layoutDirty && (
               <button onClick={handleSaveLayout} className="btn btn-primary text-sm">
                 {updateLayout.isPending ? t('common.saving') : t('editor.saveLayout')}
@@ -385,13 +447,17 @@ export default function DashboardEditorPage() {
       <div ref={containerRef as React.RefObject<HTMLDivElement>} className="min-h-[200px]">
         {mounted && dashboard.charts.length > 0 && (
           <ReactGridLayout
-            layout={gridLayout}
+            layout={
+              tvMode
+                ? gridLayout.map((item) => ({ ...item, minW: 1, minH: 1, maxH: undefined }))
+                : gridLayout
+            }
             onLayoutChange={handleLayoutChange}
             width={containerWidth}
             gridConfig={{
               cols: GRID_COLS,
-              rowHeight: ROW_HEIGHT,
-              margin: [16, 16] as const,
+              rowHeight: tvMode ? Math.max(20, Math.floor(ROW_HEIGHT / 3)) : ROW_HEIGHT,
+              margin: tvMode ? ([8, 8] as const) : ([16, 16] as const),
               containerPadding: [0, 0] as const,
               maxRows: Infinity,
             }}
@@ -405,6 +471,7 @@ export default function DashboardEditorPage() {
                     dc={dc}
                     onRemove={() => handleRemoveChart(dc.id)}
                     onUpdateHeading={(h) => handleUpdateHeading(dc.id, h)}
+                    tvMode={tvMode}
                   />
                 ) : (
                   <EditorChartCard
@@ -412,6 +479,7 @@ export default function DashboardEditorPage() {
                     data={dc.chart_id != null ? chartData[dc.chart_id] || null : null}
                     onRemove={() => handleRemoveChart(dc.id)}
                     onUpdateOverride={handleUpdateOverride}
+                    tvMode={tvMode}
                   />
                 )}
               </div>
@@ -462,6 +530,8 @@ export default function DashboardEditorPage() {
       </div>
     </div>
   )
+
+  return tvMode ? createPortal(editorTree, document.body) : editorTree
 }
 
 // Chart types that support design mode (SVG-based)
@@ -472,11 +542,13 @@ function EditorChartCard({
   data,
   onRemove,
   onUpdateOverride,
+  tvMode,
 }: {
   dc: DashboardChart
   data: ChartDataResponse | null
   onRemove: () => void
   onUpdateOverride: (dcId: number, field: 'title_override' | 'description_override', value: string) => void
+  tvMode?: boolean
 }) {
   const { t } = useTranslation()
   const [editTitle, setEditTitle] = useState(false)
@@ -488,6 +560,12 @@ function EditorChartCard({
   const settingsDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
   const updateConfig = useUpdateChartConfig()
   const chartContainerRef = useRef<HTMLDivElement>(null)
+
+  // TV mode font scaling — measures the chart body container and derives a scale factor
+  const { ref: chartBodyRef, width: chartBodyWidth, height: chartBodyHeight } = useElementSize<HTMLDivElement>()
+  const fontScale = tvMode
+    ? Math.max(0.4, Math.min(2.5, Math.sqrt(Math.max(1, chartBodyWidth * chartBodyHeight)) / 350))
+    : undefined
 
   const title = dc.title_override || dc.chart_title || 'Chart'
   const description = dc.description_override || dc.chart_description
@@ -738,6 +816,7 @@ function EditorChartCard({
       )}
 
       <div
+        ref={chartBodyRef}
         className="flex-1 min-h-0"
         onMouseDown={designMode.isActive ? (e) => e.stopPropagation() : undefined}
       >
@@ -747,6 +826,7 @@ function EditorChartCard({
             data={data.data}
             height="100%"
             designLayout={designMode.isActive ? designMode.draftLayout : config?.designLayout}
+            fontScale={fontScale}
           />
         ) : (
           <div className="flex items-center justify-center h-full text-gray-400 text-sm">
@@ -777,12 +857,18 @@ function EditorHeadingCard({
   dc,
   onRemove,
   onUpdateHeading,
+  tvMode,
 }: {
   dc: DashboardChart
   onRemove: () => void
   onUpdateHeading: (heading: HeadingConfig) => void
+  tvMode?: boolean
 }) {
   const { t } = useTranslation()
+  const { ref: headingRef, width: headingWidth, height: headingHeight } = useElementSize<HTMLDivElement>()
+  const fontScale = tvMode
+    ? Math.max(0.4, Math.min(2.5, Math.sqrt(Math.max(1, headingWidth * headingHeight)) / 350))
+    : undefined
   const heading: HeadingConfig =
     (dc.heading_config as HeadingConfig) || {
       text: '',
@@ -791,7 +877,10 @@ function EditorHeadingCard({
       divider: false,
     }
   return (
-    <div className="h-full bg-white rounded-lg border border-gray-200 shadow-sm p-3 relative group">
+    <div
+      ref={headingRef}
+      className="h-full bg-white rounded-lg border border-gray-200 shadow-sm p-3 relative group"
+    >
       <button
         onClick={onRemove}
         onMouseDown={(e) => e.stopPropagation()}
@@ -800,7 +889,7 @@ function EditorHeadingCard({
       >
         ×
       </button>
-      <HeadingItem heading={heading} editable onChange={onUpdateHeading} />
+      <HeadingItem heading={heading} editable onChange={onUpdateHeading} fontScale={fontScale} />
     </div>
   )
 }

@@ -22,6 +22,7 @@ interface ChartRendererProps {
   data: Record<string, unknown>[]
   height?: number | string
   designLayout?: DesignLayout
+  fontScale?: number
 }
 
 function formatValue(value: number, format?: 'number' | 'currency' | 'percent'): string {
@@ -40,7 +41,7 @@ function formatTableCell(value: unknown, format?: 'number' | 'currency' | 'perce
   return num.toLocaleString()
 }
 
-function IndicatorRenderer({ spec, data }: { spec: ChartSpec; data: Record<string, unknown>[] }) {
+function IndicatorRenderer({ spec, data, fontScale }: { spec: ChartSpec; data: Record<string, unknown>[]; fontScale?: number }) {
   const indicatorCfg = spec.indicator ?? {}
   const yKeys = Array.isArray(spec.data_keys.y) ? spec.data_keys.y : [spec.data_keys.y]
   const valueKey = yKeys[0]
@@ -49,11 +50,16 @@ function IndicatorRenderer({ spec, data }: { spec: ChartSpec; data: Record<strin
   const numValue = Number(rawValue)
   const displayValue = isNaN(numValue) ? String(rawValue ?? '') : numValue.toLocaleString()
 
-  const fontSizeMap = { sm: '1.5rem', md: '2.5rem', lg: '3.5rem', xl: '5rem' }
-  const fontSize = fontSizeMap[indicatorCfg.fontSize || 'lg'] || '3.5rem'
+  const baseRemMap: Record<'sm' | 'md' | 'lg' | 'xl', number> = { sm: 1.5, md: 2.5, lg: 3.5, xl: 5 }
+  const baseRem = baseRemMap[indicatorCfg.fontSize || 'lg'] ?? 3.5
+  const fontSize = `${baseRem * (fontScale ?? 1)}rem`
+
+  // Non-regression: keep py-8 when fontScale is undefined (editor & non-TV embed).
+  // TV mode (fontScale defined) uses py-2 so the indicator fits in small cells.
+  const paddingClass = fontScale == null ? 'py-8' : 'py-2'
 
   return (
-    <div className="flex flex-col items-center justify-center h-full py-8">
+    <div className={`flex flex-col items-center justify-center h-full ${paddingClass}`}>
       <div
         className="font-bold leading-tight"
         style={{ fontSize, color: indicatorCfg.color || '#1f2937' }}
@@ -66,7 +72,7 @@ function IndicatorRenderer({ spec, data }: { spec: ChartSpec; data: Record<strin
   )
 }
 
-function TableRenderer({ spec, data, maxHeight }: { spec: ChartSpec; data: Record<string, unknown>[]; maxHeight?: number | string }) {
+function TableRenderer({ spec, data, maxHeight, fontScale }: { spec: ChartSpec; data: Record<string, unknown>[]; maxHeight?: number | string; fontScale?: number }) {
   const { t } = useTranslation()
   const tableCfg = spec.table ?? {}
   const columns = useMemo(() => {
@@ -149,10 +155,23 @@ function TableRenderer({ spec, data, maxHeight }: { spec: ChartSpec; data: Recor
 
   const displayColumns = tableCfg.showRowTotals ? [...columns, '__row_total__'] : columns
 
+  // Non-regression: when fontScale is undefined (editor & non-TV embed),
+  // preserve the original Tailwind `text-sm` class on the <table> (keeps both
+  // font-size: 0.875rem AND line-height: 1.25rem). In TV mode (fontScale
+  // defined), fall back to an inline fontSize on the wrapper so the cells
+  // scale with the cell size.
+  const wrapperStyle: React.CSSProperties = {
+    height: maxHeight || '100%',
+    maxHeight: maxHeight || undefined,
+    overflow: 'hidden',
+    ...(fontScale != null ? { fontSize: `${Math.round(14 * fontScale)}px` } : {}),
+  }
+  const tableClass = fontScale == null ? 'w-full text-sm border-collapse' : 'w-full border-collapse'
+
   return (
-    <div className="flex flex-col" style={{ height: maxHeight || '100%', maxHeight: maxHeight || undefined, overflow: 'hidden' }}>
+    <div className="flex flex-col" style={wrapperStyle}>
       <div className="overflow-auto flex-1 min-h-0">
-        <table className="w-full text-sm border-collapse">
+        <table className={tableClass}>
           <thead className="sticky top-0 z-10">
             <tr className="bg-gray-100">
               {displayColumns.map((col) => (
@@ -242,8 +261,9 @@ function TableRenderer({ spec, data, maxHeight }: { spec: ChartSpec; data: Recor
   )
 }
 
-export default function ChartRenderer({ spec, data, height = 350, designLayout: designLayoutProp }: ChartRendererProps) {
+export default function ChartRenderer({ spec, data, height = 350, designLayout: designLayoutProp, fontScale }: ChartRendererProps) {
   const { t } = useTranslation()
+  const fs = (base: number) => Math.max(8, Math.round(base * (fontScale ?? 1)))
   const { chart_type, data_keys, colors } = spec
   const palette = colors?.length ? colors : DEFAULT_COLORS
   const xKey = data_keys.x
@@ -287,6 +307,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
             position: 'absolute' as const,
             left: `${dl!.legend!.x ?? 0}%`,
             top: `${dl!.legend!.y ?? 0}%`,
+            fontSize: fs(12),
           },
           layout: (dl!.legend!.layout || 'horizontal') as 'horizontal' | 'vertical',
         }
@@ -297,13 +318,14 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
           align: (legendCfg.position === 'left' || legendCfg.position === 'right'
             ? legendCfg.position
             : 'center') as 'left' | 'right' | 'center',
+          wrapperStyle: { fontSize: fs(12) },
         }
     : null
 
   // XAxis tick angle props
   const xTickProps = xAxisCfg.angle
-    ? { angle: xAxisCfg.angle, textAnchor: 'end' as const, height: 60 }
-    : {}
+    ? { angle: xAxisCfg.angle, textAnchor: 'end' as const, height: 60, fontSize: fs(12) }
+    : { fontSize: fs(12) }
 
   // Design layout: axis label offsets
   const xLabelDx = dl?.xAxisLabel?.dx ?? 0
@@ -326,12 +348,12 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
 
   // Indicator — rendered as plain HTML, no ResponsiveContainer
   if (chart_type === 'indicator') {
-    return <IndicatorRenderer spec={spec} data={data} />
+    return <IndicatorRenderer spec={spec} data={data} fontScale={fontScale} />
   }
 
   // Table — rendered as plain HTML, no ResponsiveContainer
   if (chart_type === 'table') {
-    return <TableRenderer spec={spec} data={data} maxHeight={height} />
+    return <TableRenderer spec={spec} data={data} maxHeight={height} fontScale={fontScale} />
   }
 
   const renderGrid = () =>
@@ -340,7 +362,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
   const renderXAxis = () => (
     <XAxis
       dataKey={xKey}
-      label={xAxisCfg.label ? { value: xAxisCfg.label, position: 'insideBottom', offset: -5, dx: xLabelDx, dy: xLabelDy } : undefined}
+      label={xAxisCfg.label ? { value: xAxisCfg.label, position: 'insideBottom', offset: -5, dx: xLabelDx, dy: xLabelDy, style: { fontSize: fs(12) } } : undefined}
       tick={xTickProps}
     />
   )
@@ -348,7 +370,8 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
   const renderYAxis = () => (
     <YAxis
       tickFormatter={yTickFormatter}
-      label={yAxisCfg.label ? { value: yAxisCfg.label, angle: -90, position: 'insideLeft', dx: yLabelDx, dy: yLabelDy } : undefined}
+      tick={{ fontSize: fs(12) }}
+      label={yAxisCfg.label ? { value: yAxisCfg.label, angle: -90, position: 'insideLeft', dx: yLabelDx, dy: yLabelDy, style: { fontSize: fs(12) } } : undefined}
     />
   )
 
@@ -369,7 +392,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
           {renderLegend()}
           {yKeys.map((key, i) => (
             <Bar key={key} dataKey={key} fill={palette[i % palette.length]} isAnimationActive={isAnimated}>
-              {showDataLabels && <LabelList dataKey={key} position="top" fontSize={11} dx={dataLabelDx} dy={dataLabelDy} />}
+              {showDataLabels && <LabelList dataKey={key} position="top" fontSize={fs(11)} dx={dataLabelDx} dy={dataLabelDy} />}
             </Bar>
           ))}
         </BarChart>
@@ -389,7 +412,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
               strokeWidth={lineCfg.strokeWidth ?? 2}
               isAnimationActive={isAnimated}
             >
-              {showDataLabels && <LabelList dataKey={key} position="top" fontSize={11} dx={dataLabelDx} dy={dataLabelDy} />}
+              {showDataLabels && <LabelList dataKey={key} position="top" fontSize={fs(11)} dx={dataLabelDx} dy={dataLabelDy} />}
             </Line>
           ))}
         </LineChart>
@@ -422,7 +445,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
             cy="50%"
             outerRadius={typeof height === 'number' ? height * 0.28 : '28%'}
             innerRadius={pieCfg.innerRadius || 0}
-            label={pieCfg.showLabels !== false}
+            label={pieCfg.showLabels !== false ? { fontSize: fs(12) } : false}
             isAnimationActive={isAnimated}
           >
             {data.map((_, i) => (
@@ -450,7 +473,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
               fill="#374151"
               stroke="none"
               dataKey={xKey}
-              fontSize={12}
+              fontSize={fs(12)}
             />
             {funnelCfg.showLabels !== false && (
               <LabelList
@@ -458,7 +481,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
                 fill="#fff"
                 stroke="none"
                 dataKey={yKeys[0]}
-                fontSize={11}
+                fontSize={fs(11)}
                 formatter={(v: unknown) => Number(v).toLocaleString()}
               />
             )}
@@ -473,7 +496,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
           {renderLegend()}
           {yKeys.map((key, i) => (
             <Bar key={key} dataKey={key} fill={palette[i % palette.length]} isAnimationActive={isAnimated}>
-              {showDataLabels && <LabelList dataKey={key} position="right" fontSize={11} dx={dataLabelDx} dy={dataLabelDy} />}
+              {showDataLabels && <LabelList dataKey={key} position="right" fontSize={fs(11)} dx={dataLabelDx} dy={dataLabelDy} />}
             </Bar>
           ))}
         </BarChart>

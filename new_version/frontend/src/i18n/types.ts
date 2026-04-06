@@ -216,6 +216,8 @@ export interface Translations {
     autoRefresh: string
     loadingTab: string
     loadingChartData: string
+    tvMode: string
+    tvModeReset: string
   }
   editor: {
     clickToEdit: string

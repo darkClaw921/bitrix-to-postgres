@@ -216,6 +216,8 @@ export const ru: Translations = {
     autoRefresh: 'Автообновление:',
     loadingTab: 'Загрузка вкладки...',
     loadingChartData: 'Загрузка...',
+    tvMode: 'Режим ТВ',
+    tvModeReset: 'Сбросить макет',
   },
   editor: {
     clickToEdit: 'Нажмите для редактирования',

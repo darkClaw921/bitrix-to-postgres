@@ -24,7 +24,12 @@
       "Bash(bd --help)",
       "Bash(python -m py_compile backend/app/api/v1/schemas/dashboards.py)",
       "Bash(python:*)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(echo \"tsc-exit=$?\")",
+      "Bash(npx vite:*)",
+      "Bash(npm run:*)",
+      "Bash(grep -r \"measureWidth\\\\|useContainerWidth\" node_modules/react-grid-layout/dist/*.d.ts)",
+      "Bash(ls:*)"
     ]
   }
 }

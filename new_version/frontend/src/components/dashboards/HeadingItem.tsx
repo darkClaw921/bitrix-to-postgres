@@ -6,9 +6,10 @@ interface HeadingItemProps {
   heading: HeadingConfig
   editable?: boolean
   onChange?: (heading: HeadingConfig) => void
+  fontScale?: number
 }
 
-export default function HeadingItem({ heading, editable = false, onChange }: HeadingItemProps) {
+export default function HeadingItem({ heading, editable = false, onChange, fontScale }: HeadingItemProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [showStyle, setShowStyle] = useState(false)
@@ -66,6 +67,13 @@ export default function HeadingItem({ heading, editable = false, onChange }: Hea
 
   const titleStyle: React.CSSProperties = { color: heading.color || undefined, margin: 0 }
 
+  const baseRem: Record<number, number> = { 1: 1.875, 2: 1.5, 3: 1.25, 4: 1.125, 5: 1, 6: 0.875 }
+  const scaledFontStyle: React.CSSProperties | undefined =
+    fontScale && fontScale !== 1
+      ? { fontSize: `${baseRem[heading.level] * fontScale}rem` }
+      : undefined
+  const mergedTitleStyle: React.CSSProperties = { ...titleStyle, ...scaledFontStyle }
+
   return (
     <div style={wrapperStyle} className={editable ? 'group relative' : ''}>
       {editing && editable ? (
@@ -84,12 +92,12 @@ export default function HeadingItem({ heading, editable = false, onChange }: Hea
           }}
           onMouseDown={(e) => e.stopPropagation()}
           className={`w-full bg-transparent border-b border-blue-400 outline-none font-semibold ${sizeClasses[heading.level]} ${alignClass}`}
-          style={titleStyle}
+          style={mergedTitleStyle}
         />
       ) : (
         <Tag
           className={`font-semibold ${sizeClasses[heading.level]} ${alignClass} ${editable ? 'cursor-text' : ''}`}
-          style={titleStyle}
+          style={mergedTitleStyle}
           onClick={() => editable && setEditing(true)}
           title={editable ? t('editor.clickToEditTitle') : undefined}
         >

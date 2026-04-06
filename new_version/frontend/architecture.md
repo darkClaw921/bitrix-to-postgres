@@ -18,7 +18,7 @@
 #### `components/charts/`
 | Файл | Описание |
 |---|---|
-| `ChartRenderer.tsx` | Основной рендерер графиков (bar, line, area, pie, scatter, funnel, horizontal_bar, indicator, table). Поддерживает tooltip, animation, data labels, custom margins через `general` конфиг |
+| `ChartRenderer.tsx` | Основной рендерер графиков (bar, line, area, pie, scatter, funnel, horizontal_bar, indicator, table). Поддерживает tooltip, animation, data labels, custom margins через `general` конфиг. Принимает опциональный `fontScale?: number` — масштабирует все текстовые элементы (data labels, ticks, axis labels, legend, pie label, indicator value, table cells) через helper `fs(base) = max(8, round(base * fontScale))`; при `fontScale == null` helper возвращает исходные константы, `IndicatorRenderer` использует класс `py-8` и `TableRenderer` оставляет Tailwind `text-sm` на `<table>` — non-TV режим (редактор и embed без `?tv=1`) байт-стабилен относительно master |
 | `ChartCard.tsx` | Карточка графика на странице ChartsPage — тулбар (pin, refresh, embed, export, settings, SQL, delete), ChartSettingsPanel, ChartRenderer |
 | `ChartSettingsPanel.tsx` | Панель настроек графика — visual, data format, тип-специфичные (line/area/pie/indicator/table/funnel), card style, general settings |
 | `ExportButtons.tsx` | Кнопки экспорта CSV/Excel. CSV — клиентская генерация с BOM для кириллицы. Excel — динамический import xlsx |
@@ -39,8 +39,10 @@
 | Файл | Описание |
 |---|---|
 | `DashboardCard.tsx` | Карточка дашборда в списке |
+| `HeadingItem.tsx` | Полиморфный элемент-заголовок дашборда (h1–h6) с inline-редактированием текста, panel настроек (level, align, color, bg_color, divider). Принимает опциональный `fontScale?: number` — при значении `!= 1` применяет inline `fontSize` через `baseRem[level] * fontScale` (rem-единицы согласованы с Tailwind text-3xl..text-sm), иначе используется только Tailwind sizeClass |
 | `PasswordGate.tsx` | Защита паролем для публичных дашбордов |
 | `PublishModal.tsx` | Модальное окно публикации дашборда |
+| `TvModeGrid.tsx` | TV-режим публичного дашборда: интерактивный `react-grid-layout` (24 колонки, адаптивный rowHeight = `Math.max(20, innerHeight/24)`), merge layout из `localStorage[tv_layout_<storageKey>]` и дефолта из `dc.layout_*` (миграция 12→24: x*2, w*2). Внутренний `TvCellMeasurer` через `useElementSize` вычисляет `fontScale = clamp(0.4, 2.5, sqrt(w*h)/350)` и `chartHeight = max(60, h-44)`, прокидывает в `renderChart`/`renderHeading` колбэки родителя. Persist layout в `localStorage` обёрнут в try/catch. Использует `useContainerWidth` + `mounted` гард. Все элементы имеют `minW=1, minH=1` (без `maxH`) — даже для headings — чтобы в TV-режиме можно было ужимать как угодно |
 
 #### `components/selectors/`
 | Файл | Описание |
@@ -67,7 +69,7 @@
 | `DashboardPage.tsx` | Главная — статистика, карточки сущностей, справочники |
 | `ChartsPage.tsx` | AI генератор графиков с редактируемым SQL (подсветка синтаксиса через prismjs), история генерации, сохранённые графики, список дашбордов |
 | `DashboardEditorPage.tsx` | Редактор дашборда — react-grid-layout, EditorChartCard с ChartSettingsPanel, селекторы, связанные дашборды, переключатель формата сетки (1/2/3/4 колонки) с автопересчётом layout |
-| `EmbedDashboardPage.tsx` | Публичная embed-страница дашборда — пароль, табы, фильтры, авто-обновление, адаптивность (isMobile) |
+| `EmbedDashboardPage.tsx` | Публичная embed-страница дашборда — пароль, табы, фильтры, авто-обновление, адаптивность (isMobile). TV-режим (`?tv=1` через `useTvMode`): чекбокс «Режим ТВ» и кнопка «Сбросить макет» в шапке; при `tvMode` внешний контейнер становится fullscreen (`p-2` / `w-full`, description скрыт); inline-функции `renderTvChartCard(dc, fontScale, chartHeight)` и `renderTvHeading(dc, fontScale)` передаются в `TvModeGrid`; condition rendering — `tvMode ? <TvModeGrid key={tvKey+'_'+tvStorageKey} .../> : <div grid>`. `tvStorageKey = activeTab === 'main' ? slug : activeTab` — каждый linked-таб хранит layout отдельно; `handleTvReset` чистит `localStorage[tv_layout_<storageKey>]` и инкрементит `tvKey` для remount |
 | `EmbedChartPage.tsx` | Публичная embed-страница одного графика |
 | `ConfigPage.tsx` | Настройки синхронизации, вебхуки |
 | `MonitoringPage.tsx` | История синхронизации, статус планировщика |
@@ -84,6 +86,8 @@
 | `useSync.ts` | Хуки для синхронизации (status, trigger, history) |
 | `useAuth.ts` | Хук авторизации |
 | `useDesignMode.ts` | Хук дизайн-режима — управление состоянием (active, selectedElement), drag-логика (mousedown/move/up), draftLayout, apply/reset |
+| `useElementSize.ts` | Generic ResizeObserver-хук, возвращает `{ ref, width, height }` для произвольного `HTMLElement`. Использует `useLayoutEffect`, читает `entry.contentRect`, гард на отсутствие `ResizeObserver`, disconnect на unmount. |
+| `useTvMode.ts` | Синхронизация булевого состояния `tvMode` с query-параметром `?tv=1` в URL. Lazy init из `URLSearchParams`, `setTvMode` использует `history.replaceState` (без накопления истории), `popstate`-listener для back/forward. |
 
 ### `services/`
 | Файл | Описание |

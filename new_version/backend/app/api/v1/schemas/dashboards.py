@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -88,15 +88,54 @@ class IframeCodeRequest(BaseModel):
     height: str = "400px"
 
 
+# --- Heading items ---
+
+
+class HeadingConfig(BaseModel):
+    """Configuration for a heading dashboard item."""
+
+    text: str = Field(..., min_length=1, max_length=500)
+    level: int = Field(default=2, ge=1, le=6)
+    align: Literal["left", "center", "right"] = "left"
+    color: Optional[str] = None
+    bg_color: Optional[str] = None
+    divider: bool = False
+
+
+class HeadingCreateRequest(BaseModel):
+    """Request to create a new heading item on a dashboard."""
+
+    heading: HeadingConfig
+    layout_x: int = 0
+    layout_y: int = 0
+    layout_w: int = 12
+    layout_h: int = 1
+    sort_order: Optional[int] = None
+
+
+class HeadingUpdateRequest(BaseModel):
+    """Request to update the configuration of an existing heading item."""
+
+    heading: HeadingConfig
+
+
 # --- Responses ---
 
 
 class DashboardChartResponse(BaseModel):
-    """Chart within a dashboard."""
+    """Polymorphic dashboard item: chart or heading.
+
+    For item_type='chart' the chart-specific fields (chart_id, chart_title,
+    chart_type, chart_config, sql_query, user_prompt) are populated.
+    For item_type='heading' those fields are None and ``heading_config``
+    holds the heading payload (text, level, align, ...).
+    """
 
     id: int
     dashboard_id: int
-    chart_id: int
+    item_type: str = "chart"
+    chart_id: Optional[int] = None
+    heading_config: Optional[dict[str, Any]] = None
     title_override: Optional[str] = None
     description_override: Optional[str] = None
     layout_x: int = 0
@@ -117,6 +156,16 @@ class DashboardChartResponse(BaseModel):
     def parse_chart_config(cls, v: Any) -> dict[str, Any] | None:
         if isinstance(v, str):
             return json.loads(v)
+        return v
+
+    @field_validator("heading_config", mode="before")
+    @classmethod
+    def parse_heading_config(cls, v: Any) -> dict[str, Any] | None:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return None
         return v
 
 

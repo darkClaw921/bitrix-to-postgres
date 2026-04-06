@@ -6,6 +6,8 @@ import type {
   DashboardLayoutUpdateRequest,
   ChartOverrideUpdateRequest,
   IframeCodeRequest,
+  HeadingCreateRequest,
+  HeadingUpdateRequest,
 } from '../services/api'
 
 export function usePublishDashboard() {
@@ -158,6 +160,37 @@ export function useUpdateDashboardLinks() {
     }) => dashboardsApi.updateLinks(dashboardId, links),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
+export function useAddDashboardHeading() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ dashboardId, data }: { dashboardId: number; data: HeadingCreateRequest }) =>
+      dashboardsApi.addHeading(dashboardId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', variables.dashboardId] })
+    },
+  })
+}
+
+export function useUpdateDashboardHeading() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      dashboardId,
+      dcId,
+      data,
+    }: {
+      dashboardId: number
+      dcId: number
+      data: HeadingUpdateRequest
+    }) => dashboardsApi.updateHeading(dashboardId, dcId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', variables.dashboardId] })
     },
   })
 }

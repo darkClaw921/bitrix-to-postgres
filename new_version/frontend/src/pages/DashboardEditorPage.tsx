@@ -10,6 +10,7 @@ import ChartSettingsPanel from '../components/charts/ChartSettingsPanel'
 import DesignModeOverlay from '../components/charts/DesignModeOverlay'
 import DesignModeToolbar from '../components/charts/design/DesignModeToolbar'
 import SelectorEditorSection from '../components/selectors/SelectorEditorSection'
+import HeadingItem from '../components/dashboards/HeadingItem'
 import { useDesignMode } from '../hooks/useDesignMode'
 import { useUpdateChartConfig } from '../hooks/useCharts'
 import {
@@ -23,10 +24,12 @@ import {
   useAddDashboardLink,
   useRemoveDashboardLink,
   useUpdateDashboardLinks,
+  useAddDashboardHeading,
+  useUpdateDashboardHeading,
 } from '../hooks/useDashboards'
 import { chartsApi } from '../services/api'
 import { useTranslation } from '../i18n'
-import type { DashboardChart, DashboardLink, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
+import type { DashboardChart, DashboardLink, ChartSpec, ChartDataResponse, ChartDisplayConfig, HeadingConfig } from '../services/api'
 
 const GRID_COLS = 12
 const ROW_HEIGHT = 120
@@ -77,6 +80,8 @@ export default function DashboardEditorPage() {
   const addLink = useAddDashboardLink()
   const removeLink = useRemoveDashboardLink()
   const updateLinks = useUpdateDashboardLinks()
+  const addHeading = useAddDashboardHeading()
+  const updateHeading = useUpdateDashboardHeading()
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState('')
@@ -106,15 +111,18 @@ export default function DashboardEditorPage() {
           w: c.layout_w,
           h: c.layout_h,
           minW: 2,
-          minH: 2,
+          minH: c.item_type === 'heading' ? 1 : 2,
+          maxH: c.item_type === 'heading' ? 4 : undefined,
         })),
       )
 
       // Load chart data
       for (const dc of dashboard.charts) {
-        if (!chartData[dc.chart_id]) {
-          chartsApi.getData(dc.chart_id).then((data) => {
-            setChartData((prev) => ({ ...prev, [dc.chart_id]: data }))
+        if (dc.item_type !== 'chart' || dc.chart_id == null) continue
+        const cid = dc.chart_id
+        if (!chartData[cid]) {
+          chartsApi.getData(cid).then((data) => {
+            setChartData((prev) => ({ ...prev, [cid]: data }))
           }).catch(() => {})
         }
       }
@@ -206,6 +214,37 @@ export default function DashboardEditorPage() {
       )
     },
     [dashboardId, updateOverride, refetch],
+  )
+
+  const handleAddHeading = () => {
+    addHeading.mutate(
+      {
+        dashboardId,
+        data: {
+          heading: {
+            text: t('editor.headingPlaceholder'),
+            level: 2,
+            align: 'left',
+            divider: false,
+          },
+          layout_x: 0,
+          layout_y: 9999,
+          layout_w: 12,
+          layout_h: 1,
+        },
+      },
+      { onSuccess: () => refetch() },
+    )
+  }
+
+  const handleUpdateHeading = useCallback(
+    (dcId: number, heading: HeadingConfig) => {
+      updateHeading.mutate(
+        { dashboardId, dcId, data: { heading } },
+        { onSuccess: () => refetch() },
+      )
+    },
+    [dashboardId, updateHeading, refetch],
   )
 
   if (isLoading) {
@@ -305,6 +344,13 @@ export default function DashboardEditorPage() {
                 })}
               </div>
             )}
+            <button
+              onClick={handleAddHeading}
+              disabled={addHeading.isPending}
+              className="btn btn-secondary text-sm"
+            >
+              {addHeading.isPending ? t('common.saving') : t('editor.addHeading')}
+            </button>
             <button onClick={handleCopyLink} className="btn btn-secondary text-sm">
               {copiedLink ? t('common.copied') : t('editor.copyLink')}
             </button>
@@ -354,12 +400,20 @@ export default function DashboardEditorPage() {
           >
             {dashboard.charts.map((dc) => (
               <div key={String(dc.id)} className="overflow-visible">
-                <EditorChartCard
-                  dc={dc}
-                  data={chartData[dc.chart_id] || null}
-                  onRemove={() => handleRemoveChart(dc.id)}
-                  onUpdateOverride={handleUpdateOverride}
-                />
+                {dc.item_type === 'heading' ? (
+                  <EditorHeadingCard
+                    dc={dc}
+                    onRemove={() => handleRemoveChart(dc.id)}
+                    onUpdateHeading={(h) => handleUpdateHeading(dc.id, h)}
+                  />
+                ) : (
+                  <EditorChartCard
+                    dc={dc}
+                    data={dc.chart_id != null ? chartData[dc.chart_id] || null : null}
+                    onRemove={() => handleRemoveChart(dc.id)}
+                    onUpdateOverride={handleUpdateOverride}
+                  />
+                )}
               </div>
             ))}
           </ReactGridLayout>
@@ -466,10 +520,12 @@ function EditorChartCard({
   }
 
   const handleConfigUpdate = (patch: Partial<ChartDisplayConfig>) => {
+    if (dc.chart_id == null) return
     updateConfig.mutate({ chartId: dc.chart_id, config: patch })
   }
 
   const handleDesignApply = () => {
+    if (dc.chart_id == null) return
     const layoutToSave = designMode.applyLayout()
     updateConfig.mutate(
       { chartId: dc.chart_id, config: { designLayout: layoutToSave } },
@@ -713,6 +769,38 @@ function EditorChartCard({
           isDragging={designMode.isDragging}
         />
       )}
+    </div>
+  )
+}
+
+function EditorHeadingCard({
+  dc,
+  onRemove,
+  onUpdateHeading,
+}: {
+  dc: DashboardChart
+  onRemove: () => void
+  onUpdateHeading: (heading: HeadingConfig) => void
+}) {
+  const { t } = useTranslation()
+  const heading: HeadingConfig =
+    (dc.heading_config as HeadingConfig) || {
+      text: '',
+      level: 2,
+      align: 'left',
+      divider: false,
+    }
+  return (
+    <div className="h-full bg-white rounded-lg border border-gray-200 shadow-sm p-3 relative group">
+      <button
+        onClick={onRemove}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="absolute top-1 right-1 z-10 px-1.5 py-0.5 text-xs rounded bg-red-50 text-red-500 hover:bg-red-100 opacity-0 group-hover:opacity-100"
+        title={t('editor.removeHeading')}
+      >
+        ×
+      </button>
+      <HeadingItem heading={heading} editable onChange={onUpdateHeading} />
     </div>
   )
 }

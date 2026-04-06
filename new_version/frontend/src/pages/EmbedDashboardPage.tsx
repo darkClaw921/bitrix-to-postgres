@@ -4,10 +4,11 @@ import ChartRenderer from '../components/charts/ChartRenderer'
 import ExportButtons from '../components/charts/ExportButtons'
 import { getCardStyleClasses, getCardInlineStyle, getTitleSizeClass } from '../components/charts/cardStyleUtils'
 import PasswordGate from '../components/dashboards/PasswordGate'
+import HeadingItem from '../components/dashboards/HeadingItem'
 import SelectorBar from '../components/selectors/SelectorBar'
 import { useTranslation } from '../i18n'
 import { publicApi } from '../services/api'
-import type { Dashboard, DashboardChart, FilterValue, ChartSpec, ChartDataResponse, ChartDisplayConfig } from '../services/api'
+import type { Dashboard, DashboardChart, FilterValue, ChartSpec, ChartDataResponse, ChartDisplayConfig, HeadingConfig } from '../services/api'
 import { UI_VERSION } from '../version'
 
 const SESSION_KEY_PREFIX = 'dashboard_token_'
@@ -87,20 +88,22 @@ export default function EmbedDashboardPage() {
         : []
 
       try {
-        const promises = dash.charts.map((c) => {
-          const fetcher = hasFilters
-            ? publicApi.getDashboardChartDataFiltered(slug, c.id, authToken, filterList)
-            : publicApi.getDashboardChartData(slug, c.id, authToken)
-          return fetcher
-            .then((data) => ({ dcId: c.id, data }))
-            .catch((err) => {
-              const axiosErr = err as { response?: { status?: number } }
-              if (axiosErr?.response?.status === 401) {
-                throw err
-              }
-              return { dcId: c.id, data: null }
-            })
-        })
+        const promises = dash.charts
+          .filter((c) => c.item_type !== 'heading' && c.chart_id != null)
+          .map((c) => {
+            const fetcher = hasFilters
+              ? publicApi.getDashboardChartDataFiltered(slug, c.id, authToken, filterList)
+              : publicApi.getDashboardChartData(slug, c.id, authToken)
+            return fetcher
+              .then((data) => ({ dcId: c.id, data }))
+              .catch((err) => {
+                const axiosErr = err as { response?: { status?: number } }
+                if (axiosErr?.response?.status === 401) {
+                  throw err
+                }
+                return { dcId: c.id, data: null }
+              })
+          })
         const results = await Promise.all(promises)
         const dataMap: Record<number, ChartDataResponse> = {}
         for (const r of results) {
@@ -137,20 +140,22 @@ export default function EmbedDashboardPage() {
         ? Object.entries(activeFilters).map(([name, value]) => ({ name, value }))
         : []
 
-      const promises = dash.charts.map((c) => {
-        const fetcher = hasFilters
-          ? publicApi.getLinkedDashboardChartDataFiltered(slug, linkedSlug, c.id, authToken, filterList)
-          : publicApi.getLinkedDashboardChartData(slug, linkedSlug, c.id, authToken)
-        return fetcher
-          .then((data) => ({ dcId: c.id, data }))
-          .catch((err) => {
-            const axiosErr = err as { response?: { status?: number } }
-            if (axiosErr?.response?.status === 401) {
-              throw err
-            }
-            return { dcId: c.id, data: null }
-          })
-      })
+      const promises = dash.charts
+        .filter((c) => c.item_type !== 'heading' && c.chart_id != null)
+        .map((c) => {
+          const fetcher = hasFilters
+            ? publicApi.getLinkedDashboardChartDataFiltered(slug, linkedSlug, c.id, authToken, filterList)
+            : publicApi.getLinkedDashboardChartData(slug, linkedSlug, c.id, authToken)
+          return fetcher
+            .then((data) => ({ dcId: c.id, data }))
+            .catch((err) => {
+              const axiosErr = err as { response?: { status?: number } }
+              if (axiosErr?.response?.status === 401) {
+                throw err
+              }
+              return { dcId: c.id, data: null }
+            })
+        })
       const results = await Promise.all(promises)
       const dataMap: Record<number, ChartDataResponse> = {}
       for (const r of results) {
@@ -392,14 +397,36 @@ export default function EmbedDashboardPage() {
               gridTemplateColumns: isMobile ? '1fr' : 'repeat(12, 1fr)',
             }}
           >
-            {activeCharts.map((dc) => (
-              <DashboardChartCard
-                key={dc.id}
-                dc={dc}
-                data={activeChartData[dc.id] || null}
-                isMobile={isMobile}
-              />
-            ))}
+            {activeCharts.map((dc) => {
+              if (dc.item_type === 'heading') {
+                const heading: HeadingConfig =
+                  (dc.heading_config as HeadingConfig) || {
+                    text: '',
+                    level: 2,
+                    align: 'left',
+                    divider: false,
+                  }
+                const gridStyle = isMobile
+                  ? undefined
+                  : {
+                      gridColumn: `${dc.layout_x + 1} / span ${dc.layout_w}`,
+                      gridRow: `${dc.layout_y + 1} / span ${dc.layout_h}`,
+                    }
+                return (
+                  <div key={dc.id} style={gridStyle}>
+                    <HeadingItem heading={heading} />
+                  </div>
+                )
+              }
+              return (
+                <DashboardChartCard
+                  key={dc.id}
+                  dc={dc}
+                  data={activeChartData[dc.id] || null}
+                  isMobile={isMobile}
+                />
+              )
+            })}
           </div>
         )}
 

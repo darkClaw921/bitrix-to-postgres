@@ -165,6 +165,10 @@ async def get_dashboard_chart_data(
     chart_info = await dashboard_service.get_chart_sql_by_slug(slug, dc_id)
     if not chart_info:
         raise HTTPException(status_code=404, detail="Чарт не найден в дашборде")
+    if chart_info.get("item_type") and chart_info["item_type"] != "chart":
+        raise HTTPException(
+            status_code=400, detail="Этот элемент не является чартом"
+        )
 
     try:
         sql = chart_info["sql_query"]
@@ -233,6 +237,10 @@ async def get_linked_dashboard_chart_data(
     chart_info = await dashboard_service.get_chart_sql_by_slug(linked_slug, dc_id)
     if not chart_info:
         raise HTTPException(status_code=404, detail="Чарт не найден в дашборде")
+    if chart_info.get("item_type") and chart_info["item_type"] != "chart":
+        raise HTTPException(
+            status_code=400, detail="Этот элемент не является чартом"
+        )
 
     try:
         sql = chart_info["sql_query"]
@@ -267,6 +275,10 @@ async def _execute_filtered_chart(
     chart_info = await dashboard_service.get_chart_sql_by_slug(slug, dc_id)
     if not chart_info:
         raise HTTPException(status_code=404, detail="Чарт не найден в дашборде")
+    if chart_info.get("item_type") and chart_info["item_type"] != "chart":
+        raise HTTPException(
+            status_code=400, detail="Этот элемент не является чартом"
+        )
 
     try:
         sql = chart_info["sql_query"]

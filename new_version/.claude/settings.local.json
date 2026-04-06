@@ -6,7 +6,25 @@
       "Bash(python -m py_compile backend/app/domain/services/ai_service.py backend/app/api/v1/schemas/selectors.py backend/app/api/v1/endpoints/selectors.py)",
       "Bash(npx tsc:*)",
       "Bash(python -c ':*)",
-      "Bash(python -m py_compile /Users/igorgerasimov/cursorWorkspace/bitrix-bi-connector/bitrix-to-postgres/new_version/backend/app/domain/services/selector_service.py)"
+      "Bash(python -m py_compile /Users/igorgerasimov/cursorWorkspace/bitrix-bi-connector/bitrix-to-postgres/new_version/backend/app/domain/services/selector_service.py)",
+      "Bash(bd onboard:*)",
+      "Bash(bd prime:*)",
+      "Bash(bd create:*)",
+      "Bash(bd list:*)",
+      "Bash(bd dep:*)",
+      "Bash(bd ready:*)",
+      "Bash(bd show:*)",
+      "Bash(bd update:*)",
+      "Bash(python -m py_compile backend/alembic/versions/017_add_dashboard_heading_items.py)",
+      "Bash(bd close:*)",
+      "Bash(python3:*)",
+      "Bash(alembic --version)",
+      "Bash(python3.10:*)",
+      "Bash(bd start:*)",
+      "Bash(bd --help)",
+      "Bash(python -m py_compile backend/app/api/v1/schemas/dashboards.py)",
+      "Bash(python:*)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }

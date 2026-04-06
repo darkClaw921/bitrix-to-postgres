@@ -113,7 +113,13 @@ class PublishedDashboard(Base):
 
 
 class DashboardChart(Base):
-    """Chart placement within a published dashboard."""
+    """Polymorphic dashboard item: chart placement OR heading.
+
+    item_type определяет роль строки:
+    - "chart"   — обычный график, ссылка на ai_charts через chart_id
+    - "heading" — текстовый заголовок, chart_id = NULL,
+                  параметры в heading_config (text/level/align/colors/divider)
+    """
 
     __tablename__ = "dashboard_charts"
 
@@ -121,9 +127,13 @@ class DashboardChart(Base):
     dashboard_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("published_dashboards.id", ondelete="CASCADE"), nullable=False
     )
-    chart_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("ai_charts.id", ondelete="CASCADE"), nullable=False
+    chart_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("ai_charts.id", ondelete="CASCADE"), nullable=True
     )
+    item_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="chart", server_default="chart"
+    )
+    heading_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     title_override: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     description_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     layout_x: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

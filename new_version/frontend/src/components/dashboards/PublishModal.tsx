@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { SavedChart, DashboardPublishResponse } from '../../services/api'
 import { usePublishDashboard } from '../../hooks/useDashboards'
+import { copyToClipboard as copyText } from '../../utils/clipboard'
 import { useTranslation } from '../../i18n'
 
 interface PublishModalProps {
@@ -53,7 +54,8 @@ export default function PublishModal({ charts, onClose }: PublishModalProps) {
   }
 
   const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+    copyText(text).then((ok) => {
+      if (!ok) return
       setCopiedField(field)
       setTimeout(() => setCopiedField(null), 2000)
     })

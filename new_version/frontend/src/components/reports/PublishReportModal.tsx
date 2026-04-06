@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Report, PublishReportResponse } from '../../services/api'
 import { usePublishReport } from '../../hooks/useReports'
+import { copyToClipboard as copyText } from '../../utils/clipboard'
 import { useTranslation } from '../../i18n'
 
 interface PublishReportModalProps {
@@ -34,7 +35,8 @@ export default function PublishReportModal({ reports, onClose }: PublishReportMo
   }
 
   const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+    copyText(text).then((ok) => {
+      if (!ok) return
       setCopiedField(field)
       setTimeout(() => setCopiedField(null), 2000)
     })

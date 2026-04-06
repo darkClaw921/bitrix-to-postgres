@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { copyToClipboard } from '../../utils/clipboard'
 import { useTranslation } from '../../i18n'
 
 interface IframeCopyButtonProps {
@@ -12,28 +13,13 @@ export default function IframeCopyButton({ chartId }: IframeCopyButtonProps) {
 
   const handleCopy = async () => {
     const html = `<iframe src="${window.location.origin}/embed/chart/${chartId}" width="100%" height="400" frameborder="0" style="border: none;"></iframe>`
-
-    try {
-      await navigator.clipboard.writeText(html)
+    const ok = await copyToClipboard(html)
+    if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Fallback for non-HTTPS or when clipboard API is unavailable
-      try {
-        const textarea = document.createElement('textarea')
-        textarea.value = html
-        textarea.style.position = 'fixed'
-        textarea.style.opacity = '0'
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand('copy')
-        document.body.removeChild(textarea)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      } catch {
-        setError(true)
-        setTimeout(() => setError(false), 2000)
-      }
+    } else {
+      setError(true)
+      setTimeout(() => setError(false), 2000)
     }
   }
 

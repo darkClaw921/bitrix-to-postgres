@@ -7,6 +7,7 @@ import {
   useUpdateSchemaDescription,
   useSchemaTables,
 } from '../hooks/useCharts'
+import { copyToClipboard } from '../utils/clipboard'
 import { useTranslation } from '../i18n'
 
 export default function SchemaPage() {
@@ -38,12 +39,10 @@ export default function SchemaPage() {
 
   const handleCopy = async () => {
     if (!currentDescription?.markdown) return
-    try {
-      await navigator.clipboard.writeText(currentDescription.markdown)
+    const ok = await copyToClipboard(currentDescription.markdown)
+    if (ok) {
       setCopySuccess(true)
       setTimeout(() => setCopySuccess(false), 2000)
-    } catch (err) {
-      console.error('Failed to copy:', err)
     }
   }
 

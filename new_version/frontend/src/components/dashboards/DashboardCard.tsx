@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { DashboardListItem } from '../../services/api'
 import { useDeleteDashboard } from '../../hooks/useDashboards'
+import { copyToClipboard } from '../../utils/clipboard'
 import { useTranslation } from '../../i18n'
 
 interface DashboardCardProps {
@@ -17,7 +18,8 @@ export default function DashboardCard({ dashboard }: DashboardCardProps) {
   const dashboardUrl = `${window.location.origin}/embed/dashboard/${dashboard.slug}`
 
   const copyLink = () => {
-    navigator.clipboard.writeText(dashboardUrl).then(() => {
+    copyToClipboard(dashboardUrl).then((ok) => {
+      if (!ok) return
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })

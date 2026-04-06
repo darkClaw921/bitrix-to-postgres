@@ -30,6 +30,7 @@ import {
   useUpdateDashboardHeading,
 } from '../hooks/useDashboards'
 import { chartsApi } from '../services/api'
+import { copyToClipboard } from '../utils/clipboard'
 import { useTranslation } from '../i18n'
 import type { DashboardChart, DashboardLink, ChartSpec, ChartDataResponse, ChartDisplayConfig, HeadingConfig } from '../services/api'
 
@@ -237,7 +238,8 @@ export default function DashboardEditorPage() {
   const handleCopyLink = () => {
     if (!dashboard) return
     const url = `${window.location.origin}/embed/dashboard/${dashboard.slug}`
-    navigator.clipboard.writeText(url).then(() => {
+    copyToClipboard(url).then((ok) => {
+      if (!ok) return
       setCopiedLink(true)
       setTimeout(() => setCopiedLink(false), 2000)
     })

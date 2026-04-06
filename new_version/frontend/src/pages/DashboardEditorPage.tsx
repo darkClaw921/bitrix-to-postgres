@@ -563,10 +563,15 @@ function EditorChartCard({
   const updateConfig = useUpdateChartConfig()
   const chartContainerRef = useRef<HTMLDivElement>(null)
 
-  // TV mode font scaling — measures the chart body container and derives a scale factor
+  // TV mode font scaling — measures the chart body container and derives a scale factor.
+  // Tables use a width-only formula so vertical stretching just exposes more rows
+  // instead of inflating the text (mirrors TvCellMeasurer in TvModeGrid).
   const { ref: chartBodyRef, width: chartBodyWidth, height: chartBodyHeight } = useElementSize<HTMLDivElement>()
+  const isTableChart = (dc.chart_type || 'bar') === 'table'
   const fontScale = tvMode
-    ? Math.max(0.4, Math.min(2.5, Math.sqrt(Math.max(1, chartBodyWidth * chartBodyHeight)) / 350))
+    ? isTableChart
+      ? Math.max(0.4, Math.min(2.5, Math.sqrt(Math.max(1, chartBodyWidth) / 350)))
+      : Math.max(0.4, Math.min(2.5, Math.sqrt(Math.max(1, chartBodyWidth * chartBodyHeight)) / 350))
     : undefined
 
   const title = dc.title_override || dc.chart_title || 'Chart'

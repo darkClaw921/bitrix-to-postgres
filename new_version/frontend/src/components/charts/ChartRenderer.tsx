@@ -10,7 +10,77 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import type { ChartSpec, DesignLayout } from '../../services/api'
+import { useElementSize } from '../../hooks/useElementSize'
 import { useTranslation } from '../../i18n'
+
+/**
+ * Formats a numeric indicator value according to user-chosen options:
+ *  - decimals: 0..6 (rounds to that many fractional digits)
+ *  - format:
+ *      'number'   → locale grouping ("3 337 172,29")
+ *      'currency' → prefixed with `currencySymbol` ("$3 337 172,29")
+ *      'percent'  → suffixed with "%" ("12,5 %")
+ *      'compact'  → K/M/B/T abbreviation ("3,3 M")
+ *
+ * Falls through to plain `toLocaleString()` when no format is set, preserving
+ * the historical behavior for indicators that have not opted into formatting.
+ */
+function formatIndicatorNumber(
+  value: number,
+  format: 'number' | 'currency' | 'percent' | 'compact' | undefined,
+  decimals: number | undefined,
+  currencySymbol: string | undefined,
+): string {
+  if (!Number.isFinite(value)) return String(value)
+
+  // No format chosen → preserve legacy `toLocaleString()` output but still
+  // honor `decimals` if the user picked one.
+  if (!format) {
+    return decimals != null
+      ? value.toLocaleString(undefined, {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        })
+      : value.toLocaleString()
+  }
+
+  if (format === 'compact') {
+    // Custom compact: divide by the appropriate magnitude and append the
+    // suffix manually so the result respects the user's `decimals` setting.
+    // `Intl.NumberFormat({ notation: 'compact' })` ignores `maximumFractionDigits`
+    // in some locales, hence the hand-rolled fallback.
+    const abs = Math.abs(value)
+    const tiers: Array<[number, string]> = [
+      [1e12, 'T'],
+      [1e9, 'B'],
+      [1e6, 'M'],
+      [1e3, 'K'],
+    ]
+    for (const [tierValue, suffix] of tiers) {
+      if (abs >= tierValue) {
+        const scaled = value / tierValue
+        const d = decimals ?? 1
+        return `${scaled.toLocaleString(undefined, {
+          minimumFractionDigits: d,
+          maximumFractionDigits: d,
+        })} ${suffix}`
+      }
+    }
+    return value.toLocaleString(undefined, {
+      minimumFractionDigits: decimals ?? 0,
+      maximumFractionDigits: decimals ?? 0,
+    })
+  }
+
+  const opts: Intl.NumberFormatOptions =
+    decimals != null
+      ? { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
+      : {}
+  const formatted = value.toLocaleString(undefined, opts)
+  if (format === 'currency') return `${currencySymbol || '$'}${formatted}`
+  if (format === 'percent') return `${formatted}%`
+  return formatted
+}
 
 const DEFAULT_COLORS = [
   '#8884d8', '#82ca9d', '#ffc658', '#ff7300',
@@ -48,21 +118,56 @@ function IndicatorRenderer({ spec, data, fontScale }: { spec: ChartSpec; data: R
   const row = data[0] || {}
   const rawValue = row[valueKey]
   const numValue = Number(rawValue)
-  const displayValue = isNaN(numValue) ? String(rawValue ?? '') : numValue.toLocaleString()
+  const isNumeric = !isNaN(numValue) && rawValue != null && rawValue !== ''
+  const displayValue = isNumeric
+    ? formatIndicatorNumber(
+        numValue,
+        indicatorCfg.format,
+        indicatorCfg.decimals,
+        indicatorCfg.currencySymbol,
+      )
+    : String(rawValue ?? '')
 
+  // Base font size in rem comes from the user's preset (sm/md/lg/xl).
+  // In TV mode `fontScale` further scales it to match cell size.
   const baseRemMap: Record<'sm' | 'md' | 'lg' | 'xl', number> = { sm: 1.5, md: 2.5, lg: 3.5, xl: 5 }
   const baseRem = baseRemMap[indicatorCfg.fontSize || 'lg'] ?? 3.5
-  const fontSize = `${baseRem * (fontScale ?? 1)}rem`
+  const requestedSizePx = baseRem * 16 * (fontScale ?? 1)
+
+  // Auto-fit: measure the container and shrink the font size if the rendered
+  // text would overflow horizontally. We approximate text width as
+  // `0.55 * fontSize * charCount` (a reasonable average for sans-serif fonts).
+  // Auto-fit defaults to ON — without it, long values like "3 337 172,289" at
+  // 56px easily overflow the card. Users who explicitly want the legacy fixed
+  // size can disable it via the settings panel.
+  const { ref: fitRef, width: containerWidth, height: containerHeight } = useElementSize<HTMLDivElement>()
+  const autoFit = indicatorCfg.autoFit !== false
+  const prefixLen = indicatorCfg.prefix ? indicatorCfg.prefix.length + 1 : 0
+  const suffixLen = indicatorCfg.suffix ? indicatorCfg.suffix.length + 1 : 0
+  const totalChars = Math.max(1, displayValue.length + prefixLen + suffixLen)
+  // Reserve 16px padding on each side (32px total) so the value doesn't kiss
+  // the card edge even at minimum font size.
+  const availableWidth = Math.max(0, containerWidth - 32)
+  const maxByWidth = autoFit && availableWidth > 0
+    ? availableWidth / (totalChars * 0.55)
+    : Infinity
+  // Cap by container height too: the rendered text should never be taller
+  // than ~80% of the cell, otherwise it visually overlaps the title.
+  const maxByHeight = autoFit && containerHeight > 0 ? containerHeight * 0.8 : Infinity
+  const finalSizePx = Math.max(10, Math.min(requestedSizePx, maxByWidth, maxByHeight))
 
   // Non-regression: keep py-8 when fontScale is undefined (editor & non-TV embed).
   // TV mode (fontScale defined) uses py-2 so the indicator fits in small cells.
   const paddingClass = fontScale == null ? 'py-8' : 'py-2'
 
   return (
-    <div className={`flex flex-col items-center justify-center h-full ${paddingClass}`}>
+    <div
+      ref={fitRef}
+      className={`flex flex-col items-center justify-center h-full w-full overflow-hidden ${paddingClass}`}
+    >
       <div
-        className="font-bold leading-tight"
-        style={{ fontSize, color: indicatorCfg.color || '#1f2937' }}
+        className="font-bold leading-tight text-center break-words max-w-full"
+        style={{ fontSize: `${finalSizePx}px`, color: indicatorCfg.color || '#1f2937' }}
       >
         {indicatorCfg.prefix && <span>{indicatorCfg.prefix} </span>}
         {displayValue}

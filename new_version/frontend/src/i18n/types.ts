@@ -346,6 +346,16 @@ export interface Translations {
     medium: string
     large: string
     extraLarge: string
+    numberFormat: string
+    formatDefault: string
+    formatNumber: string
+    formatCurrency: string
+    formatPercent: string
+    formatCompact: string
+    decimalPlaces: string
+    decimalPlacesPlaceholder: string
+    currencySymbol: string
+    autoFit: string
     tableSettings: string
     columnTotals: string
     rowTotals: string

@@ -40,10 +40,40 @@ class Settings(BaseSettings):
     sync_batch_size: int = 50
     sync_default_interval_minutes: int = 30
 
-    # AI / OpenAI
+    # AI — OpenAI-compatible client (works with OpenAI, OpenRouter, or any
+    # other provider that exposes the same wire format).
+    #
+    # Provider selection:
+    #   - "openai"     → uses OpenAI directly. ``openai_api_key`` is required.
+    #   - "openrouter" → uses OpenRouter (https://openrouter.ai). The same
+    #                    ``openai_api_key`` setting is reused as the API key
+    #                    (so existing code paths don't need to change), but
+    #                    you should put your OpenRouter key there. The base
+    #                    URL defaults to https://openrouter.ai/api/v1 unless
+    #                    overridden via ``llm_base_url``.
+    #
+    # ``openai_model`` is the model id passed to the API. For OpenRouter use
+    # the qualified form, e.g. ``openai/gpt-4o-mini`` or
+    # ``anthropic/claude-3.5-sonnet``.
+    llm_provider: Literal["openai", "openrouter"] = "openai"
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_timeout_seconds: int = 300
+    # Optional override for the API base URL. When unset, defaults are
+    # selected from ``llm_provider``.
+    llm_base_url: str = ""
+    # Optional headers OpenRouter uses to attribute traffic on its dashboard.
+    openrouter_app_url: str = ""
+    openrouter_app_title: str = ""
+
+    @property
+    def resolved_llm_base_url(self) -> str:
+        """Return the effective base URL for the LLM client."""
+        if self.llm_base_url:
+            return self.llm_base_url
+        if self.llm_provider == "openrouter":
+            return "https://openrouter.ai/api/v1"
+        return "https://api.openai.com/v1"
 
     # Charts
     chart_query_timeout_seconds: int = 30

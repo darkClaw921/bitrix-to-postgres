@@ -126,6 +126,103 @@ REPORT_ANALYSIS_PROMPT = """Ты — аналитик данных. Проана
 - Не упоминай технические термины: таблицы БД, поля, SQL, запросы, ошибки парсинга
 """
 
+SELECTORS_GENERATE_PROMPT = """You are an analytics dashboard expert. Given the SQL of every chart on a dashboard
+plus the database schema, generate a list of useful selectors (filters) that the
+end user can apply to all relevant charts.
+
+Database schema:
+{schema_context}
+
+Charts on the dashboard:
+{charts_context}
+{user_request_block}
+Return JSON with this exact shape (no markdown, no commentary):
+
+{{
+  "selectors": [
+    {{
+      "name": "snake_case_id",
+      "label": "Человеко-читаемое название на русском",
+      "selector_type": "date_range|single_date|dropdown|multi_select|text",
+      "operator": "equals|not_equals|in|not_in|between|gt|lt|gte|lte|like|not_like",
+      "config": {{
+        "default_value": "TODAY|LAST_7_DAYS|LAST_30_DAYS|... or {{from, to}} or null",
+        "source_table": "table_name (for dropdown/multi_select pulled from DB)",
+        "source_column": "column_name",
+        "label_table": "optional join table for human labels",
+        "label_column": "optional label column",
+        "label_value_column": "optional join key on the label table",
+        "static_values": [{{"value": "v", "label": "L"}}]
+      }},
+      "mappings": [
+        {{
+          "dashboard_chart_id": <int>,
+          "target_column": "column_in_chart_sql",
+          "target_table": "optional table qualifier",
+          "operator_override": "optional",
+          "post_filter_resolve_table": "optional auxiliary table",
+          "post_filter_resolve_column": "optional column to filter by inside the auxiliary table",
+          "post_filter_resolve_id_column": "optional id column whose values plug into target_column"
+        }}
+      ]
+    }}
+  ]
+}}
+
+## Rules
+
+1. Use ONLY tables/columns from the schema and chart SQLs above.
+2. **selector_type → operator pairing:**
+   - `date_range` → `between`
+   - `single_date` → `equals` (or `gte`/`lte`)
+   - `dropdown` → `equals`
+   - `multi_select` → `in`
+   - `text` → `like`
+3. **Date tokens** (use these for `default_value` of date selectors):
+   `TODAY`, `YESTERDAY`, `TOMORROW`, `LAST_7_DAYS`, `LAST_14_DAYS`, `LAST_30_DAYS`,
+   `LAST_90_DAYS`, `THIS_MONTH_START`, `LAST_MONTH_START`, `THIS_QUARTER_START`,
+   `LAST_QUARTER_START`, `THIS_YEAR_START`, `LAST_YEAR_START`.
+   For `date_range` use `{{"from": "LAST_30_DAYS", "to": "TODAY"}}`.
+4. **`mappings` is the source of truth for selector → chart links.** Only create
+   a mapping when `target_column` actually exists in that chart's SQL output.
+5. **Use `post_filter_*` ONLY when `target_column` exists in the chart's table
+   but the selector's value semantically refers to a different (related) table.**
+   Example: a chart over `stage_history_deals` (which has `owner_id`) needs to
+   be filtered by manager. The selector loads managers from `crm_users`, so the
+   mapping is: `target_column: "owner_id"`,
+   `post_filter_resolve_table: "crm_deals"`,
+   `post_filter_resolve_column: "assigned_by_id"`,
+   `post_filter_resolve_id_column: "id"`.
+   The generated SQL becomes
+   `WHERE owner_id IN (SELECT id FROM crm_deals WHERE assigned_by_id = :p)`.
+6. For `dropdown`/`multi_select`, prefer DB-backed options (`source_table` +
+   `source_column`) over `static_values`. **Always populate `label_table` /
+   `label_column` / `label_value_column` when the source column is an ID** so
+   the dropdown shows human-readable names instead of raw numbers:
+   - manager / responsible / assigned_by_id → join `bitrix_users` on
+     `bitrix_id`, label `CONCAT_WS(' ', name, last_name)` (set
+     `label_column: "name"` and the resolver will fall back smartly).
+   - stage_id → join `ref_crm_statuses` on `status_id`, label `name`.
+   - category_id → join `ref_crm_deal_categories` on `id`, label `name`.
+   - currency_id → join `ref_crm_currencies` on `currency`, label `full_name`.
+   When the selector pulls directly from `bitrix_users` (e.g.
+   `source_table: "bitrix_users"`, `source_column: "bitrix_id"`), set
+   `label_table: "bitrix_users"`, `label_value_column: "bitrix_id"`,
+   `label_column: "last_name"`.
+7. **Always set `target_table`** on every mapping. Without it, an unqualified
+   `created_time` (or any common column) becomes ambiguous when the chart
+   joins the same table twice.
+8. Generate at most 6 selectors. Pick the most universally useful ones for
+   THIS dashboard given its charts.
+9. All `label` values in Russian. All `name` values in snake_case English.
+10. Return valid JSON only — no comments, no trailing commas.
+11. **If a "User request" block is present above, treat it as the highest priority
+    instruction.** Generate selectors that match what the user described — their
+    requested fields, filter types, and operators take precedence over your own
+    suggestions. You may still add a couple of obvious extras if the user did not
+    explicitly forbid it, but never drop or substitute selectors the user asked for.
+"""
+
 SCHEMA_DESCRIPTION_PROMPT = """You are a database documentation specialist for a Bitrix24 CRM system.
 
 Analyze the following database schema and generate a detailed markdown documentation in Russian.
@@ -172,15 +269,50 @@ def _extract_json(content: str) -> str:
 
 
 class AIService:
-    """Service for generating chart specs and schema descriptions via OpenAI."""
+    """Service for generating chart specs and schema descriptions.
+
+    Uses an OpenAI-compatible client. The actual provider is selected via
+    ``settings.llm_provider`` (``openai`` or ``openrouter``); both speak the
+    same wire format, so a single ``AsyncOpenAI`` instance with the right
+    ``base_url`` covers both. For OpenRouter, attribution headers
+    (``HTTP-Referer`` / ``X-Title``) are sent if configured.
+    """
 
     def __init__(self) -> None:
         settings = get_settings()
+
+        default_headers: dict[str, str] = {}
+        if settings.llm_provider == "openrouter":
+            if settings.openrouter_app_url:
+                default_headers["HTTP-Referer"] = settings.openrouter_app_url
+            if settings.openrouter_app_title:
+                default_headers["X-Title"] = settings.openrouter_app_title
+
         self.client = AsyncOpenAI(
             api_key=settings.openai_api_key,
+            base_url=settings.resolved_llm_base_url,
             timeout=settings.openai_timeout_seconds,
+            default_headers=default_headers or None,
         )
         self.model = settings.openai_model
+        self.provider = settings.llm_provider
+
+    @staticmethod
+    def _to_chat_messages(
+        system: str, input_: "str | list[dict]"
+    ) -> list[dict]:
+        """Convert (instructions, input) into Chat Completions message list.
+
+        ``input_`` can be a plain string (a single user message) or a list of
+        ``{role, content}`` dicts (full conversation history). The system
+        instructions are always prepended.
+        """
+        messages: list[dict] = [{"role": "system", "content": system}]
+        if isinstance(input_, str):
+            messages.append({"role": "user", "content": input_})
+        elif isinstance(input_, list):
+            messages.extend(input_)
+        return messages
 
     async def _complete(
         self,
@@ -188,41 +320,60 @@ class AIService:
         input_: "str | list[dict]",
         max_output_tokens: int,
     ) -> str:
-        """Call Responses API and return text content.
+        """Call the configured LLM provider and return text content.
 
-        Uses /v1/responses (new API) instead of /v1/chat/completions.
-        Supports both gpt-5-mini/o-series (Responses API) and legacy models.
+        - For ``openai``: uses the new Responses API (``/v1/responses``).
+        - For ``openrouter`` (and any non-OpenAI provider): falls back to
+          Chat Completions (``/v1/chat/completions``), which OpenRouter
+          natively speaks.
         """
         try:
-            response = await self.client.responses.create(
-                model=self.model,
-                instructions=system,
-                input=input_,
-                max_output_tokens=max_output_tokens,
-            )
-        except openai.APIConnectionError as e:
-            logger.error("OpenAI connection error", error=str(e))
-            raise AIServiceError("Не удалось подключиться к OpenAI API") from e
-        except openai.RateLimitError as e:
-            logger.error("OpenAI rate limit", error=str(e))
-            raise AIServiceError("Превышен лимит запросов OpenAI") from e
-        except openai.APIStatusError as e:
-            logger.error("OpenAI API error", status=e.status_code, error=e.message)
-            raise AIServiceError(f"Ошибка OpenAI: {e.message}") from e
-
-        # output_text is the SDK convenience accessor for Responses API
-        content = getattr(response, "output_text", None)
-        if not content:
-            # Manual extraction fallback: iterate output items
-            for item in getattr(response, "output", []):
-                if getattr(item, "type", None) == "message":
-                    for block in getattr(item, "content", []):
-                        if getattr(block, "type", None) == "output_text":
-                            content = block.text
+            if self.provider == "openai":
+                response = await self.client.responses.create(
+                    model=self.model,
+                    instructions=system,
+                    input=input_,
+                    max_output_tokens=max_output_tokens,
+                )
+                content = getattr(response, "output_text", None)
+                if not content:
+                    # Manual extraction fallback: iterate output items
+                    for item in getattr(response, "output", []):
+                        if getattr(item, "type", None) == "message":
+                            for block in getattr(item, "content", []):
+                                if getattr(block, "type", None) == "output_text":
+                                    content = block.text
+                                    break
+                        if content:
                             break
-                if content:
-                    break
-        return content or ""
+                return content or ""
+
+            # OpenRouter / generic OpenAI-compatible: chat completions
+            messages = self._to_chat_messages(system, input_)
+            chat = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,  # type: ignore[arg-type]
+                max_tokens=max_output_tokens,
+            )
+            try:
+                return chat.choices[0].message.content or ""
+            except (AttributeError, IndexError):
+                return ""
+
+        except openai.APIConnectionError as e:
+            logger.error("LLM connection error", provider=self.provider, error=str(e))
+            raise AIServiceError("Не удалось подключиться к LLM API") from e
+        except openai.RateLimitError as e:
+            logger.error("LLM rate limit", provider=self.provider, error=str(e))
+            raise AIServiceError("Превышен лимит запросов LLM") from e
+        except openai.APIStatusError as e:
+            logger.error(
+                "LLM API error",
+                provider=self.provider,
+                status=e.status_code,
+                error=e.message,
+            )
+            raise AIServiceError(f"Ошибка LLM: {e.message}") from e
 
     async def _get_report_context(self) -> str:
         """Get active report context prompt from database."""
@@ -307,6 +458,65 @@ class AIService:
 
         logger.info("Chart spec generated", chart_type=spec.get("chart_type"))
         return spec
+
+    async def generate_selectors(
+        self,
+        charts_context: str,
+        schema_context: str,
+        user_request: str | None = None,
+    ) -> list[dict]:
+        """Generate a list of selectors for a dashboard from its charts and schema.
+
+        Args:
+            charts_context: Formatted text describing each chart on the dashboard
+                (id, title, SQL, columns, tables).
+            schema_context: Formatted DB schema (tables, columns, types).
+            user_request: Optional free-form description from the user about which
+                selectors they want (in natural language). Used as a high-priority
+                hint inside the prompt.
+
+        Returns:
+            List of selector dicts (each ready to be passed to
+            ``SelectorService.create_selector`` plus ``mappings``).
+        """
+        user_request_clean = (user_request or "").strip()
+        if user_request_clean:
+            user_request_block = (
+                "\nUser request (highest priority — generate selectors that match this):\n"
+                f"{user_request_clean}\n"
+            )
+        else:
+            user_request_block = ""
+
+        system_message = SELECTORS_GENERATE_PROMPT.format(
+            schema_context=schema_context,
+            charts_context=charts_context,
+            user_request_block=user_request_block,
+        )
+
+        logger.info("Generating selectors", model=self.model)
+
+        content = await self._complete(
+            system_message,
+            "Сгенерируй селекторы для этого дашборда. Верни валидный JSON.",
+            4000,
+        )
+        if not content:
+            raise AIServiceError("AI вернул пустой ответ")
+
+        content = _extract_json(content)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error("Invalid JSON from AI (selectors)", content=content)
+            raise AIServiceError("AI вернул невалидный JSON") from e
+
+        selectors = parsed.get("selectors") if isinstance(parsed, dict) else parsed
+        if not isinstance(selectors, list):
+            raise AIServiceError("AI вернул не список селекторов")
+
+        logger.info("Selectors generated", count=len(selectors))
+        return selectors
 
     async def generate_schema_description(self, schema_context: str) -> str:
         """Generate a markdown description of the DB schema.

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   ReactFlow,
   addEdge,
@@ -24,6 +24,7 @@ import type {
   SelectorMappingRequest,
   FilterPreviewResponse,
 } from '../../services/api'
+import { DATE_TOKENS, tokenLabel, type DateToken } from '../../utils/dateTokens'
 import SelectorConfigPanel from './SelectorConfigPanel'
 import SqlPreviewPanel from './SqlPreviewPanel'
 import SelectorNode from './nodes/SelectorNode'
@@ -31,6 +32,12 @@ import ChartNode from './nodes/ChartNode'
 import MappingEdge from './nodes/MappingEdge'
 
 const OPERATORS = ['equals', 'in', 'between', 'like', 'gt', 'lt', 'gte', 'lte'] as const
+
+// Token list for default-value dropdowns; "" means "no default".
+const TOKEN_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: '— нет —' },
+  ...DATE_TOKENS.map((tok) => ({ value: tok, label: `${tok} — ${tokenLabel(tok as DateToken)}` })),
+]
 
 interface Props {
   dashboardId: number
@@ -78,6 +85,21 @@ export default function SelectorBoardDialog({
   const [labelColumn, setLabelColumn] = useState((selector?.config?.label_column as string) || '')
   const [labelValueColumn, setLabelValueColumn] = useState((selector?.config?.label_value_column as string) || '')
 
+  // Default value (for date selectors — token-based; for others — raw string)
+  const initialDefault = (selector?.config?.default_value ?? null) as
+    | string
+    | { from?: string; to?: string }
+    | null
+  const [defaultValueFrom, setDefaultValueFrom] = useState<string>(
+    typeof initialDefault === 'object' && initialDefault ? (initialDefault.from || '') : '',
+  )
+  const [defaultValueTo, setDefaultValueTo] = useState<string>(
+    typeof initialDefault === 'object' && initialDefault ? (initialDefault.to || '') : '',
+  )
+  const [defaultValueScalar, setDefaultValueScalar] = useState<string>(
+    typeof initialDefault === 'string' ? initialDefault : '',
+  )
+
   // Chart columns cache
   const [chartColumnsCache, setChartColumnsCache] = useState<Record<number, string[]>>({})
 
@@ -122,28 +144,13 @@ export default function SelectorBoardDialog({
     return [selectorNode, ...chartNodes]
   }, [charts, label, selectorType, operator, chartColumnsCache])
 
-  // Build initial edges from existing mappings
-  const buildInitialEdges = useCallback((): Edge[] => {
-    if (!selector?.mappings) return []
-    return selector.mappings.map((m) => ({
-      id: `edge-${m.dashboard_chart_id}-${m.target_column}`,
-      source: SELECTOR_NODE_ID,
-      target: `chart-${m.dashboard_chart_id}`,
-      targetHandle: `${m.dashboard_chart_id}-${m.target_column}`,
-      type: 'mappingEdge',
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8' },
-      data: {
-        targetColumn: m.target_column,
-        operatorOverride: m.operator_override || '',
-        targetTable: m.target_table || '',
-        onDelete: handleDeleteEdge,
-        onConfigure: handleConfigureEdge,
-      },
-    }))
-  }, [selector?.mappings])
-
+  // Edges start empty. We populate them from `selector.mappings` only after
+  // the referenced charts have loaded their columns — otherwise ReactFlow
+  // tries to attach edges to handles that don't exist yet (the chart node
+  // renders "Loading..." with zero <Handle> elements) and silently drops the
+  // edges, so the user sees no connections at all.
   const [nodes, setNodes, onNodesChange] = useNodesState(buildInitialNodes())
-  const [edges, setEdges, onEdgesChange] = useEdgesState(buildInitialEdges())
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
 
   // Edge type with callbacks
   const edgeTypesObj: EdgeTypes = useMemo(() => ({
@@ -195,20 +202,8 @@ export default function SelectorBoardDialog({
     )
   }, [label, selectorType, operator, setNodes])
 
-  // Update edge callbacks whenever edges change
-  useEffect(() => {
-    setEdges((eds) =>
-      eds.map((e) => ({
-        ...e,
-        data: {
-          ...e.data,
-          onDelete: handleDeleteEdge,
-          onConfigure: handleConfigureEdge,
-        },
-      })),
-    )
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
+  // Edge callbacks — declared BEFORE the edge-building useEffect below so the
+  // effect's dep array doesn't hit a temporal dead zone.
   const handleDeleteEdge = useCallback((edgeId: string) => {
     setEdges((eds) => eds.filter((e) => e.id !== edgeId))
     setConfigEdgeId(null)
@@ -243,6 +238,55 @@ export default function SelectorBoardDialog({
     })
   }, [dashboardId, name, selectorType, operator, setEdges])
 
+  // Build initial edges from saved mappings exactly once, after the columns
+  // of every chart referenced by a mapping have loaded. ReactFlow needs the
+  // matching <Handle> to exist before an edge can attach to it, so creating
+  // edges synchronously at mount (when chart nodes are still in the loading
+  // state) results in dropped edges and a visually empty canvas.
+  const initialEdgesBuilt = useRef(false)
+  useEffect(() => {
+    if (initialEdgesBuilt.current) return
+    if (!selector?.mappings || selector.mappings.length === 0) {
+      initialEdgesBuilt.current = true
+      return
+    }
+    const referencedChartIds = Array.from(
+      new Set(selector.mappings.map((m) => m.dashboard_chart_id)),
+    )
+    const allLoaded = referencedChartIds.every(
+      (id) => chartColumnsCache[id] !== undefined,
+    )
+    if (!allLoaded) return
+
+    initialEdgesBuilt.current = true
+    setEdges(
+      selector.mappings.map((m) => ({
+        id: `edge-${m.dashboard_chart_id}-${m.target_column}`,
+        source: SELECTOR_NODE_ID,
+        target: `chart-${m.dashboard_chart_id}`,
+        targetHandle: `${m.dashboard_chart_id}-${m.target_column}`,
+        type: 'mappingEdge',
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8' },
+        data: {
+          targetColumn: m.target_column,
+          operatorOverride: m.operator_override || '',
+          targetTable: m.target_table || '',
+          postFilterResolveTable: m.post_filter_resolve_table || '',
+          postFilterResolveColumn: m.post_filter_resolve_column || '',
+          postFilterResolveIdColumn: m.post_filter_resolve_id_column || '',
+          onDelete: handleDeleteEdge,
+          onConfigure: handleConfigureEdge,
+        },
+      })),
+    )
+  }, [
+    chartColumnsCache,
+    selector?.mappings,
+    setEdges,
+    handleDeleteEdge,
+    handleConfigureEdge,
+  ])
+
   // Handle new connection
   const onConnect: OnConnect = useCallback(
     (params) => {
@@ -267,6 +311,9 @@ export default function SelectorBoardDialog({
           targetColumn,
           operatorOverride: '',
           targetTable: '',
+          postFilterResolveTable: '',
+          postFilterResolveColumn: '',
+          postFilterResolveIdColumn: '',
           onDelete: handleDeleteEdge,
           onConfigure: handleConfigureEdge,
         },
@@ -296,15 +343,45 @@ export default function SelectorBoardDialog({
       }
     }
 
-    // Build mappings from edges
+    // Default value: tokens for date selectors, scalar for others.
+    if (selectorType === 'date_range') {
+      if (defaultValueFrom || defaultValueTo) {
+        config.default_value = {
+          from: defaultValueFrom || undefined,
+          to: defaultValueTo || undefined,
+        }
+      }
+    } else if (selectorType === 'single_date') {
+      if (defaultValueScalar) {
+        config.default_value = defaultValueScalar
+      }
+    } else {
+      if (defaultValueScalar) {
+        config.default_value = defaultValueScalar
+      }
+    }
+
+    // Build mappings from edges, including optional post_filter triple.
     const mappingsList: SelectorMappingRequest[] = edges.map((e) => {
       const dcIdStr = e.target.replace('chart-', '')
-      const d = e.data as { targetColumn?: string; operatorOverride?: string; targetTable?: string } | undefined
+      const d = e.data as
+        | {
+            targetColumn?: string
+            operatorOverride?: string
+            targetTable?: string
+            postFilterResolveTable?: string
+            postFilterResolveColumn?: string
+            postFilterResolveIdColumn?: string
+          }
+        | undefined
       return {
         dashboard_chart_id: Number(dcIdStr),
         target_column: d?.targetColumn || '',
         target_table: d?.targetTable || undefined,
         operator_override: d?.operatorOverride || undefined,
+        post_filter_resolve_table: d?.postFilterResolveTable || undefined,
+        post_filter_resolve_column: d?.postFilterResolveColumn || undefined,
+        post_filter_resolve_id_column: d?.postFilterResolveIdColumn || undefined,
       }
     }).filter((m) => m.target_column)
 
@@ -323,7 +400,24 @@ export default function SelectorBoardDialog({
 
   // Edge config popup
   const configEdge = configEdgeId ? edges.find((e) => e.id === configEdgeId) : null
-  const configEdgeData = configEdge?.data as { operatorOverride?: string; targetTable?: string; targetColumn?: string } | undefined
+  const configEdgeData = configEdge?.data as
+    | {
+        operatorOverride?: string
+        targetTable?: string
+        targetColumn?: string
+        postFilterResolveTable?: string
+        postFilterResolveColumn?: string
+        postFilterResolveIdColumn?: string
+      }
+    | undefined
+
+  const updateEdgeField = (field: string, val: string) => {
+    setEdges((eds) =>
+      eds.map((ed) =>
+        ed.id === configEdgeId ? { ...ed, data: { ...ed.data, [field]: val } } : ed,
+      ),
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -336,7 +430,8 @@ export default function SelectorBoardDialog({
 
         {/* Main area */}
         <div className="flex flex-1 min-h-0">
-          {/* Left panel: config */}
+          {/* Left panel: config (wrapped to host the default-value section below) */}
+          <div className="flex flex-col w-[320px] border-r overflow-y-auto">
           <SelectorConfigPanel
             dashboardId={dashboardId}
             selectorType={selectorType}
@@ -369,6 +464,63 @@ export default function SelectorBoardDialog({
             onLabelValueColumnChange={setLabelValueColumn}
           />
 
+          {/* Default value (resolved on every request — date selectors store
+              tokens, others store a literal value). */}
+          <div className="border-t px-4 py-3">
+            <div className="text-xs font-semibold text-gray-700 mb-2">Default value</div>
+            {selectorType === 'date_range' && (
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">from (token)</label>
+                  <select
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                    value={defaultValueFrom}
+                    onChange={(e) => setDefaultValueFrom(e.target.value)}
+                  >
+                    {TOKEN_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">to (token)</label>
+                  <select
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                    value={defaultValueTo}
+                    onChange={(e) => setDefaultValueTo(e.target.value)}
+                  >
+                    {TOKEN_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+            {selectorType === 'single_date' && (
+              <select
+                className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                value={defaultValueScalar}
+                onChange={(e) => setDefaultValueScalar(e.target.value)}
+              >
+                {TOKEN_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            )}
+            {(selectorType === 'dropdown' || selectorType === 'text') && (
+              <input
+                className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                placeholder="—"
+                value={defaultValueScalar}
+                onChange={(e) => setDefaultValueScalar(e.target.value)}
+              />
+            )}
+            {selectorType === 'multi_select' && (
+              <p className="text-[10px] text-gray-400">Default value не поддерживается для multi_select.</p>
+            )}
+          </div>
+          </div>
+
           {/* Center: React Flow canvas */}
           <div className="flex-1 relative">
             <ReactFlow
@@ -400,7 +552,7 @@ export default function SelectorBoardDialog({
 
             {/* Edge config popup */}
             {configEdge && configEdgeData && (
-              <div className="absolute top-4 right-4 bg-white border border-gray-300 rounded-lg shadow-lg p-3 w-[240px] z-10">
+              <div className="absolute top-4 right-4 bg-white border border-gray-300 rounded-lg shadow-lg p-3 w-[280px] z-10 max-h-[80vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold text-gray-700">
                     {configEdgeData.targetColumn}
@@ -419,16 +571,7 @@ export default function SelectorBoardDialog({
                     <select
                       className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
                       value={configEdgeData.operatorOverride || ''}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        setEdges((eds) =>
-                          eds.map((ed) =>
-                            ed.id === configEdgeId
-                              ? { ...ed, data: { ...ed.data, operatorOverride: val } }
-                              : ed,
-                          ),
-                        )
-                      }}
+                      onChange={(e) => updateEdgeField('operatorOverride', e.target.value)}
                     >
                       <option value="">-- ({t(`selectors.op${operator.charAt(0).toUpperCase() + operator.slice(1)}` as keyof typeof t)})</option>
                       {OPERATORS.map((op) => (
@@ -445,17 +588,48 @@ export default function SelectorBoardDialog({
                       className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono"
                       value={configEdgeData.targetTable || ''}
                       placeholder="optional"
-                      onChange={(e) => {
-                        const val = e.target.value
-                        setEdges((eds) =>
-                          eds.map((ed) =>
-                            ed.id === configEdgeId
-                              ? { ...ed, data: { ...ed.data, targetTable: val } }
-                              : ed,
-                          ),
-                        )
-                      }}
+                      onChange={(e) => updateEdgeField('targetTable', e.target.value)}
                     />
+                  </div>
+
+                  {/* Two-step (post_filter) section */}
+                  <div className="border-t pt-2 mt-2">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">
+                      Двухшаговая фильтрация (опц.)
+                    </div>
+                    <p className="text-[10px] text-gray-400 mb-2">
+                      Когда колонки нет в SELECT чарта: значение селектора резолвится через
+                      связную таблицу, ID подставляется в target_column.
+                    </p>
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-0.5">resolve_table</label>
+                        <input
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono"
+                          value={configEdgeData.postFilterResolveTable || ''}
+                          placeholder="crm_deals"
+                          onChange={(e) => updateEdgeField('postFilterResolveTable', e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-0.5">resolve_column</label>
+                        <input
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono"
+                          value={configEdgeData.postFilterResolveColumn || ''}
+                          placeholder="assigned_by_id"
+                          onChange={(e) => updateEdgeField('postFilterResolveColumn', e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-0.5">resolve_id_column</label>
+                        <input
+                          className="w-full border border-gray-300 rounded px-2 py-1 text-xs font-mono"
+                          value={configEdgeData.postFilterResolveIdColumn || ''}
+                          placeholder="id"
+                          onChange={(e) => updateEdgeField('postFilterResolveIdColumn', e.target.value)}
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <button

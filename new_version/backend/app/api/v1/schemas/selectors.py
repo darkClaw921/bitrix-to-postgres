@@ -10,12 +10,22 @@ from pydantic import BaseModel, Field
 
 
 class MappingCreateRequest(BaseModel):
-    """Single chart mapping within a selector."""
+    """Single chart mapping within a selector.
+
+    The optional ``post_filter_*`` fields enable two-step filtering: when the
+    selector value semantically refers to a different table than the chart's
+    own data, the generated SQL becomes
+    ``WHERE target_column IN (SELECT post_filter_resolve_id_column FROM
+    post_filter_resolve_table WHERE post_filter_resolve_column <op> :value)``.
+    """
 
     dashboard_chart_id: int
     target_column: str = Field(..., max_length=255)
     target_table: Optional[str] = Field(None, max_length=255)
     operator_override: Optional[str] = Field(None, max_length=30)
+    post_filter_resolve_table: Optional[str] = Field(None, max_length=255)
+    post_filter_resolve_column: Optional[str] = Field(None, max_length=255)
+    post_filter_resolve_id_column: Optional[str] = Field(None, max_length=255)
 
 
 class SelectorCreateRequest(BaseModel):
@@ -69,6 +79,9 @@ class MappingResponse(BaseModel):
     target_column: str
     target_table: Optional[str] = None
     operator_override: Optional[str] = None
+    post_filter_resolve_table: Optional[str] = None
+    post_filter_resolve_column: Optional[str] = None
+    post_filter_resolve_id_column: Optional[str] = None
     created_at: Optional[datetime] = None
 
 
@@ -145,3 +158,23 @@ class FilterPreviewResponse(BaseModel):
     original_sql: str
     filtered_sql: str
     where_clause: str
+
+
+# --- AI Selector Generation ---
+
+
+class GenerateSelectorsRequest(BaseModel):
+    """Optional payload for AI selector generation.
+
+    ``user_request`` lets the user describe in natural language which selectors
+    they want (e.g. "нужны фильтры по дате создания и менеджеру"). It is passed
+    to the AI as a high-priority hint.
+    """
+
+    user_request: Optional[str] = Field(None, max_length=2000)
+
+
+class GenerateSelectorsResponse(BaseModel):
+    """Response from AI-generated selector suggestions for a dashboard."""
+
+    selectors: list[SelectorCreateRequest]

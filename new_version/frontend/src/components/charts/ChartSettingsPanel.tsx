@@ -22,7 +22,16 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
   const [line, setLine] = useState(config.line ?? { strokeWidth: 2, type: 'monotone' as const })
   const [area, setArea] = useState(config.area ?? { fillOpacity: 0.3 })
   const [pie, setPie] = useState(config.pie ?? { innerRadius: 0, showLabels: true })
-  const [indicator, setIndicator] = useState(config.indicator ?? { prefix: '', suffix: '', fontSize: 'lg' as const, color: '#1f2937' })
+  const [indicator, setIndicator] = useState(config.indicator ?? {
+    prefix: '',
+    suffix: '',
+    fontSize: 'lg' as const,
+    color: '#1f2937',
+    decimals: undefined as number | undefined,
+    format: undefined as 'number' | 'currency' | 'percent' | 'compact' | undefined,
+    currencySymbol: '$',
+    autoFit: true,
+  })
   const [table, setTable] = useState(config.table ?? { showColumnTotals: false, showRowTotals: false, sortable: true, defaultSortDirection: 'asc' as const, pageSize: 0 })
   const [funnel, setFunnel] = useState(config.funnel ?? { showLabels: true, labelPosition: 'right' as const })
   const [cardStyle, setCardStyle] = useState(config.cardStyle ?? { backgroundColor: '', borderRadius: 'md' as const, shadow: 'sm' as const, padding: 'md' as const })
@@ -293,6 +302,67 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                 onChange={(e) => setIndicator({ ...indicator, color: e.target.value })}
                 className="w-7 h-7 border rounded cursor-pointer"
               />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-gray-500">{t('chartSettings.numberFormat')}</span>
+              <select
+                className="border rounded px-1 py-0.5 text-xs"
+                value={indicator.format || ''}
+                onChange={(e) => setIndicator({
+                  ...indicator,
+                  format: (e.target.value || undefined) as 'number' | 'currency' | 'percent' | 'compact' | undefined,
+                })}
+              >
+                <option value="">{t('chartSettings.formatDefault')}</option>
+                <option value="number">{t('chartSettings.formatNumber')}</option>
+                <option value="currency">{t('chartSettings.formatCurrency')}</option>
+                <option value="percent">{t('chartSettings.formatPercent')}</option>
+                <option value="compact">{t('chartSettings.formatCompact')}</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-gray-500">{t('chartSettings.decimalPlaces')}</span>
+              <input
+                type="number"
+                min={0}
+                max={6}
+                step={1}
+                className="border rounded px-2 py-0.5 text-xs"
+                placeholder={t('chartSettings.decimalPlacesPlaceholder')}
+                value={indicator.decimals ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setIndicator({
+                    ...indicator,
+                    decimals: val === '' ? undefined : Math.max(0, Math.min(6, Number(val))),
+                  })
+                }}
+              />
+            </label>
+
+            {indicator.format === 'currency' && (
+              <label className="flex flex-col gap-1">
+                <span className="text-gray-500">{t('chartSettings.currencySymbol')}</span>
+                <input
+                  type="text"
+                  maxLength={4}
+                  className="border rounded px-2 py-0.5 text-xs"
+                  placeholder="$"
+                  value={indicator.currencySymbol ?? '$'}
+                  onChange={(e) => setIndicator({ ...indicator, currencySymbol: e.target.value })}
+                />
+              </label>
+            )}
+
+            <label className="flex items-center gap-2 col-span-2">
+              <input
+                type="checkbox"
+                checked={indicator.autoFit !== false}
+                onChange={(e) => setIndicator({ ...indicator, autoFit: e.target.checked })}
+              />
+              <span>{t('chartSettings.autoFit')}</span>
             </label>
           </div>
         </div>

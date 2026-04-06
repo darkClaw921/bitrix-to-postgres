@@ -156,15 +156,20 @@ interface TvCellMeasurerProps {
  * Heading vs chart is decided by `dc.item_type === 'heading'`, the same
  * discriminator already used in `EmbedDashboardPage` and `DashboardEditorPage`.
  *
+ * Tables get a width-only font scale (`sqrt(width / 350)`) instead of the
+ * default width*height formula. Otherwise stretching a table vertically would
+ * make its text balloon — but tables already manage their own row layout and
+ * the user expectation is that a taller table just shows more rows at the
+ * same font size, not bigger text.
+ *
  * For chart cells, the inner chart height is the measured height minus the
  * fixed title row (36px header + 8px margin = 44px), with a 60px floor so the
  * chart never collapses entirely. Headings get the full measured height —
  * they have no separate title row.
  *
- * `Math.max(1, width * height)` inside the `sqrt` keeps the formula numerically
- * safe before the first `ResizeObserver` callback fires (when both dimensions
- * are 0), so the initial render lands at the lower clamp (`0.4`) instead of
- * `NaN`.
+ * `Math.max(1, ...)` inside the `sqrt` keeps the formula numerically safe
+ * before the first `ResizeObserver` callback fires (when both dimensions are
+ * 0), so the initial render lands at the lower clamp (`0.4`) instead of `NaN`.
  */
 function TvCellMeasurer({
   dc,
@@ -174,9 +179,13 @@ function TvCellMeasurer({
 }: TvCellMeasurerProps): React.ReactElement {
   const { ref, width, height } = useElementSize<HTMLDivElement>()
 
-  const fontScale = clamp(0.4, 2.5, Math.sqrt(Math.max(1, width * height)) / 350)
-
   const isHeading = dc.item_type === 'heading'
+  const isTable = !isHeading && dc.chart_type === 'table'
+
+  const fontScale = isTable
+    ? clamp(0.4, 2.5, Math.sqrt(Math.max(1, width) / 350))
+    : clamp(0.4, 2.5, Math.sqrt(Math.max(1, width * height)) / 350)
+
   const chartHeight = Math.max(60, height - 44)
 
   const content = isHeading

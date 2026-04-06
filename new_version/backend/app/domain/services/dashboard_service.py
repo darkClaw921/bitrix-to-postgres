@@ -230,11 +230,11 @@ class DashboardService:
     async def get_chart_sql_by_slug(
         self, slug: str, dc_id: int
     ) -> dict[str, Any] | None:
-        """Get a single chart's SQL and dashboard_id by slug + dc_id (lightweight)."""
+        """Get a single chart's SQL, dashboard_id, and chart_config by slug + dc_id."""
         engine = get_engine()
 
         query = text(
-            "SELECT pd.id AS dashboard_id, dc.id AS dc_id, c.sql_query "
+            "SELECT pd.id AS dashboard_id, dc.id AS dc_id, c.sql_query, c.chart_config "
             "FROM published_dashboards pd "
             "JOIN dashboard_charts dc ON dc.dashboard_id = pd.id "
             "JOIN ai_charts c ON c.id = dc.chart_id "
@@ -247,7 +247,14 @@ class DashboardService:
         if not row:
             return None
         cols = list(result.keys())
-        return dict(zip(cols, row))
+        info = dict(zip(cols, row))
+        # Parse chart_config JSON if string (some dialects return TEXT for JSON cols)
+        if isinstance(info.get("chart_config"), str):
+            try:
+                info["chart_config"] = json_mod.loads(info["chart_config"])
+            except (json_mod.JSONDecodeError, TypeError):
+                info["chart_config"] = None
+        return info
 
     async def verify_password(self, slug: str, password: str) -> bool:
         engine = get_engine()

@@ -10,9 +10,15 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.core.exceptions import ChartServiceError
 from app.core.logging import get_logger
+from app.domain.services.date_tokens import extend_to_end_of_day, is_date_only
 from app.infrastructure.database.connection import get_dialect, get_engine
 
 logger = get_logger(__name__)
+
+# Validates SQL identifiers (table/column names) used in places where bind
+# params are not possible — e.g. inside post_filter subqueries and label
+# resolvers. Anything that fails this regex is rejected.
+_IDENT_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 # Forbidden SQL keywords (case-insensitive)
 _FORBIDDEN_KEYWORDS = re.compile(
@@ -34,6 +40,151 @@ _INSERT_BEFORE_PATTERN = re.compile(
     r"\b(GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|UNION|INTERSECT|EXCEPT)\b",
     re.IGNORECASE,
 )
+
+# SQL keywords that can never be a valid table alias (they show up after a
+# table name in JOIN/FROM constructs and would otherwise be picked up as
+# alias by a naive regex).
+_NOT_ALIAS_KEYWORDS = frozenset({
+    "ON", "WHERE", "GROUP", "ORDER", "HAVING", "LIMIT", "OFFSET",
+    "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "JOIN", "FULL",
+    "USING", "UNION", "INTERSECT", "EXCEPT",
+})
+
+
+def _scan_top_level(sql: str, keywords: tuple[str, ...]) -> int | None:
+    """Find the start index of the first ``keywords`` token at depth 0.
+
+    Walks the SQL string char-by-char, tracking parenthesis depth and string
+    literals so that ``WHERE`` / ``GROUP BY`` etc. inside subqueries or string
+    constants are ignored. Returns ``None`` if no top-level match is found.
+    """
+    n = len(sql)
+    depth = 0
+    i = 0
+    upper = sql.upper()
+    upper_keywords = tuple(k.upper() for k in keywords)
+
+    while i < n:
+        c = sql[i]
+
+        if c == "'" or c == '"':
+            quote = c
+            i += 1
+            while i < n:
+                if sql[i] == "\\":
+                    i += 2
+                    continue
+                if sql[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            continue
+
+        if c == "(":
+            depth += 1
+            i += 1
+            continue
+        if c == ")":
+            depth -= 1
+            i += 1
+            continue
+
+        if depth == 0 and (i == 0 or not (sql[i - 1].isalnum() or sql[i - 1] == "_")):
+            for kw in upper_keywords:
+                klen = len(kw)
+                if upper[i:i + klen] == kw:
+                    end = i + klen
+                    if end >= n or not (sql[end].isalnum() or sql[end] == "_"):
+                        # GROUP BY / ORDER BY have a space inside; the regex
+                        # form normalizes this. We require an exact match here
+                        # so single-space variants are fine; if the user wrote
+                        # multiple spaces or a tab, we still match because we
+                        # only check the first word and the next char is space.
+                        return i
+
+        i += 1
+
+    return None
+
+
+def _resolve_alias(sql: str, table_name: str) -> str:
+    """Find the alias used for ``table_name`` in the SQL's FROM/JOIN clauses.
+
+    Returns the alias if found (e.g. ``cd`` for ``crm_deals cd``), otherwise
+    returns the original table name. This lets ``apply_filters`` qualify
+    columns with the actual identifier the SQL uses.
+    """
+    # Match "FROM crm_deals AS cd" / "FROM crm_deals cd" / "JOIN crm_deals cd"
+    pattern = re.compile(
+        r"\b(?:FROM|JOIN)\s+" + re.escape(table_name)
+        + r"\b(?:\s+(?:AS\s+)?(\w+))?",
+        re.IGNORECASE,
+    )
+    m = pattern.search(sql)
+    if not m:
+        return table_name
+    alias = m.group(1)
+    if not alias:
+        return table_name
+    if alias.upper() in _NOT_ALIAS_KEYWORDS:
+        return table_name
+    return alias
+
+
+def _infer_qualifier_for_column(sql: str, column: str) -> str | None:
+    """Guess a safe alias prefix for an unqualified column.
+
+    When ``target_table`` is missing on a selector mapping, ``apply_filters``
+    has no idea which table the column belongs to. If the same column name
+    exists in multiple JOINed tables (e.g. ``stage_history_deals sh`` joined
+    with ``stage_history_deals sh2``), MySQL raises "ambiguous column".
+
+    Strategy (in order of preference):
+        1. The first ``FROM <table> [alias]`` token — that's the chart's
+           primary entity, the one most semantic filters target. If the SQL
+           also references ``{alias}.{column}`` somewhere, we know the column
+           is valid on that alias and use it.
+        2. Otherwise, reuse whatever alias the SQL already pairs with this
+           column name (e.g. ``sh2.created_time``), so at least the query
+           runs without an ambiguous-column error.
+        3. As a last resort, return the first FROM alias (or table name) even
+           without a confirmed match.
+    """
+    from_match = re.search(
+        r"\bFROM\s+([a-zA-Z_][a-zA-Z0-9_]*)\b(?:\s+(?:AS\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?",
+        sql,
+        re.IGNORECASE,
+    )
+    primary_alias: str | None = None
+    if from_match:
+        table = from_match.group(1)
+        alias = from_match.group(2)
+        if alias and alias.upper() not in _NOT_ALIAS_KEYWORDS:
+            primary_alias = alias
+        else:
+            primary_alias = table
+
+    # 1) Prefer the primary FROM alias when it actually owns this column.
+    if primary_alias:
+        owns = re.search(
+            r"\b" + re.escape(primary_alias) + r"\." + re.escape(column) + r"\b",
+            sql,
+        )
+        if owns:
+            return primary_alias
+
+    # 2) Fall back to the first existing qualified usage.
+    qualified = re.search(
+        r"\b([a-zA-Z_][a-zA-Z0-9_]*)\." + re.escape(column) + r"\b",
+        sql,
+    )
+    if qualified:
+        candidate = qualified.group(1)
+        if candidate.upper() not in _NOT_ALIAS_KEYWORDS:
+            return candidate
+
+    # 3) Last resort: use the primary FROM alias even without a confirmed match.
+    return primary_alias
 
 # Mapping of entity tables to their related reference tables
 _ENTITY_RELATED_TABLES = {
@@ -446,6 +597,65 @@ class ChartService:
     # === Filter Application ===
 
     @staticmethod
+    def _build_condition(
+        col_ref: str,
+        op: str,
+        value: Any,
+        prefix: str,
+        bind_params: dict[str, Any],
+    ) -> str | None:
+        """Build a single SQL condition and populate bind_params.
+
+        Returns the condition string, or ``None`` if the value is not usable
+        (e.g. an empty IN list).
+        """
+        if op == "equals":
+            bind_params[prefix] = value
+            return f"{col_ref} = :{prefix}"
+        if op == "not_equals":
+            bind_params[prefix] = value
+            return f"{col_ref} != :{prefix}"
+        if op in ("in", "not_in"):
+            if not isinstance(value, list) or not value:
+                return None
+            placeholders = ", ".join(f":{prefix}_{i}" for i in range(len(value)))
+            for i, v in enumerate(value):
+                bind_params[f"{prefix}_{i}"] = v
+            keyword = "IN" if op == "in" else "NOT IN"
+            return f"{col_ref} {keyword} ({placeholders})"
+        if op == "between":
+            if not isinstance(value, dict):
+                return None
+            from_val = value.get("from")
+            to_val = value.get("to")
+            # Auto-extend date-only "to" to end of day so the range covers it.
+            if is_date_only(to_val):
+                to_val = extend_to_end_of_day(to_val)
+            bind_params[f"{prefix}_from"] = from_val
+            bind_params[f"{prefix}_to"] = to_val
+            return f"{col_ref} BETWEEN :{prefix}_from AND :{prefix}_to"
+        if op == "gt":
+            bind_params[prefix] = value
+            return f"{col_ref} > :{prefix}"
+        if op == "lt":
+            bind_params[prefix] = value
+            return f"{col_ref} < :{prefix}"
+        if op == "gte":
+            bind_params[prefix] = value
+            return f"{col_ref} >= :{prefix}"
+        if op == "lte":
+            # Auto-extend date-only value to end of day for inclusive comparison.
+            bind_params[prefix] = extend_to_end_of_day(value) if is_date_only(value) else value
+            return f"{col_ref} <= :{prefix}"
+        if op == "like":
+            bind_params[prefix] = f"%{value}%"
+            return f"{col_ref} LIKE :{prefix}"
+        if op == "not_like":
+            bind_params[prefix] = f"%{value}%"
+            return f"{col_ref} NOT LIKE :{prefix}"
+        return None
+
+    @staticmethod
     def apply_filters(
         sql: str,
         filters: list[dict[str, Any]],
@@ -458,6 +668,13 @@ class ChartService:
             - value: Any — the filter value(s)
             - table: str|None — optional table qualifier for disambiguation
             - param_prefix: str — unique prefix for bind params (e.g. "p0")
+            - post_filter: dict|None — optional two-step filter:
+                {resolve_table, resolve_column, resolve_id_column}.
+                When set, the condition becomes
+                ``col IN (SELECT id_col FROM resolve_table WHERE resolve_col <op> :prefix)``
+                instead of a direct comparison. Used when ``column`` is in the
+                chart's table but the selector value semantically belongs to a
+                different (related) table.
 
         Returns (modified_sql, bind_params).
         """
@@ -474,93 +691,188 @@ class ChartService:
             table = f.get("table")
             prefix = f["param_prefix"]
 
-            # Column reference with optional table qualifier
-            col_ref = f"{table}.{col}" if table else col
+            # Strip any pre-existing qualifier from the column name. The user (or
+            # AI) sometimes saves target_column as "d.date_create" or
+            # "crm_deals.date_create"; without this we'd end up with
+            # "d.d.date_create" once the alias is prepended below.
+            if "." in col:
+                col = col.rsplit(".", 1)[-1]
 
-            if op == "equals":
-                conditions.append(f"{col_ref} = :{prefix}")
-                bind_params[prefix] = value
-            elif op == "not_equals":
-                conditions.append(f"{col_ref} != :{prefix}")
-                bind_params[prefix] = value
-            elif op == "in":
-                if isinstance(value, list) and value:
-                    placeholders = ", ".join(
-                        f":{prefix}_{i}" for i in range(len(value))
+            # Column reference: if a table qualifier was supplied, prefer the
+            # alias actually used in the chart's SQL (so a mapping with
+            # table="crm_deals" against a query "FROM crm_deals cd" produces
+            # "cd.col", not the broken "crm_deals.cd.col").
+            if table:
+                qualifier = _resolve_alias(sql, table)
+                col_ref = f"{qualifier}.{col}"
+            else:
+                # No explicit table — try to infer a qualifier so the column
+                # doesn't collide with the same name in another JOINed alias.
+                inferred = _infer_qualifier_for_column(sql, col)
+                col_ref = f"{inferred}.{col}" if inferred else col
+
+            pf = f.get("post_filter")
+            if pf:
+                resolve_table = pf.get("resolve_table")
+                resolve_column = pf.get("resolve_column")
+                resolve_id_column = pf.get("resolve_id_column") or "id"
+
+                # Identifier validation — these go directly into SQL text.
+                if not (
+                    resolve_table
+                    and resolve_column
+                    and _IDENT_RE.match(resolve_table)
+                    and _IDENT_RE.match(resolve_column)
+                    and _IDENT_RE.match(resolve_id_column)
+                ):
+                    raise ChartServiceError(
+                        "Невалидное имя таблицы/колонки в post_filter"
                     )
-                    conditions.append(f"{col_ref} IN ({placeholders})")
-                    for i, v in enumerate(value):
-                        bind_params[f"{prefix}_{i}"] = v
-            elif op == "not_in":
-                if isinstance(value, list) and value:
-                    placeholders = ", ".join(
-                        f":{prefix}_{i}" for i in range(len(value))
-                    )
-                    conditions.append(f"{col_ref} NOT IN ({placeholders})")
-                    for i, v in enumerate(value):
-                        bind_params[f"{prefix}_{i}"] = v
-            elif op == "between":
-                conditions.append(
-                    f"{col_ref} BETWEEN :{prefix}_from AND :{prefix}_to"
+
+                # Build the inner WHERE for the subquery — same operator semantics,
+                # just applied to (resolve_table.resolve_column).
+                inner_clause = ChartService._build_condition(
+                    resolve_column, op, value, prefix, bind_params
                 )
-                bind_params[f"{prefix}_from"] = value["from"]
-                bind_params[f"{prefix}_to"] = value["to"]
-            elif op == "gt":
-                conditions.append(f"{col_ref} > :{prefix}")
-                bind_params[prefix] = value
-            elif op == "lt":
-                conditions.append(f"{col_ref} < :{prefix}")
-                bind_params[prefix] = value
-            elif op == "gte":
-                conditions.append(f"{col_ref} >= :{prefix}")
-                bind_params[prefix] = value
-            elif op == "lte":
-                conditions.append(f"{col_ref} <= :{prefix}")
-                bind_params[prefix] = value
-            elif op == "like":
-                conditions.append(f"{col_ref} LIKE :{prefix}")
-                bind_params[prefix] = f"%{value}%"
-            elif op == "not_like":
-                conditions.append(f"{col_ref} NOT LIKE :{prefix}")
-                bind_params[prefix] = f"%{value}%"
+                if inner_clause is None:
+                    continue
+                conditions.append(
+                    f"{col_ref} IN (SELECT {resolve_id_column} FROM {resolve_table} WHERE {inner_clause})"
+                )
+                continue
+
+            clause = ChartService._build_condition(col_ref, op, value, prefix, bind_params)
+            if clause is not None:
+                conditions.append(clause)
 
         if not conditions:
             return sql, {}
 
         where_clause = " AND ".join(conditions)
 
-        # Check if WHERE already exists
-        where_match = _WHERE_PATTERN.search(sql)
-        if where_match:
-            # Append AND after existing WHERE conditions
-            # Find the end of existing WHERE clause (before GROUP BY, ORDER BY, etc.)
-            insert_match = _INSERT_BEFORE_PATTERN.search(sql, where_match.end())
-            if insert_match:
-                insert_pos = insert_match.start()
+        # Find the boundary keywords at the *top level* of the SQL — anything
+        # inside parentheses (subqueries, function calls) is ignored. This
+        # prevents inserting filter conditions into a subquery's WHERE or
+        # accidentally turning a JOIN's ON into a filter.
+        top_where = _scan_top_level(sql, ("WHERE",))
+        top_insert_before = _scan_top_level(
+            sql,
+            (
+                "GROUP BY",
+                "ORDER BY",
+                "HAVING",
+                "LIMIT",
+                "OFFSET",
+                "UNION",
+                "INTERSECT",
+                "EXCEPT",
+            ),
+        )
+
+        if top_where is not None:
+            # Append AND after the existing top-level WHERE conditions, just
+            # before the next top-level boundary keyword (GROUP BY/ORDER BY/...).
+            if top_insert_before is not None and top_insert_before > top_where:
+                insert_pos = top_insert_before
                 modified_sql = (
                     sql[:insert_pos].rstrip()
                     + f" AND {where_clause} "
                     + sql[insert_pos:]
                 )
             else:
-                # No GROUP BY/ORDER BY — append at the end
                 modified_sql = sql.rstrip().rstrip(";") + f" AND {where_clause}"
         else:
-            # No WHERE — insert before GROUP BY/ORDER BY/LIMIT or at end
-            insert_match = _INSERT_BEFORE_PATTERN.search(sql)
-            if insert_match:
-                insert_pos = insert_match.start()
+            # No top-level WHERE — insert one before the next boundary keyword.
+            if top_insert_before is not None:
+                insert_pos = top_insert_before
                 modified_sql = (
                     sql[:insert_pos].rstrip()
                     + f" WHERE {where_clause} "
                     + sql[insert_pos:]
                 )
             else:
-                modified_sql = (
-                    sql.rstrip().rstrip(";") + f" WHERE {where_clause}"
-                )
+                modified_sql = sql.rstrip().rstrip(";") + f" WHERE {where_clause}"
 
         return modified_sql, bind_params
+
+    # === Label Resolvers (post-processing chart data) ===
+
+    async def resolve_labels_in_data(
+        self,
+        rows: list[dict[str, Any]],
+        resolvers: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        """Replace raw IDs in chart rows with display labels.
+
+        Each resolver describes how to look up a column's display label::
+
+            {
+                "column": "assigned_by_id",
+                "resolve_table": "crm_users",
+                "resolve_value_column": "id",
+                "resolve_label_column": "name"
+            }
+
+        For each resolver this loads the entire ``SELECT value, label FROM table``
+        once and rewrites every matching cell in ``rows``. Identifiers are
+        validated against ``_IDENT_RE`` to prevent SQL injection (the values are
+        spliced into SQL text, not bound).
+
+        Unknown values pass through unchanged. Resolvers with invalid identifiers
+        are silently skipped (logged as warning).
+        """
+        if not rows or not resolvers:
+            return rows
+
+        engine = get_engine()
+        for r in resolvers:
+            col = r.get("column")
+            tbl = r.get("resolve_table")
+            val_col = r.get("resolve_value_column") or "id"
+            lbl_col = r.get("resolve_label_column")
+
+            if not col or not tbl or not lbl_col:
+                continue
+            if not (
+                _IDENT_RE.match(col)
+                and _IDENT_RE.match(tbl)
+                and _IDENT_RE.match(val_col)
+                and _IDENT_RE.match(lbl_col)
+            ):
+                logger.warning(
+                    "Skipping label resolver with invalid identifiers",
+                    column=col, table=tbl, value_col=val_col, label_col=lbl_col,
+                )
+                continue
+
+            # Skip if no row actually contains this column.
+            if not any(col in row for row in rows):
+                continue
+
+            sql = (
+                f"SELECT {val_col} AS v, {lbl_col} AS l FROM {tbl}"  # noqa: S608
+            )
+            try:
+                async with engine.begin() as conn:
+                    result = await conn.execute(text(sql))
+                    mapping = {
+                        str(row[0]): row[1] for row in result.fetchall() if row[0] is not None
+                    }
+            except Exception as e:
+                logger.warning("Label resolver query failed", table=tbl, error=str(e))
+                continue
+
+            for row in rows:
+                if col not in row:
+                    continue
+                raw = row[col]
+                if raw is None:
+                    continue
+                key = str(raw)
+                if key in mapping:
+                    row[col] = mapping[key]
+
+        return rows
 
     # === MySQL SQL Compatibility ===
 

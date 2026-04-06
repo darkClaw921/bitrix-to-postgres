@@ -7,6 +7,8 @@ from app.api.v1.schemas.selectors import (
     ChartTablesResponse,
     FilterPreviewRequest,
     FilterPreviewResponse,
+    GenerateSelectorsRequest,
+    GenerateSelectorsResponse,
     SelectorCreateRequest,
     SelectorListResponse,
     SelectorOptionsResponse,
@@ -14,13 +16,20 @@ from app.api.v1.schemas.selectors import (
     SelectorResponse,
     SelectorUpdateRequest,
 )
+from app.core.exceptions import AIServiceError, ChartServiceError
 from app.core.logging import get_logger
+from app.domain.services.ai_service import AIService
+from app.domain.services.chart_service import ChartService
+from app.domain.services.dashboard_service import DashboardService
 from app.domain.services.selector_service import SelectorService
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 selector_service = SelectorService()
+chart_service = ChartService()
+dashboard_service = DashboardService()
+ai_service = AIService()
 
 
 @router.post("/{dashboard_id}/selectors", response_model=SelectorResponse)
@@ -157,3 +166,76 @@ async def preview_filter(
         sample_value=request.sample_value,
     )
     return FilterPreviewResponse(**result)
+
+
+@router.post(
+    "/{dashboard_id}/selectors/generate",
+    response_model=GenerateSelectorsResponse,
+)
+async def generate_selectors(
+    dashboard_id: int,
+    request: GenerateSelectorsRequest | None = None,
+) -> GenerateSelectorsResponse:
+    """AI-generate a list of useful selectors for the dashboard.
+
+    Returns suggested selectors as a preview — caller decides which ones to
+    actually create via ``POST /{dashboard_id}/selectors``.
+
+    The optional ``user_request`` field lets the caller describe in natural
+    language which selectors they need; it is forwarded to the AI as a hint.
+    """
+    dashboard = await dashboard_service.get_dashboard_by_id(dashboard_id)
+    if not dashboard:
+        raise HTTPException(status_code=404, detail="Дашборд не найден")
+
+    charts = dashboard.get("charts") or []
+    if not charts:
+        raise HTTPException(
+            status_code=400, detail="В дашборде нет чартов для анализа"
+        )
+
+    # Build a compact charts_context: id, title, sql, columns, tables.
+    charts_lines: list[str] = []
+    for c in charts:
+        try:
+            cols = await selector_service.get_chart_columns(c["id"])
+        except Exception:
+            cols = []
+        tables = await selector_service.get_chart_tables(c["id"])
+        title = c.get("title_override") or c.get("chart_title") or "Chart"
+        charts_lines.append(
+            f"### dashboard_chart_id={c['id']} — {title}\n"
+            f"Tables: {', '.join(tables) if tables else '(none)'}\n"
+            f"Columns: {', '.join(cols) if cols else '(unknown)'}\n"
+            f"SQL:\n```sql\n{c.get('sql_query', '')}\n```"
+        )
+    charts_context = "\n\n".join(charts_lines)
+
+    # Schema context — try the latest saved description, fall back to live introspection.
+    try:
+        latest = await chart_service.get_any_latest_schema_description()
+        schema_context = (
+            latest["markdown"]
+            if latest and latest.get("markdown")
+            else await chart_service.get_schema_context()
+        )
+    except Exception:
+        schema_context = await chart_service.get_schema_context()
+
+    user_request = request.user_request if request else None
+    try:
+        raw_selectors = await ai_service.generate_selectors(
+            charts_context, schema_context, user_request=user_request
+        )
+    except (AIServiceError, ChartServiceError) as e:
+        raise HTTPException(status_code=400, detail=getattr(e, "message", str(e))) from e
+
+    # Validate/coerce into SelectorCreateRequest. Skip malformed entries with a warning.
+    selectors: list[SelectorCreateRequest] = []
+    for raw in raw_selectors:
+        try:
+            selectors.append(SelectorCreateRequest(**raw))
+        except Exception as e:
+            logger.warning("Invalid selector from AI", error=str(e), raw=raw)
+
+    return GenerateSelectorsResponse(selectors=selectors)

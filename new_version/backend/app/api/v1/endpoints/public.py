@@ -140,6 +140,17 @@ async def get_public_dashboard(
     return DashboardResponse(**dashboard)
 
 
+def _label_resolvers_from_chart(chart_info: dict) -> list[dict] | None:
+    """Extract label_resolvers from a chart's chart_config (or None)."""
+    config = chart_info.get("chart_config") if chart_info else None
+    if not config or not isinstance(config, dict):
+        return None
+    resolvers = config.get("label_resolvers")
+    if not isinstance(resolvers, list):
+        return None
+    return resolvers
+
+
 @router.get("/dashboard/{slug}/chart/{dc_id}/data", response_model=ChartDataResponse)
 async def get_dashboard_chart_data(
     slug: str,
@@ -160,6 +171,11 @@ async def get_dashboard_chart_data(
         chart_service.validate_sql_query(sql)
         sql = chart_service.ensure_limit(sql, settings.chart_max_rows)
         data, exec_time = await chart_service.execute_chart_query(sql)
+
+        # Post-process: resolve raw IDs to display labels (if configured)
+        resolvers = _label_resolvers_from_chart(chart_info)
+        if resolvers:
+            data = await chart_service.resolve_labels_in_data(data, resolvers)
 
         return ChartDataResponse(
             data=data,
@@ -224,6 +240,10 @@ async def get_linked_dashboard_chart_data(
         sql = chart_service.ensure_limit(sql, settings.chart_max_rows)
         data, exec_time = await chart_service.execute_chart_query(sql)
 
+        resolvers = _label_resolvers_from_chart(chart_info)
+        if resolvers:
+            data = await chart_service.resolve_labels_in_data(data, resolvers)
+
         return ChartDataResponse(
             data=data,
             row_count=len(data),
@@ -262,6 +282,10 @@ async def _execute_filtered_chart(
             bind_params = None
 
         data, exec_time = await chart_service.execute_chart_query(sql, bind_params)
+
+        resolvers = _label_resolvers_from_chart(chart_info)
+        if resolvers:
+            data = await chart_service.resolve_labels_in_data(data, resolvers)
 
         return ChartDataResponse(
             data=data,
@@ -359,6 +383,61 @@ async def get_public_selector_options_batch(
     _verify_dashboard_token(authorization, slug)
 
     dashboard_id = await dashboard_service.get_dashboard_id_by_slug(slug)
+    if not dashboard_id:
+        raise HTTPException(status_code=404, detail="Дашборд не найден")
+
+    all_options = await selector_service.get_all_selector_options(dashboard_id)
+    return BatchSelectorOptionsResponse(
+        options={
+            sid: [SelectorOptionItem(**o) for o in opts]
+            for sid, opts in all_options.items()
+        }
+    )
+
+
+@router.get(
+    "/dashboard/{slug}/linked/{linked_slug}/selectors",
+    response_model=SelectorListResponse,
+)
+async def get_linked_public_selectors(
+    slug: str,
+    linked_slug: str,
+    authorization: Optional[str] = Header(None),
+) -> SelectorListResponse:
+    """Get selectors of a linked dashboard (auth via main slug's JWT)."""
+    _verify_dashboard_token(authorization, slug)
+
+    is_linked = await dashboard_service.verify_linked_access(slug, linked_slug)
+    if not is_linked:
+        raise HTTPException(status_code=403, detail="Связанный дашборд не найден или не активен")
+
+    dashboard_id = await dashboard_service.get_dashboard_id_by_slug(linked_slug)
+    if not dashboard_id:
+        raise HTTPException(status_code=404, detail="Дашборд не найден")
+
+    selectors = await selector_service.get_selectors_for_dashboard(dashboard_id)
+    return SelectorListResponse(
+        selectors=[SelectorResponse(**s) for s in selectors]
+    )
+
+
+@router.get(
+    "/dashboard/{slug}/linked/{linked_slug}/selector-options",
+    response_model=BatchSelectorOptionsResponse,
+)
+async def get_linked_public_selector_options_batch(
+    slug: str,
+    linked_slug: str,
+    authorization: Optional[str] = Header(None),
+) -> BatchSelectorOptionsResponse:
+    """Batch options for a linked dashboard's selectors (auth via main slug)."""
+    _verify_dashboard_token(authorization, slug)
+
+    is_linked = await dashboard_service.verify_linked_access(slug, linked_slug)
+    if not is_linked:
+        raise HTTPException(status_code=403, detail="Связанный дашборд не найден или не активен")
+
+    dashboard_id = await dashboard_service.get_dashboard_id_by_slug(linked_slug)
     if not dashboard_id:
         raise HTTPException(status_code=404, detail="Дашборд не найден")
 

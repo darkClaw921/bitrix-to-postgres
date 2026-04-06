@@ -360,11 +360,17 @@ export default function SelectorConfigPanel({
                     {previewLoading ? '...' : t('selectors.previewOptions')}
                   </button>
                   {previewOptions.length > 0 && (
-                    <div className="mt-1 max-h-24 overflow-auto border rounded text-xs">
+                    <div className="mt-1 max-h-32 overflow-auto border rounded text-xs">
                       {previewOptions.slice(0, 15).map((o, i) => (
-                        <div key={i} className="px-2 py-0.5 border-b border-gray-100 last:border-b-0">
-                          <span className="font-mono">{String(o.value)}</span>
-                          <span className="text-gray-400 ml-1">{o.label}</span>
+                        <div
+                          key={i}
+                          className="px-2 py-0.5 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-2"
+                          title={`value: ${String(o.value)}`}
+                        >
+                          <span className="truncate">{o.label || String(o.value)}</span>
+                          <span className="font-mono text-[10px] text-gray-300 shrink-0">
+                            {String(o.value)}
+                          </span>
                         </div>
                       ))}
                     </div>

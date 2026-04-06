@@ -6,6 +6,7 @@ import {
   useUpdateSelector,
   useDeleteSelector,
 } from '../../hooks/useSelectors'
+import { dashboardsApi } from '../../services/api'
 import type { DashboardSelector, DashboardChart, SelectorCreateRequest, SelectorUpdateRequest } from '../../services/api'
 import SelectorBoardDialog from './SelectorBoardDialog'
 
@@ -31,6 +32,14 @@ export default function SelectorEditorSection({ dashboardId, charts }: Props) {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingSelector, setEditingSelector] = useState<DashboardSelector | null>(null)
+
+  // AI generation preview
+  const [aiPreview, setAiPreview] = useState<SelectorCreateRequest[] | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [acceptedSet, setAcceptedSet] = useState<Set<number>>(new Set())
+  const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [aiUserRequest, setAiUserRequest] = useState('')
 
   const handleCreate = () => {
     setEditingSelector(null)
@@ -88,6 +97,50 @@ export default function SelectorEditorSection({ dashboardId, charts }: Props) {
     )
   }
 
+  const handleAiGenerate = async () => {
+    setAiLoading(true)
+    setAiError(null)
+    setAiPreview(null)
+    try {
+      const res = await dashboardsApi.generateSelectors(
+        dashboardId,
+        aiUserRequest.trim() || undefined,
+      )
+      setAiPreview(res.selectors || [])
+      setAcceptedSet(new Set(res.selectors?.map((_, i) => i) || []))
+    } catch (e) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string }
+      setAiError(err?.response?.data?.detail || err?.message || 'Ошибка генерации')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const toggleAccepted = (idx: number) => {
+    setAcceptedSet((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
+  const handleAcceptAi = async () => {
+    if (!aiPreview) return
+    const accepted = aiPreview.filter((_, i) => acceptedSet.has(i))
+    for (const sel of accepted) {
+      await new Promise<void>((resolve, reject) => {
+        createSelector.mutate(
+          { dashboardId, data: sel },
+          { onSuccess: () => resolve(), onError: (err) => reject(err) },
+        )
+      })
+    }
+    setAiPreview(null)
+    setAcceptedSet(new Set())
+    refetch()
+  }
+
   const handleMoveDown = (sel: DashboardSelector, index: number) => {
     if (!selectors || index >= selectors.length - 1) return
     const next = selectors[index + 1]
@@ -106,13 +159,110 @@ export default function SelectorEditorSection({ dashboardId, charts }: Props) {
     <div className="mt-8">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-lg font-semibold">{t('selectors.title')}</h3>
-        <button
-          onClick={handleCreate}
-          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-        >
-          + {t('selectors.addSelector')}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setAiPanelOpen((v) => !v)}
+            disabled={charts.length === 0}
+            className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors disabled:opacity-50"
+            title="Сгенерировать селекторы через AI на основе чартов дашборда"
+          >
+            {aiPanelOpen ? 'AI: скрыть' : 'AI: сгенерировать'}
+          </button>
+          <button
+            onClick={handleCreate}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            + {t('selectors.addSelector')}
+          </button>
+        </div>
       </div>
+
+      {aiPanelOpen && (
+        <div className="mb-3 border border-purple-200 bg-purple-50 rounded-lg p-3">
+          <label className="block text-xs font-semibold text-purple-700 mb-1">
+            Опишите, какие селекторы нужны (опционально)
+          </label>
+          <textarea
+            value={aiUserRequest}
+            onChange={(e) => setAiUserRequest(e.target.value)}
+            placeholder="Например: фильтр по диапазону дат создания сделки, фильтр по ответственному менеджеру (multi-select), фильтр по стадии воронки"
+            rows={3}
+            maxLength={2000}
+            className="w-full px-2 py-1.5 text-sm border border-purple-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
+          />
+          <div className="flex items-center justify-between mt-2">
+            <div className="text-[11px] text-gray-500">
+              Если оставить пустым — AI сам подберёт наиболее полезные фильтры. {aiUserRequest.length}/2000
+            </div>
+            <button
+              onClick={handleAiGenerate}
+              disabled={aiLoading}
+              className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+            >
+              {aiLoading ? 'Генерация...' : 'Сгенерировать'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {aiError && (
+        <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 text-red-600 text-sm rounded">
+          {aiError}
+        </div>
+      )}
+
+      {aiPreview && (
+        <div className="mb-4 border border-purple-200 bg-purple-50 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold text-purple-700">
+              AI предложил {aiPreview.length} селектор(ов)
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAcceptAi}
+                disabled={acceptedSet.size === 0 || createSelector.isPending}
+                className="px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+              >
+                Сохранить выбранные ({acceptedSet.size})
+              </button>
+              <button
+                onClick={() => { setAiPreview(null); setAcceptedSet(new Set()) }}
+                className="px-3 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-100"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2 max-h-[260px] overflow-y-auto">
+            {aiPreview.map((sel, idx) => (
+              <label
+                key={idx}
+                className="flex items-start gap-2 bg-white border border-gray-200 rounded p-2 cursor-pointer hover:bg-gray-50"
+              >
+                <input
+                  type="checkbox"
+                  checked={acceptedSet.has(idx)}
+                  onChange={() => toggleAccepted(idx)}
+                  className="mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">
+                    {sel.label} <span className="text-xs text-gray-400">({sel.name})</span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {sel.selector_type} · {sel.operator} · маппингов: {sel.mappings?.length || 0}
+                  </div>
+                  {Boolean((sel.config as { default_value?: unknown } | undefined)?.default_value) && (
+                    <div className="text-[11px] text-purple-600 font-mono">
+                      default: {JSON.stringify((sel.config as { default_value?: unknown }).default_value)}
+                    </div>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(!selectors || selectors.length === 0) ? (
         <div className="text-gray-400 text-sm py-4 text-center border border-dashed border-gray-200 rounded">

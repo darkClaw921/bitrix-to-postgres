@@ -125,10 +125,13 @@ app/api/
 | `GET` | `/api/v1/dashboards/{id}/selectors/{sid}/options` | Получение опций для dropdown/multi_select |
 | `POST` | `/api/v1/dashboards/{id}/selectors/generate` | AI-генерация селекторов на основе SQL-запросов чартов |
 | `GET` | `/api/v1/dashboards/{id}/charts/{dc_id}/columns` | Получение списка колонок из SQL-запроса чарта |
-| `POST` | `/api/v1/public/dashboard/{slug}/chart/{dc_id}/data` | Данные чарта с фильтрами (POST + JWT) |
+| `POST` | `/api/v1/public/dashboard/{slug}/chart/{dc_id}/data` | Данные чарта с фильтрами (POST + JWT). Применяет резолв date-токенов, post_filter сабзапросы и label_resolvers |
 | `POST` | `/api/v1/public/dashboard/{slug}/linked/{ls}/chart/{dc_id}/data` | Данные чарта из связанного дашборда с фильтрами |
 | `GET` | `/api/v1/public/dashboard/{slug}/selectors` | Селекторы публичного дашборда (JWT) |
 | `GET` | `/api/v1/public/dashboard/{slug}/selector/{sid}/options` | Опции селектора (JWT) |
+| `GET` | `/api/v1/public/dashboard/{slug}/selector-options` | Batch-опции всех селекторов дашборда (JWT) |
+| `GET` | `/api/v1/public/dashboard/{slug}/linked/{ls}/selectors` | Селекторы linked-дашборда (JWT главного slug) |
+| `GET` | `/api/v1/public/dashboard/{slug}/linked/{ls}/selector-options` | Batch-опции селекторов linked-дашборда (JWT главного slug) |
 | `GET` | `/health` | Health check |
 
 ### 2. Domain Layer (`app/domain/`)
@@ -148,10 +151,11 @@ app/domain/
 │   ├── sync_service.py      # Основная логика синхронизации (+ авто-синхронизация справочников)
 │   ├── reference_sync_service.py  # Синхронизация справочных таблиц (статусы, воронки, валюты)
 │   ├── field_mapper.py      # Маппинг полей Bitrix → DB (кросс-БД совместимый)
-│   ├── ai_service.py        # Взаимодействие с OpenAI API (генерация чартов, описание схемы)
-│   ├── chart_service.py     # SQL-валидация, выполнение запросов, CRUD чартов, apply_filters()
+│   ├── ai_service.py        # Взаимодействие с LLM API (OpenAI/OpenRouter): чарты, схема, селекторы
+│   ├── chart_service.py     # SQL-валидация, выполнение запросов, CRUD чартов, apply_filters(), resolve_labels_in_data()
 │   ├── dashboard_service.py # CRUD дашбордов, JWT-аутентификация, layout, ссылки (загружает selectors)
-│   └── selector_service.py  # CRUD селекторов и маппингов, build_filters_for_chart(), get_selector_options() (поддержка JOIN с label-таблицей)
+│   ├── selector_service.py  # CRUD селекторов и маппингов, build_filters_for_chart() (с резолвом date-токенов и post_filter), get_selector_options() (поддержка JOIN с label-таблицей)
+│   └── date_tokens.py       # Резолв date-токенов (TODAY, LAST_30_DAYS, ...) и end-of-day для BETWEEN
 └── interfaces/              # Абстракции (для DI)
 ```
 
@@ -169,11 +173,23 @@ class SyncService:
 
 ```python
 class AIService:
+    # Provider-agnostic: использует AsyncOpenAI с base_url из settings.resolved_llm_base_url.
+    # provider == "openai"     → /v1/responses (Responses API)
+    # provider == "openrouter" → /v1/chat/completions (OpenRouter не поддерживает Responses API)
+    async def _complete(system: str, input_, max_output_tokens: int) -> str
+    @staticmethod def _to_chat_messages(system: str, input_) -> list[dict]  # Конвертация в chat.completions формат
+
     async def _get_bitrix_context() -> str  # Загружает активный Bitrix-промпт из chart_prompt_templates
+    async def _get_report_context() -> str  # Загружает активный report-промпт из report_prompt_templates
+
     async def generate_chart_spec(prompt: str, schema_context: str) -> dict  # Автоматически подгружает Bitrix-контекст
     async def generate_schema_description(schema_context: str) -> str
-    async def generate_selectors(charts_context: str, schema_context: str) -> list[dict]  # AI-генерация селекторов
+    async def generate_selectors(charts_context: str, schema_context: str, user_request: str | None = None) -> list[dict]  # AI-генерация селекторов с поддержкой токенов, post_filter и опционального текстового пожелания пользователя
+    async def generate_report_step(conversation_history: list[dict], schema_context: str) -> dict
+    async def analyze_report_data(report_title, sql_results, analysis_prompt, ...) -> tuple[str, str]
 ```
+
+**LLM Provider**: настраивается через `settings.llm_provider` (`openai` или `openrouter`). При `openrouter` `AsyncOpenAI` инициализируется с `base_url=https://openrouter.ai/api/v1` и опциональными заголовками `HTTP-Referer`/`X-Title` (`OPENROUTER_APP_URL`, `OPENROUTER_APP_TITLE`). В качестве модели для OpenRouter используется qualified id (`openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet` и т.п.).
 
 **Bitrix Context Prompt**: При генерации чартов AIService автоматически загружает промпт `bitrix_context` из таблицы `chart_prompt_templates` и добавляет его в контекст для AI. Этот промпт содержит инструкции по работе с данными Bitrix24:
 - Как рассчитывать конверсию по стадиям
@@ -211,7 +227,18 @@ class ChartService:
     async def get_chart_columns(sql: str) -> list[str]  # Выполняет SQL с LIMIT 0, возвращает имена колонок
 
     # Применение фильтров (WHERE injection)
-    @staticmethod def apply_filters(sql: str, filters: list[dict]) -> tuple[str, dict]  # Инъекция WHERE/AND условий с bind-параметрами
+    @staticmethod def _build_condition(col_ref, op, value, prefix, bind_params) -> str | None  # Helper: одно условие + bind-параметры (с end-of-day для дат)
+    @staticmethod def apply_filters(sql: str, filters: list[dict]) -> tuple[str, dict]
+        # Top-level скан WHERE/GROUP BY/ORDER BY (учёт глубины скобок и string literals)
+        # Авто-резолв table alias из SQL: target_table="crm_deals" → "cd" если SQL = "FROM crm_deals cd"
+        # Поддержка post_filter: WHERE col IN (SELECT id FROM resolve_table WHERE resolve_col <op> :p)
+        # Авто-расширение to-даты до 23:59:59 для between/lte
+
+    # Резолв ID → имена в результирующих rows (post-processing)
+    async def resolve_labels_in_data(rows: list[dict], resolvers: list[dict]) -> list[dict]
+        # Каждый resolver: {column, resolve_table, resolve_value_column, resolve_label_column}
+        # Один SELECT на resolver, in-memory словарь, замена значений в указанной колонке rows.
+        # Идентификаторы валидируются через _IDENT_RE для защиты от SQL injection.
 
     # Выполнение запросов
     async def execute_chart_query(sql: str, bind_params?: dict) -> tuple[list[dict], float]
@@ -288,14 +315,20 @@ class SelectorService:
     async def delete_selector(selector_id) -> bool
 
     # CRUD маппингов (селектор → чарт + колонка)
-    async def add_mapping(selector_id, dashboard_chart_id, target_column, target_table?, operator_override?) -> dict
+    async def add_mapping(
+        selector_id, dashboard_chart_id, target_column, target_table?, operator_override?,
+        post_filter_resolve_table?, post_filter_resolve_column?, post_filter_resolve_id_column?,
+    ) -> dict
     async def remove_mapping(mapping_id) -> bool
 
     # Построение фильтров для apply_filters()
+    # - Резолвит date-токены (TODAY/LAST_30_DAYS/...) через date_tokens.resolve_filter_value
+    # - Прокидывает post_filter_* поля в filter dict для двухшагового фильтра
     async def build_filters_for_chart(dashboard_id, dc_id, filter_values) -> list[dict]
 
     # Опции для dropdown/multi_select
     async def get_selector_options(selector_id) -> list  # SELECT DISTINCT или static_options; если config содержит label_table/label_column/label_value_column — LEFT JOIN с label-таблицей, возвращает [{value, label}]
+    async def get_all_selector_options(dashboard_id) -> dict[int, list]  # Batch для всех селекторов
 ```
 
 **Типы селекторов:** `date_range`, `single_date`, `dropdown`, `multi_select`, `text`
@@ -303,11 +336,34 @@ class SelectorService:
 **Операторы:** `equals`, `not_equals`, `in`, `not_in`, `between`, `gt`, `lt`, `gte`, `lte`, `like`, `not_like`
 
 **Механизм фильтрации (Approach A: WHERE Clause Injection):**
-1. Пользователь на публичном дашборде выбирает значения в селекторах и нажимает "Apply"
-2. Frontend отправляет `POST /public/dashboard/{slug}/chart/{dc_id}/data` с массивом фильтров
-3. Backend через `SelectorService.build_filters_for_chart()` находит маппинги для данного чарта
-4. `ChartService.apply_filters()` инъектирует `WHERE`/`AND` условия в SQL с bind-параметрами
-5. Модифицированный SQL выполняется через `execute_chart_query(sql, bind_params)`
+1. Пользователь на публичном дашборде меняет значения в селекторах (auto-apply с debounce, без кнопки).
+2. Frontend отправляет `POST /public/dashboard/{slug}/chart/{dc_id}/data` с массивом фильтров.
+3. Backend через `SelectorService.build_filters_for_chart()` находит маппинги для данного чарта и резолвит date-токены через `date_tokens.resolve_filter_value`.
+4. `ChartService.apply_filters()` инъектирует `WHERE`/`AND` условия в SQL с bind-параметрами:
+   - **Top-level scan**: WHERE/GROUP BY/ORDER BY ищутся только на depth=0 (учитывая скобки и string literals), чтобы не путать подзапросы и JOIN ON-clauses.
+   - **Alias resolution**: `target_table` автоматически резолвится в реальный alias из SQL (`crm_deals` → `cd` если `FROM crm_deals cd`).
+   - **End-of-day**: для `between`/`lte` дата-only значения (`YYYY-MM-DD`) автоматически расширяются до `YYYY-MM-DD 23:59:59`.
+   - **post_filter сабзапрос**: при наличии `post_filter` в filter dict генерируется `WHERE col IN (SELECT id_col FROM resolve_table WHERE resolve_col <op> :p)`.
+5. Модифицированный SQL выполняется через `execute_chart_query(sql, bind_params)`.
+6. Если у чарта есть `chart_config.label_resolvers`, результат пропускается через `ChartService.resolve_labels_in_data()` для замены сырых ID на читаемые имена.
+
+#### date_tokens — резолв динамических дат
+
+```python
+# app/domain/services/date_tokens.py
+DATE_TOKENS: frozenset[str]  # TODAY, YESTERDAY, TOMORROW, LAST_7_DAYS, LAST_14_DAYS,
+                             # LAST_30_DAYS, LAST_90_DAYS, THIS_MONTH_START, LAST_MONTH_START,
+                             # THIS_QUARTER_START, LAST_QUARTER_START, THIS_YEAR_START,
+                             # LAST_YEAR_START, YEAR_START
+
+def is_date_token(value) -> bool
+def is_date_only(value) -> bool       # Match ^\d{4}-\d{2}-\d{2}$
+def resolve_token(value) -> str       # TODAY → "2026-04-06"; pass-through иначе
+def resolve_filter_value(selector_type, value)  # Walk dict/list/scalar и резолвит токены
+def extend_to_end_of_day(value)       # "2026-04-06" → "2026-04-06 23:59:59"
+```
+
+**Зеркало на frontend**: `frontend/src/utils/dateTokens.ts` содержит идентичные константы и функции (`DATE_TOKENS`, `resolveDateToken`, `resolveFilterValue`, `tokenLabel`). Бэкенд резолвит токены в `build_filters_for_chart`, фронт — в `SelectorBar` перед отправкой запроса (для отображения и опционального быстрого пути).
 
 #### Сущность Call (Телефония)
 
@@ -364,7 +420,14 @@ alembic/
     ├── 006_create_dashboard_links_table.py  # Таблица dashboard_links (связи между дашбордами)
     ├── 007_create_dashboard_selectors_tables.py  # Таблицы dashboard_selectors, selector_chart_mappings
     ├── 008_create_stage_history_tables.py  # Таблицы stage_history_deals, stage_history_leads (история движения по стадиям)
-    └── 009_create_chart_prompts_table.py  # Таблица chart_prompt_templates с дефолтным Bitrix-промптом
+    ├── 009_create_chart_prompts_table.py  # Таблица chart_prompt_templates с дефолтным Bitrix-промптом
+    ├── 010_add_records_fetched_to_sync_logs.py
+    ├── 011_create_reports_tables.py
+    ├── 012_create_published_reports_tables.py
+    ├── 013_add_llm_prompt_to_report_runs.py
+    ├── 014_stub.py
+    ├── 015_stub.py
+    └── 016_add_post_filter_to_mappings.py  # post_filter_resolve_table/_column/_id_column в selector_chart_mappings
 ```
 
 #### connection.py — ключевые функции:
@@ -414,9 +477,21 @@ class Settings(BaseSettings):
     sync_batch_size: int = 50
     sync_default_interval_minutes: int = 30
 
-    # AI / OpenAI
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    # AI / LLM Provider
+    # Поддерживаются OpenAI и любой OpenAI-compatible провайдер (например OpenRouter).
+    llm_provider: Literal["openai", "openrouter"] = "openai"
+    openai_api_key: str = ""           # API key для выбранного провайдера
+    openai_model: str = "gpt-4o-mini"  # Для OpenRouter — qualified id, e.g. "openai/gpt-4o-mini"
+    openai_timeout_seconds: int = 300
+    llm_base_url: str = ""             # Override; auto = api.openai.com / openrouter.ai/api
+    openrouter_app_url: str = ""       # HTTP-Referer для OpenRouter dashboard
+    openrouter_app_title: str = ""     # X-Title для OpenRouter dashboard
+
+    @property
+    def resolved_llm_base_url(self) -> str
+        # openai     → https://api.openai.com/v1
+        # openrouter → https://openrouter.ai/api/v1
+        # llm_base_url переопределяет авто-выбор
 
     # Charts
     chart_query_timeout_seconds: int = 5
@@ -466,12 +541,20 @@ services:
 | `description` | TEXT (nullable) | Описание |
 | `user_prompt` | TEXT | Исходный промпт пользователя |
 | `chart_type` | VARCHAR(50) | Тип чарта (bar/line/pie/area/scatter/indicator/table/funnel/horizontal_bar) |
-| `chart_config` | JSON | Конфигурация чарта |
+| `chart_config` | JSON | Конфигурация чарта (см. поля ниже) |
 | `sql_query` | TEXT | SQL-запрос для получения данных |
 | `is_pinned` | BOOLEAN | Флаг закрепления |
 | `created_by` | VARCHAR(255) (nullable) | Автор |
 | `created_at` | TIMESTAMP | Дата создания |
 | `updated_at` | TIMESTAMP | Дата последнего обновления |
+
+**`chart_config` JSON** (свободная схема, ключевые поля):
+
+| Ключ | Назначение |
+|---|---|
+| `x`, `y`, `colors` | Data keys и палитра |
+| `legend`, `grid`, `xAxis`, `yAxis`, `line`, `area`, `pie`, `indicator`, `table`, `funnel`, `horizontal_bar`, `cardStyle`, `general`, `designLayout` | Visual config (см. `frontend/src/services/api.ts:ChartDisplayConfig`) |
+| `label_resolvers` | Опциональный массив правил пост-обработки результата чарта: `[{column, resolve_table, resolve_value_column?, resolve_label_column}]`. Backend (`ChartService.resolve_labels_in_data`) загружает `SELECT value, label FROM resolve_table` один раз на resolver и заменяет сырые ID в указанной колонке `column` на читаемые имена. Полезно когда SQL чарта возвращает `assigned_by_id`, а пользователь хочет видеть имя менеджера |
 
 ### chart_prompt_templates
 
@@ -500,12 +583,22 @@ services:
 | `label` | VARCHAR(255) | Отображаемое название |
 | `selector_type` | VARCHAR(30) | Тип: date_range / single_date / dropdown / multi_select / text |
 | `operator` | VARCHAR(30) | Оператор по умолчанию: equals / between / in / like и др. |
-| `config` | JSON (nullable) | Конфигурация: source_table, source_column, static_options, default_value, placeholder |
+| `config` | JSON (nullable) | Конфигурация селектора (см. ниже) |
 | `sort_order` | INTEGER | Порядок отображения |
 | `is_required` | BOOLEAN | Обязательность фильтра |
 | `created_at` | TIMESTAMP | Дата создания |
 
 **UNIQUE** constraint: `(dashboard_id, name)`
+
+**`config` JSON** — поля:
+
+| Ключ | Назначение |
+|---|---|
+| `static_values` | Массив `[{value, label}]` для статичного dropdown / multi_select |
+| `source_table` + `source_column` | DB-источник опций для dropdown / multi_select (`SELECT DISTINCT`) |
+| `label_table` + `label_column` + `label_value_column` | LEFT JOIN для подстановки labels к опциям из source_table |
+| `default_value` | Дефолтное значение, применяется на frontend при инициализации `SelectorBar`. Для `date_range` — `{from, to}` где значения могут быть **date-токенами** (`TODAY`, `LAST_30_DAYS`, ...). Для `single_date`/`dropdown`/`text` — строка. Резолв токенов выполняется backend'ом в `build_filters_for_chart` и frontend'ом в `dateTokens.resolveFilterValue` |
+| `placeholder` | Подсказка для UI |
 
 ### selector_chart_mappings
 
@@ -517,11 +610,19 @@ services:
 | `selector_id` | BIGINT (FK → dashboard_selectors) | Родительский селектор |
 | `dashboard_chart_id` | BIGINT (FK → dashboard_charts) | Целевой чарт на дашборде |
 | `target_column` | VARCHAR(255) | Колонка в SQL чарта (date_create, closedate и др.) |
-| `target_table` | VARCHAR(255) (nullable) | Таблица для disambiguation в JOIN |
+| `target_table` | VARCHAR(255) (nullable) | Таблица для disambiguation в JOIN. `apply_filters` автоматически резолвит её в реальный alias из SQL чарта |
 | `operator_override` | VARCHAR(30) (nullable) | Переопределение оператора для этого чарта |
+| `post_filter_resolve_table` | VARCHAR(255) (nullable) | Двухшаговая фильтрация: вспомогательная таблица для резолва значения селектора. Если задано — `apply_filters` генерирует `WHERE target_column IN (SELECT post_filter_resolve_id_column FROM post_filter_resolve_table WHERE post_filter_resolve_column <op> :p)` |
+| `post_filter_resolve_column` | VARCHAR(255) (nullable) | Колонка в `post_filter_resolve_table`, по которой фильтруется значение селектора |
+| `post_filter_resolve_id_column` | VARCHAR(255) (nullable) | Колонка в `post_filter_resolve_table`, чьи значения подставляются в `target_column`. Default — `id` |
 | `created_at` | TIMESTAMP | Дата создания |
 
 **UNIQUE** constraint: `(selector_id, dashboard_chart_id)` — один маппинг на пару селектор-чарт
+
+**Пример post_filter** — у чарта `SELECT count(*) FROM stage_history_deals` нет колонки `assigned_by_id`, но есть `owner_id`. Чтобы фильтр менеджера работал, маппинг указывает: `target_column = "owner_id"`, `post_filter_resolve_table = "crm_deals"`, `post_filter_resolve_column = "assigned_by_id"`, `post_filter_resolve_id_column = "id"`. Сгенерированный SQL:
+```sql
+WHERE owner_id IN (SELECT id FROM crm_deals WHERE assigned_by_id = :sf0)
+```
 
 ## Маппинг типов Bitrix24 → Database
 
@@ -590,12 +691,17 @@ frontend/src/
 │   │   ├── PasswordGate.tsx   # Форма ввода пароля для публичного дашборда
 │   │   └── PublishModal.tsx   # Модальное окно публикации дашборда
 │   └── selectors/
-│       ├── SelectorBar.tsx        # Панель фильтров: рендерит селекторы, кнопки Apply/Reset, загружает опции
-│       ├── DateRangeSelector.tsx  # Два input[date] (from/to)
-│       ├── SingleDateSelector.tsx # Один input[date]
+│       ├── SelectorBar.tsx        # Панель фильтров: auto-apply (debounce 250 мс / text 500 мс), инициализация дефолтов из config.default_value (резолв date-токенов), кнопка Reset. Опционально linkedSlug — берёт опции через linked endpoint
+│       ├── DateRangeSelector.tsx  # Два input[date] (from/to) + token-based пресеты (TODAY/LAST_7_DAYS/LAST_30_DAYS/THIS_QUARTER_START)
+│       ├── SingleDateSelector.tsx # Один input[date], при value-токене резолвит через resolveDateToken
 │       ├── DropdownSelector.tsx   # select с опциями из API или static
 │       ├── MultiSelectSelector.tsx # Multi-select с чекбоксами и dropdown
-│       └── TextSelector.tsx       # input[text] с placeholder
+│       ├── TextSelector.tsx       # input[text] с placeholder и debounce
+│       ├── SelectorBoardDialog.tsx # ReactFlow-редактор маппингов: типы, источник данных, default value (token dropdown), edge popup с post_filter_resolve_table/_column/_id_column
+│       ├── SelectorEditorSection.tsx # CRUD селекторов на DashboardEditorPage + кнопка "AI: сгенерировать" с превью и выборочным принятием
+│       ├── SelectorConfigPanel.tsx # Левая панель редактора селектора (тип, имя, label, источник, labels)
+│       ├── SqlPreviewPanel.tsx     # Превью оригинального и фильтрованного SQL
+│       └── nodes/                  # SelectorNode, ChartNode, MappingEdge для ReactFlow
 ├── pages/
 │   ├── DashboardPage.tsx      # Обзор синхронизации
 │   ├── ChartsPage.tsx         # AI-генерация чартов + список сохранённых
@@ -603,20 +709,63 @@ frontend/src/
 │   ├── ConfigPage.tsx         # Настройки синхронизации
 │   ├── MonitoringPage.tsx     # Мониторинг
 │   ├── ValidationPage.tsx     # Валидация данных
-│   ├── EmbedDashboardPage.tsx # Публичный дашборд: аутентификация, вкладки, авто-обновление, SelectorBar + фильтры
-│   └── DashboardEditorPage.tsx # Редактор дашборда: grid-layout, override, ссылки, SelectorsSection (CRUD фильтров + маппинги)
+│   ├── EmbedDashboardPage.tsx # Публичный дашборд: аутентификация, вкладки (linked-дашборды), авто-обновление, per-tab селекторы и per-tab filterValuesByTab (фильтры главного и вторичных табов хранятся раздельно)
+│   └── DashboardEditorPage.tsx # Редактор дашборда: grid-layout, override, ссылки, SelectorEditorSection (CRUD фильтров + маппинги + AI генерация)
 ├── hooks/
 │   ├── useSync.ts             # React Query хуки для синхронизации и справочников
 │   ├── useCharts.ts           # React Query хуки для чартов, схемы, истории генерации и промптов (useChartPromptTemplate, useUpdateChartPromptTemplate)
 │   ├── useDashboards.ts       # React Query хуки для CRUD дашбордов, layout, ссылок, паролей
 │   ├── useSelectors.ts        # React Query хуки для CRUD селекторов, маппингов, опций, AI-генерации, колонок чартов
 │   └── useAuth.ts             # Хук авторизации
+├── utils/
+│   └── dateTokens.ts          # Зеркало backend date_tokens.py: DATE_TOKENS, resolveDateToken, resolveFilterValue, isDateOnly, isDateToken, tokenLabel
 ├── services/
-│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi, dashboardsApi, publicApi) + типы DashboardSelector, SelectorMapping, FilterValue
+│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi, dashboardsApi, publicApi). Типы DashboardSelector, SelectorMapping (с post_filter_resolve_*), LabelResolver, FilterValue. Endpoints: dashboardsApi.generateSelectors, publicApi.getLinkedPublicSelectorOptionsBatch
 └── store/
     ├── authStore.ts           # Zustand store авторизации
     └── syncStore.ts           # Zustand store синхронизации
 ```
+
+## Date Tokens
+
+Динамические токены, которые можно использовать в `selector.config.default_value` или в любом значении фильтра при ручной отправке. Backend (`date_tokens.resolve_filter_value`) и frontend (`utils/dateTokens.ts`) резолвят их идентично — список и реализация должны оставаться синхронными.
+
+| Токен | Резолв |
+|---|---|
+| `TODAY` | Сегодня |
+| `YESTERDAY` | Вчера |
+| `TOMORROW` | Завтра |
+| `LAST_7_DAYS` | -7 дней от сегодня |
+| `LAST_14_DAYS` | -14 дней |
+| `LAST_30_DAYS` | -30 дней |
+| `LAST_90_DAYS` | -90 дней |
+| `THIS_MONTH_START` | 1-е число текущего месяца |
+| `LAST_MONTH_START` | 1-е число прошлого месяца |
+| `THIS_QUARTER_START` | 1-е число текущего квартала |
+| `LAST_QUARTER_START` | 1-е число прошлого квартала |
+| `THIS_YEAR_START` / `YEAR_START` | 1 января текущего года |
+| `LAST_YEAR_START` | 1 января прошлого года |
+
+**Пример selector config:**
+```json
+{
+  "default_value": { "from": "LAST_30_DAYS", "to": "TODAY" }
+}
+```
+
+**End-of-day**: для `between`/`lte` дата-only значения (`YYYY-MM-DD`) в `apply_filters` автоматически расширяются до `YYYY-MM-DD 23:59:59`, чтобы фильтр включал весь день.
+
+## Nginx (frontend container)
+
+`frontend/nginx.conf` проксирует `/api/` на `http://backend:8080`. AI-генерация и анализ отчётов могут занимать длительное время, поэтому установлены увеличенные таймауты:
+
+```nginx
+proxy_connect_timeout 10s;
+proxy_send_timeout    600s;
+proxy_read_timeout    600s;
+```
+
+Это синхронизировано с `openai_timeout_seconds = 300` в backend, чтобы клиент не получал 504 от nginx раньше, чем backend получит ответ от LLM.
 
 ## Примеры использования API
 

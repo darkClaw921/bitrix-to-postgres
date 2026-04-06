@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile backend/app/domain/services/chart_service.py)",
+      "Bash(python -m py_compile backend/app/domain/services/selector_service.py)",
+      "Bash(python -m py_compile backend/app/domain/services/ai_service.py backend/app/api/v1/schemas/selectors.py backend/app/api/v1/endpoints/selectors.py)",
+      "Bash(npx tsc:*)",
+      "Bash(python -c ':*)",
+      "Bash(python -m py_compile /Users/igorgerasimov/cursorWorkspace/bitrix-bi-connector/bitrix-to-postgres/new_version/backend/app/domain/services/selector_service.py)"
+    ]
+  }
+}

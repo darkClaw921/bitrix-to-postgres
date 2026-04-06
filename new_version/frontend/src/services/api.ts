@@ -283,6 +283,8 @@ export interface ChartDisplayConfig {
   }
   // design layout (interactive positioning)
   designLayout?: DesignLayout
+  // post-processing rules to replace raw IDs in result rows with display labels
+  label_resolvers?: LabelResolver[]
 }
 
 export interface DesignLayout {
@@ -523,7 +525,23 @@ export interface SelectorMapping {
   target_column: string
   target_table?: string
   operator_override?: string
+  // Two-step (post_filter) filtering: when target_column lives in the chart's
+  // table but the selector value semantically belongs to a different table,
+  // the backend rewrites the WHERE into
+  //   target_column IN (SELECT post_filter_resolve_id_column
+  //                     FROM post_filter_resolve_table
+  //                     WHERE post_filter_resolve_column <op> :value)
+  post_filter_resolve_table?: string
+  post_filter_resolve_column?: string
+  post_filter_resolve_id_column?: string
   created_at?: string
+}
+
+export interface LabelResolver {
+  column: string
+  resolve_table: string
+  resolve_value_column?: string
+  resolve_label_column: string
 }
 
 export interface DashboardSelector {
@@ -545,6 +563,9 @@ export interface SelectorMappingRequest {
   target_column: string
   target_table?: string
   operator_override?: string
+  post_filter_resolve_table?: string
+  post_filter_resolve_column?: string
+  post_filter_resolve_id_column?: string
 }
 
 export interface SelectorCreateRequest {
@@ -754,6 +775,14 @@ export const dashboardsApi = {
   previewFilter: (dashboardId: number, dcId: number, data: FilterPreviewRequest) =>
     api.post<FilterPreviewResponse>(`/dashboards/${dashboardId}/charts/${dcId}/preview-filter`, data).then((r) => r.data),
 
+  generateSelectors: (dashboardId: number, userRequest?: string) =>
+    api
+      .post<{ selectors: SelectorCreateRequest[] }>(
+        `/dashboards/${dashboardId}/selectors/generate`,
+        userRequest ? { user_request: userRequest } : {},
+      )
+      .then((r) => r.data),
+
 }
 
 // === Public API (no auth interceptor) ===
@@ -819,6 +848,12 @@ export const publicApi = {
     publicAxios.get<{ options: Record<number, SelectorOption[]> }>(`/public/dashboard/${slug}/selector-options`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then((r) => r.data.options),
+
+  getLinkedPublicSelectorOptionsBatch: (slug: string, linkedSlug: string, token: string) =>
+    publicAxios.get<{ options: Record<number, SelectorOption[]> }>(
+      `/public/dashboard/${slug}/linked/${linkedSlug}/selector-options`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    ).then((r) => r.data.options),
 
   // Published Reports
   authenticateReport: (slug: string, password: string) =>

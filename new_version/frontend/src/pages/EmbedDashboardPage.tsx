@@ -49,8 +49,10 @@ export default function EmbedDashboardPage() {
   const [refreshing, setRefreshing] = useState(false)
   const refreshingRef = useRef(false)
 
-  // Filter state
-  const [filterValues, setFilterValues] = useState<Record<string, unknown>>({})
+  // Per-tab filter state. Key is 'main' or a linked dashboard slug, so each
+  // tab keeps its own selector values across switches (mirrors how the JS
+  // dashboard guide treats `tabs[*].selectors`).
+  const [filterValuesByTab, setFilterValuesByTab] = useState<Record<string, Record<string, unknown>>>({})
 
   // Tab state
   const [activeTab, setActiveTab] = useState<string>('main')
@@ -125,11 +127,21 @@ export default function EmbedDashboardPage() {
       linkedSlug: string,
       dash: Dashboard,
       authToken: string,
+      filters?: Record<string, unknown>,
     ): Promise<Record<number, ChartDataResponse>> => {
       if (!slug) return {}
 
-      const promises = dash.charts.map((c) =>
-        publicApi.getLinkedDashboardChartData(slug, linkedSlug, c.id, authToken)
+      const activeFilters = filters || {}
+      const hasFilters = Object.keys(activeFilters).length > 0
+      const filterList: FilterValue[] = hasFilters
+        ? Object.entries(activeFilters).map(([name, value]) => ({ name, value }))
+        : []
+
+      const promises = dash.charts.map((c) => {
+        const fetcher = hasFilters
+          ? publicApi.getLinkedDashboardChartDataFiltered(slug, linkedSlug, c.id, authToken, filterList)
+          : publicApi.getLinkedDashboardChartData(slug, linkedSlug, c.id, authToken)
+        return fetcher
           .then((data) => ({ dcId: c.id, data }))
           .catch((err) => {
             const axiosErr = err as { response?: { status?: number } }
@@ -138,7 +150,7 @@ export default function EmbedDashboardPage() {
             }
             return { dcId: c.id, data: null }
           })
-      )
+      })
       const results = await Promise.all(promises)
       const dataMap: Record<number, ChartDataResponse> = {}
       for (const r of results) {
@@ -149,22 +161,39 @@ export default function EmbedDashboardPage() {
     [slug],
   )
 
+  // Apply filters for the *active* tab (main or a linked dashboard slug).
+  // The SelectorBar fires this whenever its draft changes (auto-apply with
+  // debounce — see SelectorBar.tsx).
   const handleFilterApply = useCallback(
-    (values: Record<string, unknown>) => {
-      setFilterValues(values)
-      if (dashboard && token) {
-        fetchAllChartData(dashboard, token, values)
+    (tabId: string, values: Record<string, unknown>) => {
+      setFilterValuesByTab((prev) => ({ ...prev, [tabId]: values }))
+
+      if (!token) return
+      if (tabId === 'main') {
+        if (dashboard) fetchAllChartData(dashboard, token, values)
+        return
       }
+
+      const cached = linkedCache[tabId]
+      if (!cached) return
+      fetchLinkedChartData(tabId, cached.dashboard, token, values)
+        .then((freshData) => {
+          setLinkedCache((prev) => ({
+            ...prev,
+            [tabId]: { ...prev[tabId], chartData: freshData },
+          }))
+          setLastUpdatedAt(new Date())
+        })
+        .catch(() => {})
     },
-    [dashboard, token, fetchAllChartData],
+    [dashboard, token, fetchAllChartData, fetchLinkedChartData, linkedCache],
   )
 
   const handleTabClick = useCallback(
     async (tabSlug: string) => {
       if (tabSlug === activeTab) return
       setActiveTab(tabSlug)
-      // Reset filters on tab switch
-      setFilterValues({})
+      // Per-tab filters: do NOT clear — each tab remembers its own state.
 
       // Main tab: data already loaded
       if (tabSlug === 'main') return
@@ -177,7 +206,10 @@ export default function EmbedDashboardPage() {
       setLinkedLoading(true)
       try {
         const linkedDash = await publicApi.getLinkedDashboard(slug, tabSlug, token)
-        const linkedData = await fetchLinkedChartData(tabSlug, linkedDash, token)
+        // Use this tab's filters if any (will be initialized by SelectorBar
+        // defaults shortly after the dashboard renders).
+        const tabFilters = filterValuesByTab[tabSlug] || {}
+        const linkedData = await fetchLinkedChartData(tabSlug, linkedDash, token, tabFilters)
         setLinkedCache((prev) => ({
           ...prev,
           [tabSlug]: { dashboard: linkedDash, chartData: linkedData },
@@ -192,7 +224,7 @@ export default function EmbedDashboardPage() {
         setLinkedLoading(false)
       }
     },
-    [activeTab, linkedCache, slug, token, fetchLinkedChartData],
+    [activeTab, linkedCache, slug, token, fetchLinkedChartData, filterValuesByTab],
   )
 
   // Load dashboard once authenticated
@@ -219,19 +251,20 @@ export default function EmbedDashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, token])
 
-  // Auto-refresh interval
+  // Auto-refresh interval — re-runs the active tab with its current filters.
   useEffect(() => {
     if (!dashboard || !token || !slug) return
 
     const intervalMs = dashboard.refresh_interval_minutes * 60 * 1000
     const timer = setInterval(async () => {
+      const tabFilters = filterValuesByTab[activeTab] || {}
       if (activeTab === 'main') {
-        fetchAllChartData(dashboard, token)
+        fetchAllChartData(dashboard, token, tabFilters)
       } else {
         const cached = linkedCache[activeTab]
         if (cached) {
           try {
-            const freshData = await fetchLinkedChartData(activeTab, cached.dashboard, token)
+            const freshData = await fetchLinkedChartData(activeTab, cached.dashboard, token, tabFilters)
             setLinkedCache((prev) => ({
               ...prev,
               [activeTab]: { ...prev[activeTab], chartData: freshData },
@@ -243,7 +276,7 @@ export default function EmbedDashboardPage() {
     }, intervalMs)
 
     return () => clearInterval(timer)
-  }, [dashboard, token, slug, activeTab, linkedCache, fetchAllChartData, fetchLinkedChartData])
+  }, [dashboard, token, slug, activeTab, linkedCache, filterValuesByTab, fetchAllChartData, fetchLinkedChartData])
 
   if (!token) {
     return <PasswordGate onAuthenticated={handleAuthenticated} onSubmit={handleAuth} />
@@ -268,14 +301,18 @@ export default function EmbedDashboardPage() {
   const linkedDashboards = dashboard.linked_dashboards || []
   const hasTabs = linkedDashboards.length > 0
 
-  // Determine active charts to display
+  // Determine active charts and selectors to display
   let activeCharts: DashboardChart[] = dashboard.charts
   let activeChartData: Record<number, ChartDataResponse> = chartData
+  let activeSelectors = dashboard.selectors || []
 
   if (activeTab !== 'main' && linkedCache[activeTab]) {
     activeCharts = linkedCache[activeTab].dashboard.charts
     activeChartData = linkedCache[activeTab].chartData
+    activeSelectors = linkedCache[activeTab].dashboard.selectors || []
   }
+
+  const activeFilterValues = filterValuesByTab[activeTab] || {}
 
   return (
     <div className="min-h-screen bg-gray-50 p-3 md:p-6">
@@ -326,14 +363,21 @@ export default function EmbedDashboardPage() {
 
         {!hasTabs && <div className="mb-4" />}
 
-        {/* Selector bar */}
-        {activeTab === 'main' && dashboard.selectors && dashboard.selectors.length > 0 && token && slug && (
+        {/* Selector bar — per-tab selectors. Each linked dashboard has its
+            own selectors loaded together with its dashboard payload. The
+            linkedSlug prop tells the bar to fetch options via the linked
+            endpoint so the JWT (issued for the main slug) stays valid. */}
+        {activeSelectors.length > 0 && token && slug && (
           <SelectorBar
-            selectors={dashboard.selectors}
+            // Force a fresh instance per tab so internal draft state resets
+            // and default values re-initialize for the new selector list.
+            key={activeTab}
+            selectors={activeSelectors}
             slug={slug}
+            linkedSlug={activeTab === 'main' ? undefined : activeTab}
             token={token}
-            filterValues={filterValues}
-            onApply={handleFilterApply}
+            filterValues={activeFilterValues}
+            onApply={(values) => handleFilterApply(activeTab, values)}
           />
         )}
 

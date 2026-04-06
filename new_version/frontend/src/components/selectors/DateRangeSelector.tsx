@@ -1,4 +1,5 @@
 import { useTranslation } from '../../i18n'
+import { isDateToken, resolveDateToken } from '../../utils/dateTokens'
 
 interface DateRangeValue {
   from?: string
@@ -10,28 +11,20 @@ interface Props {
   onChange: (value: DateRangeValue | null) => void
 }
 
+// Resolve token-or-date to a date string suitable for <input type="date">.
+function toInputDate(v: string | undefined): string {
+  if (!v) return ''
+  return isDateToken(v) ? (resolveDateToken(v) as string) : v
+}
+
 export default function DateRangeSelector({ value, onChange }: Props) {
   const { t } = useTranslation()
   const current = value || {}
 
-  const setPreset = (days: number) => {
-    const to = new Date()
-    const from = new Date()
-    from.setDate(from.getDate() - days)
-    onChange({
-      from: from.toISOString().split('T')[0],
-      to: to.toISOString().split('T')[0],
-    })
-  }
-
-  const setQuarter = () => {
-    const now = new Date()
-    const quarter = Math.floor(now.getMonth() / 3)
-    const from = new Date(now.getFullYear(), quarter * 3, 1)
-    onChange({
-      from: from.toISOString().split('T')[0],
-      to: now.toISOString().split('T')[0],
-    })
+  // Token-based presets — these snap from/to to backend-recognized tokens so
+  // that defaults stay "live" if the user saves the selector configuration.
+  const setTokenRange = (fromToken: string, toToken: string) => {
+    onChange({ from: fromToken, to: toToken })
   }
 
   return (
@@ -42,7 +35,7 @@ export default function DateRangeSelector({ value, onChange }: Props) {
           <input
             type="date"
             className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-            value={current.from || ''}
+            value={toInputDate(current.from)}
             onChange={(e) => onChange({ ...current, from: e.target.value || undefined })}
           />
         </div>
@@ -51,22 +44,22 @@ export default function DateRangeSelector({ value, onChange }: Props) {
           <input
             type="date"
             className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-            value={current.to || ''}
+            value={toInputDate(current.to)}
             onChange={(e) => onChange({ ...current, to: e.target.value || undefined })}
           />
         </div>
       </div>
       <div className="flex gap-1 flex-wrap">
         {[
-          { label: t('selectors.today'), action: () => setPreset(0) },
-          { label: t('selectors.last7Days'), action: () => setPreset(7) },
-          { label: t('selectors.lastMonth'), action: () => setPreset(30) },
-          { label: t('selectors.lastQuarter'), action: () => setQuarter() },
+          { label: t('selectors.today'), from: 'TODAY', to: 'TODAY' },
+          { label: t('selectors.last7Days'), from: 'LAST_7_DAYS', to: 'TODAY' },
+          { label: t('selectors.lastMonth'), from: 'LAST_30_DAYS', to: 'TODAY' },
+          { label: t('selectors.lastQuarter'), from: 'THIS_QUARTER_START', to: 'TODAY' },
         ].map((preset) => (
           <button
             key={preset.label}
             className="px-2 py-0.5 text-[11px] bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
-            onClick={preset.action}
+            onClick={() => setTokenRange(preset.from, preset.to)}
           >
             {preset.label}
           </button>

@@ -1,4 +1,5 @@
 import { useTranslation } from '../../i18n'
+import { isDateToken, resolveDateToken } from '../../utils/dateTokens'
 
 interface Props {
   value: string | null
@@ -8,12 +9,18 @@ interface Props {
 export default function SingleDateSelector({ value, onChange }: Props) {
   const { t } = useTranslation()
 
+  // If a date token slipped through, resolve it for display in the native
+  // date input (which can only render YYYY-MM-DD).
+  const displayValue = isDateToken(value)
+    ? (resolveDateToken(value) as string)
+    : value || ''
+
   return (
     <div className="relative">
       <input
         type="date"
         className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-        value={value || ''}
+        value={displayValue}
         onChange={(e) => onChange(e.target.value || null)}
       />
       {value && (

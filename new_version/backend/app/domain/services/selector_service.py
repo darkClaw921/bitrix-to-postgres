@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import text
 
 from app.core.logging import get_logger
+from app.domain.services.date_tokens import resolve_filter_value
 from app.infrastructure.database.connection import get_dialect, get_engine
 
 _TABLE_PATTERN = re.compile(
@@ -14,6 +15,53 @@ _TABLE_PATTERN = re.compile(
 )
 
 logger = get_logger(__name__)
+
+
+# Identifier safety: prevent SQL injection via inferred table/column names.
+_IDENT_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def _ident(name: str | None) -> str | None:
+    """Validate an SQL identifier; return ``None`` if it's unsafe to splice."""
+    if not name or not _IDENT_RE.match(name):
+        return None
+    return name
+
+
+# Reference tables that have a known "label" column. When a selector pulls
+# values directly out of one of these tables and didn't define label_*, we can
+# pick a sensible default so dropdown options show human-readable text.
+#
+# Format: source_table -> (label_column_expression, value_column).
+# The expression contains a `{a}` placeholder that gets replaced by the table
+# alias prefix (e.g. "l." or "" if the column is unaliased). DO NOT prepend an
+# alias outside the expression — that would produce broken SQL like
+# `l.CONCAT_WS(...)`, which MySQL parses as a stored routine call.
+_KNOWN_LABEL_TABLES: dict[str, tuple[str, str]] = {
+    "bitrix_users": ("CONCAT_WS(' ', {a}name, {a}last_name)", "bitrix_id"),
+    "ref_crm_statuses": ("{a}name", "status_id"),
+    "ref_crm_deal_categories": ("{a}name", "id"),
+    "ref_crm_currencies": ("{a}full_name", "currency"),
+    "ref_enum_values": ("{a}value", "value"),
+}
+
+# Foreign-key-like column names → (label_table, label_value_column,
+# label_column_expression). Used when a selector pulls a column from an entity
+# table (e.g. crm_deals.assigned_by_id) and the AI forgot to set label_*.
+# The expression also uses the `{a}` placeholder for the JOIN alias prefix.
+_FK_COLUMN_RESOLVERS: dict[str, tuple[str, str, str]] = {
+    "assigned_by_id": ("bitrix_users", "bitrix_id", "CONCAT_WS(' ', {a}name, {a}last_name)"),
+    "created_by": ("bitrix_users", "bitrix_id", "CONCAT_WS(' ', {a}name, {a}last_name)"),
+    "modify_by_id": ("bitrix_users", "bitrix_id", "CONCAT_WS(' ', {a}name, {a}last_name)"),
+    "modify_by": ("bitrix_users", "bitrix_id", "CONCAT_WS(' ', {a}name, {a}last_name)"),
+    "responsible_id": ("bitrix_users", "bitrix_id", "CONCAT_WS(' ', {a}name, {a}last_name)"),
+    "owner_id": ("bitrix_users", "bitrix_id", "CONCAT_WS(' ', {a}name, {a}last_name)"),
+    "portal_user_id": ("bitrix_users", "bitrix_id", "CONCAT_WS(' ', {a}name, {a}last_name)"),
+    "user_id": ("bitrix_users", "bitrix_id", "CONCAT_WS(' ', {a}name, {a}last_name)"),
+    "stage_id": ("ref_crm_statuses", "status_id", "{a}name"),
+    "category_id": ("ref_crm_deal_categories", "id", "{a}name"),
+    "currency_id": ("ref_crm_currencies", "currency", "{a}full_name"),
+}
 
 
 class SelectorService:
@@ -97,7 +145,9 @@ class SelectorService:
             "SELECT ds.id, ds.dashboard_id, ds.name, ds.label, ds.selector_type, "
             "ds.operator, ds.config, ds.sort_order, ds.is_required, ds.created_at, "
             "scm.id AS mapping_id, scm.dashboard_chart_id, scm.target_column, "
-            "scm.target_table, scm.operator_override, scm.created_at AS mapping_created_at "
+            "scm.target_table, scm.operator_override, "
+            "scm.post_filter_resolve_table, scm.post_filter_resolve_column, "
+            "scm.post_filter_resolve_id_column, scm.created_at AS mapping_created_at "
             "FROM dashboard_selectors ds "
             "LEFT JOIN selector_chart_mappings scm ON scm.selector_id = ds.id "
             "WHERE ds.dashboard_id = :dashboard_id "
@@ -137,6 +187,9 @@ class SelectorService:
                     "target_column": row["target_column"],
                     "target_table": row["target_table"],
                     "operator_override": row["operator_override"],
+                    "post_filter_resolve_table": row["post_filter_resolve_table"],
+                    "post_filter_resolve_column": row["post_filter_resolve_column"],
+                    "post_filter_resolve_id_column": row["post_filter_resolve_id_column"],
                     "created_at": row["mapping_created_at"],
                 })
 
@@ -209,7 +262,9 @@ class SelectorService:
 
         query = text(
             "SELECT id, selector_id, dashboard_chart_id, target_column, "
-            "target_table, operator_override, created_at "
+            "target_table, operator_override, "
+            "post_filter_resolve_table, post_filter_resolve_column, "
+            "post_filter_resolve_id_column, created_at "
             "FROM selector_chart_mappings WHERE selector_id = :selector_id "
             "ORDER BY id"
         )
@@ -225,6 +280,9 @@ class SelectorService:
         target_column: str,
         target_table: str | None = None,
         operator_override: str | None = None,
+        post_filter_resolve_table: str | None = None,
+        post_filter_resolve_column: str | None = None,
+        post_filter_resolve_id_column: str | None = None,
     ) -> dict[str, Any]:
         engine = get_engine()
         dialect = get_dialect()
@@ -235,23 +293,30 @@ class SelectorService:
             "target_column": target_column,
             "target_table": target_table,
             "operator_override": operator_override,
+            "post_filter_resolve_table": post_filter_resolve_table,
+            "post_filter_resolve_column": post_filter_resolve_column,
+            "post_filter_resolve_id_column": post_filter_resolve_id_column,
         }
+
+        columns_sql = (
+            "selector_id, dashboard_chart_id, target_column, target_table, operator_override, "
+            "post_filter_resolve_table, post_filter_resolve_column, post_filter_resolve_id_column"
+        )
+        values_sql = (
+            ":selector_id, :dashboard_chart_id, :target_column, :target_table, :operator_override, "
+            ":post_filter_resolve_table, :post_filter_resolve_column, :post_filter_resolve_id_column"
+        )
 
         if dialect == "mysql":
             query = text(
-                "INSERT INTO selector_chart_mappings "
-                "(selector_id, dashboard_chart_id, target_column, target_table, operator_override) "
-                "VALUES (:selector_id, :dashboard_chart_id, :target_column, :target_table, :operator_override)"
+                f"INSERT INTO selector_chart_mappings ({columns_sql}) VALUES ({values_sql})"
             )
             async with engine.begin() as conn:
                 result = await conn.execute(query, params)
                 mapping_id = result.lastrowid
         else:
             query = text(
-                "INSERT INTO selector_chart_mappings "
-                "(selector_id, dashboard_chart_id, target_column, target_table, operator_override) "
-                "VALUES (:selector_id, :dashboard_chart_id, :target_column, :target_table, :operator_override) "
-                "RETURNING id"
+                f"INSERT INTO selector_chart_mappings ({columns_sql}) VALUES ({values_sql}) RETURNING id"
             )
             async with engine.begin() as conn:
                 result = await conn.execute(query, params)
@@ -286,6 +351,9 @@ class SelectorService:
                 target_column=m["target_column"],
                 target_table=m.get("target_table"),
                 operator_override=m.get("operator_override"),
+                post_filter_resolve_table=m.get("post_filter_resolve_table"),
+                post_filter_resolve_column=m.get("post_filter_resolve_column"),
+                post_filter_resolve_id_column=m.get("post_filter_resolve_id_column"),
             )
 
     # === Filter Building ===
@@ -333,13 +401,26 @@ class SelectorService:
 
             operator = mapping.get("operator_override") or selector["operator"]
 
-            filters.append({
+            # Resolve date tokens (TODAY, LAST_30_DAYS, ...) before reaching apply_filters
+            resolved_value = resolve_filter_value(selector.get("selector_type"), value)
+
+            filter_dict: dict[str, Any] = {
                 "column": mapping["target_column"],
                 "operator": operator,
-                "value": value,
+                "value": resolved_value,
                 "table": mapping.get("target_table"),
                 "param_prefix": f"sf{param_idx}",
-            })
+            }
+
+            pf_table = mapping.get("post_filter_resolve_table")
+            if pf_table:
+                filter_dict["post_filter"] = {
+                    "resolve_table": pf_table,
+                    "resolve_column": mapping.get("post_filter_resolve_column"),
+                    "resolve_id_column": mapping.get("post_filter_resolve_id_column") or "id",
+                }
+
+            filters.append(filter_dict)
             param_idx += 1
 
         return filters
@@ -381,32 +462,66 @@ class SelectorService:
                 for v in config["static_values"]
             ]
 
-        source_table = config.get("source_table")
-        source_column = config.get("source_column")
+        source_table = _ident(config.get("source_table"))
+        source_column = _ident(config.get("source_column"))
         if not source_table or not source_column:
             return []
 
         engine = get_engine()
 
-        label_table = config.get("label_table")
-        label_column = config.get("label_column")
-        label_value_column = config.get("label_value_column")
+        label_table = _ident(config.get("label_table"))
+        label_column = _ident(config.get("label_column"))
+        label_value_column = _ident(config.get("label_value_column"))
 
-        if label_table and label_column and label_value_column:
+        # Auto-resolve label config when the user/AI didn't provide it.
+        # Two cases:
+        #   (a) source_table itself is a known reference table — pull the
+        #       label from the same row.
+        #   (b) source_column is a known FK (e.g. assigned_by_id) — JOIN with
+        #       the related label table.
+        if not (label_table and label_column and label_value_column):
+            if source_table in _KNOWN_LABEL_TABLES:
+                label_expr_self = _KNOWN_LABEL_TABLES[source_table][0].format(a="")
+                sql = (
+                    f"SELECT DISTINCT {source_column} AS value, "  # noqa: S608
+                    f"{label_expr_self} AS label "
+                    f"FROM {source_table} "
+                    f"WHERE {source_column} IS NOT NULL "
+                    f"ORDER BY label, value"
+                )
+            elif source_column in _FK_COLUMN_RESOLVERS:
+                lt, lv, label_expr_tpl = _FK_COLUMN_RESOLVERS[source_column]
+                label_expr = label_expr_tpl.format(a="l.")
+                sql = (
+                    f"SELECT DISTINCT s.{source_column} AS value, "  # noqa: S608
+                    f"{label_expr} AS label "
+                    f"FROM {source_table} s "
+                    f"LEFT JOIN {lt} l ON l.{lv} = s.{source_column} "
+                    f"WHERE s.{source_column} IS NOT NULL "
+                    f"ORDER BY label, value"
+                )
+            else:
+                sql = (
+                    f"SELECT DISTINCT {source_column} AS value "  # noqa: S608
+                    f"FROM {source_table} "
+                    f"WHERE {source_column} IS NOT NULL "
+                    f"ORDER BY value"
+                )
+        else:
+            # Even when the user explicitly picked a single label_column, prefer
+            # the richer expression for known label tables (e.g. for
+            # bitrix_users we always want "name last_name", not just "name").
+            if label_table in _KNOWN_LABEL_TABLES:
+                label_expr = _KNOWN_LABEL_TABLES[label_table][0].format(a="l.")
+            else:
+                label_expr = f"l.{label_column}"
             sql = (
                 f"SELECT DISTINCT s.{source_column} AS value, "  # noqa: S608
-                f"l.{label_column} AS label "
+                f"{label_expr} AS label "
                 f"FROM {source_table} s "
                 f"LEFT JOIN {label_table} l ON l.{label_value_column} = s.{source_column} "
                 f"WHERE s.{source_column} IS NOT NULL "
                 f"ORDER BY label, value"
-            )
-        else:
-            sql = (
-                f"SELECT DISTINCT {source_column} AS value "  # noqa: S608
-                f"FROM {source_table} "
-                f"WHERE {source_column} IS NOT NULL "
-                f"ORDER BY value"
             )
 
         async with engine.begin() as conn:
@@ -414,11 +529,14 @@ class SelectorService:
             columns = list(result.keys())
             rows = [dict(zip(columns, row)) for row in result.fetchall()]
 
+        # Drop rows where the auto-resolved label came back NULL (e.g. an
+        # orphan FK), and fall back to value->str if the label slot is missing.
+        cleaned: list[dict[str, Any]] = []
         for row in rows:
-            if "label" not in row:
-                row["label"] = str(row["value"])
-
-        return rows
+            if "label" not in row or row.get("label") is None:
+                row["label"] = str(row["value"]) if row.get("value") is not None else ""
+            cleaned.append(row)
+        return cleaned
 
     # === Chart Columns ===
 
@@ -471,7 +589,9 @@ class SelectorService:
                 "where_clause": "",
             }
 
-        col_ref = f"{target_table}.{target_column}" if target_table else target_column
+        # Strip any pre-existing qualifier — see ChartService.apply_filters note.
+        bare_column = target_column.rsplit(".", 1)[-1] if "." in target_column else target_column
+        col_ref = f"{target_table}.{bare_column}" if target_table else bare_column
 
         # Build a human-readable WHERE clause with literal values
         op_map = {

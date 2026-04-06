@@ -261,6 +261,15 @@ export interface Translations {
     min15: string
     min30: string
     min60: string
+    addHeading: string
+    removeHeading: string
+    headingPlaceholder: string
+    headingStyle: string
+    headingLevel: string
+    headingAlign: string
+    headingColor: string
+    headingBg: string
+    headingDivider: string
   }
   syncCard: {
     syncing: string

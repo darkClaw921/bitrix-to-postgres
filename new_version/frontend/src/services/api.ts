@@ -488,10 +488,34 @@ export const schemaApi = {
 
 // === Dashboard Types ===
 
+export interface HeadingConfig {
+  text: string
+  level: 1 | 2 | 3 | 4 | 5 | 6
+  align: 'left' | 'center' | 'right'
+  color?: string | null
+  bg_color?: string | null
+  divider: boolean
+}
+
+export interface HeadingCreateRequest {
+  heading: HeadingConfig
+  layout_x?: number
+  layout_y?: number
+  layout_w?: number
+  layout_h?: number
+  sort_order?: number
+}
+
+export interface HeadingUpdateRequest {
+  heading: HeadingConfig
+}
+
 export interface DashboardChart {
   id: number
   dashboard_id: number
-  chart_id: number
+  chart_id?: number
+  item_type: 'chart' | 'heading'
+  heading_config?: HeadingConfig | null
   title_override?: string
   description_override?: string
   layout_x: number
@@ -734,6 +758,12 @@ export const dashboardsApi = {
 
   removeChart: (dashboardId: number, dcId: number) =>
     api.delete(`/dashboards/${dashboardId}/charts/${dcId}`).then((r) => r.data),
+
+  addHeading: (dashboardId: number, data: HeadingCreateRequest) =>
+    api.post<DashboardChart>(`/dashboards/${dashboardId}/headings`, data).then((r) => r.data),
+
+  updateHeading: (dashboardId: number, dcId: number, data: HeadingUpdateRequest) =>
+    api.put<DashboardChart>(`/dashboards/${dashboardId}/headings/${dcId}`, data).then((r) => r.data),
 
   changePassword: (id: number) =>
     api.post<PasswordChangeResponse>(`/dashboards/${id}/change-password`).then((r) => r.data),

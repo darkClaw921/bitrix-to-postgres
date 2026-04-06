@@ -75,15 +75,15 @@ app/api/
 │   │   ├── charts.py        # AI-генерация и CRUD чартов
 │   │   ├── schema_description.py  # AI-описание и raw-описание схемы БД
 │   │   ├── references.py    # Синхронизация справочных данных (статусы, воронки, валюты)
-│   │   ├── dashboards.py    # CRUD дашбордов, layout, ссылки, пароли
+│   │   ├── dashboards.py    # CRUD дашбордов, layout, ссылки, пароли. Heading-эндпоинты: POST/PUT /headings (создание и обновление heading items)
 │   │   ├── selectors.py     # CRUD селекторов (фильтров) дашбордов и маппингов
-│   │   └── public.py        # Публичные эндпоинты: чарты, дашборды, аутентификация, фильтрованные данные
+│   │   └── public.py        # Публичные эндпоинты: чарты, дашборды, аутентификация, фильтрованные данные. Chart data endpoints возвращают 400 если dc_id принадлежит heading
 │   └── schemas/
 │       ├── sync.py          # Pydantic схемы для sync
 │       ├── webhooks.py      # Схемы webhooks
 │       ├── common.py        # Общие схемы
 │       ├── charts.py        # Схемы чартов (ChartSpec, ChartGenerateRequest/Response и др.)
-│       ├── dashboards.py    # Схемы дашбордов (DashboardResponse включает selectors)
+│       ├── dashboards.py    # Схемы дашбордов (DashboardResponse включает selectors). Полиморфный DashboardChartResponse (item_type='chart'|'heading', chart_id Optional, heading_config Optional). Heading-схемы: HeadingConfig, HeadingCreateRequest, HeadingUpdateRequest
 │       ├── selectors.py     # Схемы селекторов (SelectorCreateRequest, SelectorResponse, FilterValue и др.)
 │       └── schema_description.py  # Схемы описания схемы (TableInfo, ColumnInfo и др.)
 ```
@@ -125,8 +125,10 @@ app/api/
 | `GET` | `/api/v1/dashboards/{id}/selectors/{sid}/options` | Получение опций для dropdown/multi_select |
 | `POST` | `/api/v1/dashboards/{id}/selectors/generate` | AI-генерация селекторов на основе SQL-запросов чартов |
 | `GET` | `/api/v1/dashboards/{id}/charts/{dc_id}/columns` | Получение списка колонок из SQL-запроса чарта |
-| `POST` | `/api/v1/public/dashboard/{slug}/chart/{dc_id}/data` | Данные чарта с фильтрами (POST + JWT). Применяет резолв date-токенов, post_filter сабзапросы и label_resolvers |
-| `POST` | `/api/v1/public/dashboard/{slug}/linked/{ls}/chart/{dc_id}/data` | Данные чарта из связанного дашборда с фильтрами |
+| `POST` | `/api/v1/dashboards/{id}/headings` | Создание heading-элемента в дашборде (HeadingCreateRequest → DashboardChartResponse, item_type='heading') |
+| `PUT` | `/api/v1/dashboards/{id}/headings/{dc_id}` | Обновление heading_config существующего heading-элемента (HeadingUpdateRequest → DashboardChartResponse) |
+| `POST` | `/api/v1/public/dashboard/{slug}/chart/{dc_id}/data` | Данные чарта с фильтрами (POST + JWT). Применяет резолв date-токенов, post_filter сабзапросы и label_resolvers. 400 если dc_id принадлежит heading-элементу |
+| `POST` | `/api/v1/public/dashboard/{slug}/linked/{ls}/chart/{dc_id}/data` | Данные чарта из связанного дашборда с фильтрами. 400 если dc_id принадлежит heading-элементу |
 | `GET` | `/api/v1/public/dashboard/{slug}/selectors` | Селекторы публичного дашборда (JWT) |
 | `GET` | `/api/v1/public/dashboard/{slug}/selector/{sid}/options` | Опции селектора (JWT) |
 | `GET` | `/api/v1/public/dashboard/{slug}/selector-options` | Batch-опции всех селекторов дашборда (JWT) |
@@ -153,7 +155,7 @@ app/domain/
 │   ├── field_mapper.py      # Маппинг полей Bitrix → DB (кросс-БД совместимый)
 │   ├── ai_service.py        # Взаимодействие с LLM API (OpenAI/OpenRouter): чарты, схема, селекторы
 │   ├── chart_service.py     # SQL-валидация, выполнение запросов, CRUD чартов, apply_filters(), resolve_labels_in_data()
-│   ├── dashboard_service.py # CRUD дашбордов, JWT-аутентификация, layout, ссылки (загружает selectors)
+│   ├── dashboard_service.py # CRUD дашбордов, JWT-аутентификация, layout, ссылки (загружает selectors). Поддержка полиморфных элементов dashboard_charts (chart|heading): _get_dashboard_charts (LEFT JOIN ai_charts), add_heading, update_heading; update_layout/remove_chart работают по dashboard_charts.id для обоих типов; get_chart_sql_by_slug использует LEFT JOIN ai_charts и возвращает dc.item_type для отделения headings
 │   ├── selector_service.py  # CRUD селекторов и маппингов, build_filters_for_chart() (с резолвом date-токенов и post_filter), get_selector_options() (поддержка JOIN с label-таблицей)
 │   └── date_tokens.py       # Резолв date-токенов (TODAY, LAST_30_DAYS, ...) и end-of-day для BETWEEN
 └── interfaces/              # Абстракции (для DI)
@@ -427,7 +429,8 @@ alembic/
     ├── 013_add_llm_prompt_to_report_runs.py
     ├── 014_stub.py
     ├── 015_stub.py
-    └── 016_add_post_filter_to_mappings.py  # post_filter_resolve_table/_column/_id_column в selector_chart_mappings
+    ├── 016_add_post_filter_to_mappings.py  # post_filter_resolve_table/_column/_id_column в selector_chart_mappings
+    └── 017_add_dashboard_heading_items.py  # Полиморфные элементы dashboard_charts: item_type, heading_config, nullable chart_id
 ```
 
 #### connection.py — ключевые функции:
@@ -571,6 +574,28 @@ services:
 
 **Назначение**: Хранит пользовательские инструкции для AI при генерации чартов. Промпт `bitrix_context` содержит специфичные инструкции по работе с данными Bitrix24 (например, как рассчитывать конверсию по стадиям, получать воронку продаж, анализировать время в стадиях). При первом запуске автоматически создается стандартный промпт. Пользователь может редактировать его через API.
 
+### dashboard_charts
+
+Полиморфная таблица элементов дашборда: одна строка может быть либо ссылкой на чарт (`item_type='chart'`), либо текстовым заголовком (`item_type='heading'`).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | BIGINT (PK) | Уникальный идентификатор элемента дашборда |
+| `dashboard_id` | BIGINT (FK → published_dashboards) | Дашборд-владелец (CASCADE delete) |
+| `chart_id` | BIGINT (FK → ai_charts) **NULLable** | Ссылка на сохранённый чарт. NULL для `item_type='heading'`. CASCADE delete |
+| `item_type` | VARCHAR(20) | Тип элемента: `chart` (по умолчанию) или `heading` |
+| `heading_config` | JSON (nullable) | Параметры заголовка для `item_type='heading'`: `{text, level (1-6), align ('left'|'center'|'right'), color, bg_color, divider}`. NULL для `item_type='chart'` |
+| `title_override` | VARCHAR(255) (nullable) | Переопределение заголовка чарта на дашборде |
+| `description_override` | TEXT (nullable) | Переопределение описания чарта на дашборде |
+| `layout_x` | INTEGER | Координата X в grid-layout |
+| `layout_y` | INTEGER | Координата Y в grid-layout |
+| `layout_w` | INTEGER | Ширина (column units) |
+| `layout_h` | INTEGER | Высота (row units) |
+| `sort_order` | INTEGER | Порядок отображения |
+| `created_at` | TIMESTAMP | Дата создания |
+
+**Полиморфность**: чарт и heading хранятся в одной таблице, чтобы единый layout (`layout_x/y/w/h`) и порядок (`sort_order`) могли применяться к обоим типам элементов. Запросы данных (`/chart/{dc_id}/data`) валидируют `item_type='chart'` и возвращают 400 для heading. Frontend ветвится по `item_type` при рендере (`HeadingItem` vs `ChartCard`).
+
 ### dashboard_selectors
 
 Таблица селекторов (фильтров) дашбордов:
@@ -689,7 +714,8 @@ frontend/src/
 │   ├── dashboards/
 │   │   ├── DashboardCard.tsx  # Карточка дашборда в списке
 │   │   ├── PasswordGate.tsx   # Форма ввода пароля для публичного дашборда
-│   │   └── PublishModal.tsx   # Модальное окно публикации дашборда
+│   │   ├── PublishModal.tsx   # Модальное окно публикации дашборда
+│   │   └── HeadingItem.tsx    # Полиморфный элемент-заголовок дашборда: динамический тег h1-h6, выравнивание, цвет текста и фона, разделитель. В editable режиме — inline-edit текста (input, blur/Enter/Esc) и popover ⚙ с настройками level/align/color/bg/divider. Read-only в embed.
 │   └── selectors/
 │       ├── SelectorBar.tsx        # Панель фильтров: auto-apply (debounce 250 мс / text 500 мс), инициализация дефолтов из config.default_value (резолв date-токенов), кнопка Reset. Опционально linkedSlug — берёт опции через linked endpoint
 │       ├── DateRangeSelector.tsx  # Два input[date] (from/to) + token-based пресеты (TODAY/LAST_7_DAYS/LAST_30_DAYS/THIS_QUARTER_START)
@@ -709,18 +735,18 @@ frontend/src/
 │   ├── ConfigPage.tsx         # Настройки синхронизации
 │   ├── MonitoringPage.tsx     # Мониторинг
 │   ├── ValidationPage.tsx     # Валидация данных
-│   ├── EmbedDashboardPage.tsx # Публичный дашборд: аутентификация, вкладки (linked-дашборды), авто-обновление, per-tab селекторы и per-tab filterValuesByTab (фильтры главного и вторичных табов хранятся раздельно)
-│   └── DashboardEditorPage.tsx # Редактор дашборда: grid-layout, override, ссылки, SelectorEditorSection (CRUD фильтров + маппинги + AI генерация)
+│   ├── EmbedDashboardPage.tsx # Публичный дашборд: аутентификация, вкладки (linked-дашборды), авто-обновление, per-tab селекторы и per-tab filterValuesByTab (фильтры главного и вторичных табов хранятся раздельно). Полиморфный рендер dashboard.charts: ветка item_type==='heading' рендерит HeadingItem (read-only) в позицию gridStyle, остальные — DashboardChartCard. Фильтрует heading из fetchAllChartData/fetchLinkedChartData чтобы не делать запросы /chart/{id}/data.
+│   └── DashboardEditorPage.tsx # Редактор дашборда: grid-layout, override, ссылки, SelectorEditorSection (CRUD фильтров + маппинги + AI генерация). Toolbar кнопка "+ Заголовок" (handleAddHeading через useAddDashboardHeading). Полиморфный рендер dashboard.charts: ветка item_type==='heading' использует EditorHeadingCard (HeadingItem editable + кнопка удаления), остальные — EditorChartCard. gridLayout для heading элементов задаёт minH=1, minW=2, maxH=4 (chart остаётся minW=2, minH=2). Загрузка chart-данных пропускает heading элементы.
 ├── hooks/
 │   ├── useSync.ts             # React Query хуки для синхронизации и справочников
 │   ├── useCharts.ts           # React Query хуки для чартов, схемы, истории генерации и промптов (useChartPromptTemplate, useUpdateChartPromptTemplate)
-│   ├── useDashboards.ts       # React Query хуки для CRUD дашбордов, layout, ссылок, паролей
+│   ├── useDashboards.ts       # React Query хуки для CRUD дашбордов, layout, ссылок, паролей. Heading-хуки: useAddDashboardHeading, useUpdateDashboardHeading (инвалидируют ['dashboard', dashboardId])
 │   ├── useSelectors.ts        # React Query хуки для CRUD селекторов, маппингов, опций, AI-генерации, колонок чартов
 │   └── useAuth.ts             # Хук авторизации
 ├── utils/
 │   └── dateTokens.ts          # Зеркало backend date_tokens.py: DATE_TOKENS, resolveDateToken, resolveFilterValue, isDateOnly, isDateToken, tokenLabel
 ├── services/
-│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi, dashboardsApi, publicApi). Типы DashboardSelector, SelectorMapping (с post_filter_resolve_*), LabelResolver, FilterValue. Endpoints: dashboardsApi.generateSelectors, publicApi.getLinkedPublicSelectorOptionsBatch
+│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi, dashboardsApi, publicApi). Типы DashboardSelector, SelectorMapping (с post_filter_resolve_*), LabelResolver, FilterValue. Полиморфный DashboardChart (item_type='chart'|'heading', chart_id?, heading_config?). Heading-типы: HeadingConfig (text, level 1-6, align, color, bg_color, divider), HeadingCreateRequest, HeadingUpdateRequest. Endpoints: dashboardsApi.generateSelectors, dashboardsApi.addHeading, dashboardsApi.updateHeading, publicApi.getLinkedPublicSelectorOptionsBatch
 └── store/
     ├── authStore.ts           # Zustand store авторизации
     └── syncStore.ts           # Zustand store синхронизации

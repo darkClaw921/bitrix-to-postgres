@@ -196,12 +196,13 @@ class DashboardService:
         engine = get_engine()
 
         query = text(
-            "SELECT dc.id, dc.dashboard_id, dc.chart_id, dc.title_override, dc.description_override, "
+            "SELECT dc.id, dc.dashboard_id, dc.chart_id, dc.item_type, dc.heading_config, "
+            "dc.title_override, dc.description_override, "
             "dc.layout_x, dc.layout_y, dc.layout_w, dc.layout_h, dc.sort_order, dc.created_at, "
             "c.title as chart_title, c.description as chart_description, "
             "c.chart_type, c.chart_config, c.sql_query, c.user_prompt "
             "FROM dashboard_charts dc "
-            "JOIN ai_charts c ON c.id = dc.chart_id "
+            "LEFT JOIN ai_charts c ON c.id = dc.chart_id "
             "WHERE dc.dashboard_id = :dashboard_id "
             "ORDER BY dc.sort_order, dc.layout_y, dc.layout_x"
         )
@@ -211,10 +212,23 @@ class DashboardService:
             columns = list(result.keys())
             charts = [dict(zip(columns, row)) for row in result.fetchall()]
 
-        # Parse chart_config JSON if string
+        # Parse JSON columns if returned as string (MySQL TEXT/JSON, PG TEXT fallback)
         for chart in charts:
+            # Default item_type to 'chart' for legacy rows where the column may be NULL
+            if not chart.get("item_type"):
+                chart["item_type"] = "chart"
+
             if isinstance(chart.get("chart_config"), str):
-                chart["chart_config"] = json_mod.loads(chart["chart_config"])
+                try:
+                    chart["chart_config"] = json_mod.loads(chart["chart_config"])
+                except (json_mod.JSONDecodeError, TypeError):
+                    chart["chart_config"] = None
+
+            if isinstance(chart.get("heading_config"), str):
+                try:
+                    chart["heading_config"] = json_mod.loads(chart["heading_config"])
+                except (json_mod.JSONDecodeError, TypeError):
+                    chart["heading_config"] = None
 
         return charts
 
@@ -230,14 +244,20 @@ class DashboardService:
     async def get_chart_sql_by_slug(
         self, slug: str, dc_id: int
     ) -> dict[str, Any] | None:
-        """Get a single chart's SQL, dashboard_id, and chart_config by slug + dc_id."""
+        """Get a single dashboard item (chart or heading) by slug + dc_id.
+
+        For chart items the returned dict contains ``sql_query`` and ``chart_config``.
+        For heading items those fields are ``None`` and ``item_type == 'heading'``;
+        callers should handle that case (typically: 400 — heading has no data).
+        """
         engine = get_engine()
 
         query = text(
-            "SELECT pd.id AS dashboard_id, dc.id AS dc_id, c.sql_query, c.chart_config "
+            "SELECT pd.id AS dashboard_id, dc.id AS dc_id, "
+            "dc.item_type, c.sql_query, c.chart_config "
             "FROM published_dashboards pd "
             "JOIN dashboard_charts dc ON dc.dashboard_id = pd.id "
-            "JOIN ai_charts c ON c.id = dc.chart_id "
+            "LEFT JOIN ai_charts c ON c.id = dc.chart_id "
             "WHERE pd.slug = :slug AND dc.id = :dc_id AND pd.is_active = true"
         )
         async with engine.begin() as conn:
@@ -343,6 +363,171 @@ class DashboardService:
         if not dashboard:
             raise DashboardServiceError("Дашборд не найден")
         return dashboard
+
+    async def add_heading(
+        self,
+        dashboard_id: int,
+        heading: dict[str, Any],
+        layout: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Insert a new heading item into a dashboard.
+
+        :param dashboard_id: target dashboard id (must exist).
+        :param heading: heading payload (text/level/align/...) — serialized to JSON.
+        :param layout: optional layout dict with keys ``layout_x``, ``layout_y``,
+            ``layout_w``, ``layout_h``, ``sort_order``. Missing keys fall back to
+            sensible defaults; missing ``sort_order`` is computed as MAX+1 for the
+            dashboard.
+        :returns: dict compatible with ``DashboardChartResponse``.
+        """
+        engine = get_engine()
+        dialect = get_dialect()
+        layout = layout or {}
+
+        # 1. Verify the dashboard exists (404 contract via DashboardServiceError)
+        check_query = text("SELECT id FROM published_dashboards WHERE id = :id")
+        async with engine.begin() as conn:
+            check_row = (await conn.execute(check_query, {"id": dashboard_id})).fetchone()
+        if not check_row:
+            raise DashboardServiceError("Дашборд не найден")
+
+        # 2. Compute sort_order = MAX(sort_order) + 1 if not provided
+        sort_order = layout.get("sort_order")
+        if sort_order is None:
+            sort_query = text(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 "
+                "FROM dashboard_charts WHERE dashboard_id = :dashboard_id"
+            )
+            async with engine.begin() as conn:
+                sort_order = (
+                    await conn.execute(sort_query, {"dashboard_id": dashboard_id})
+                ).scalar() or 0
+
+        # 3. Serialize heading payload to JSON (kyrillic preserved)
+        heading_json = json_mod.dumps(heading, ensure_ascii=False)
+
+        params: dict[str, Any] = {
+            "dashboard_id": dashboard_id,
+            "item_type": "heading",
+            "heading_config": heading_json,
+            "layout_x": int(layout.get("layout_x", 0) or 0),
+            "layout_y": int(layout.get("layout_y", 0) or 0),
+            "layout_w": int(layout.get("layout_w", 12) or 12),
+            "layout_h": int(layout.get("layout_h", 1) or 1),
+            "sort_order": int(sort_order),
+        }
+
+        # 4. INSERT and grab inserted id (cross-DB pattern, see create_dashboard)
+        if dialect == "mysql":
+            insert_query = text(
+                "INSERT INTO dashboard_charts "
+                "(dashboard_id, chart_id, item_type, heading_config, "
+                "layout_x, layout_y, layout_w, layout_h, sort_order) "
+                "VALUES (:dashboard_id, NULL, :item_type, :heading_config, "
+                ":layout_x, :layout_y, :layout_w, :layout_h, :sort_order)"
+            )
+            async with engine.begin() as conn:
+                result = await conn.execute(insert_query, params)
+                dc_id = result.lastrowid
+        else:
+            insert_query = text(
+                "INSERT INTO dashboard_charts "
+                "(dashboard_id, chart_id, item_type, heading_config, "
+                "layout_x, layout_y, layout_w, layout_h, sort_order) "
+                "VALUES (:dashboard_id, NULL, :item_type, :heading_config, "
+                ":layout_x, :layout_y, :layout_w, :layout_h, :sort_order) "
+                "RETURNING id"
+            )
+            async with engine.begin() as conn:
+                result = await conn.execute(insert_query, params)
+                dc_id = result.scalar()
+
+        logger.info(
+            "Dashboard heading added",
+            dashboard_id=dashboard_id,
+            dc_id=dc_id,
+            sort_order=params["sort_order"],
+        )
+
+        # 5. Return the created item using the same projection as _get_dashboard_charts
+        items = await self._get_dashboard_charts(dashboard_id)
+        for item in items:
+            if item.get("id") == dc_id:
+                return item
+        # Fallback: synthesize minimal dict (should not normally happen)
+        return {
+            "id": dc_id,
+            "dashboard_id": dashboard_id,
+            "chart_id": None,
+            "item_type": "heading",
+            "heading_config": heading,
+            "title_override": None,
+            "description_override": None,
+            "layout_x": params["layout_x"],
+            "layout_y": params["layout_y"],
+            "layout_w": params["layout_w"],
+            "layout_h": params["layout_h"],
+            "sort_order": params["sort_order"],
+            "chart_title": None,
+            "chart_description": None,
+            "chart_type": None,
+            "chart_config": None,
+            "sql_query": None,
+            "user_prompt": None,
+            "created_at": None,
+        }
+
+    async def update_heading(
+        self,
+        dc_id: int,
+        heading: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Update the configuration of an existing heading item.
+
+        :param dc_id: dashboard_charts.id of the heading row.
+        :param heading: new heading payload (text/level/align/...).
+        :returns: dict compatible with ``DashboardChartResponse``.
+        :raises DashboardServiceError: if the row is missing or is not a heading.
+        """
+        engine = get_engine()
+
+        # Validate the row exists and is actually a heading
+        check_query = text(
+            "SELECT id, dashboard_id, item_type FROM dashboard_charts WHERE id = :id"
+        )
+        async with engine.begin() as conn:
+            row = (await conn.execute(check_query, {"id": dc_id})).fetchone()
+
+        if not row:
+            raise DashboardServiceError("Заголовок не найден")
+        if row[2] != "heading":
+            raise DashboardServiceError(
+                "Нельзя обновить heading на элементе типа chart"
+            )
+        dashboard_id = row[1]
+
+        heading_json = json_mod.dumps(heading, ensure_ascii=False)
+
+        update_query = text(
+            "UPDATE dashboard_charts SET heading_config = :heading_config "
+            "WHERE id = :id AND item_type = 'heading'"
+        )
+        async with engine.begin() as conn:
+            result = await conn.execute(
+                update_query, {"id": dc_id, "heading_config": heading_json}
+            )
+
+        if result.rowcount == 0:
+            raise DashboardServiceError("Заголовок не найден")
+
+        logger.info("Dashboard heading updated", dc_id=dc_id, dashboard_id=dashboard_id)
+
+        # Return the updated item via shared projection
+        items = await self._get_dashboard_charts(dashboard_id)
+        for item in items:
+            if item.get("id") == dc_id:
+                return item
+        raise DashboardServiceError("Заголовок не найден после обновления")
 
     async def update_chart_override(
         self,

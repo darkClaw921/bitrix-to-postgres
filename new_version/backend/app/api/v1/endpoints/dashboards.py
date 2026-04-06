@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.api.v1.schemas.dashboards import (
     ChartOverrideUpdateRequest,
+    DashboardChartResponse,
     DashboardLayoutUpdateRequest,
     DashboardLinkRequest,
     DashboardLinkResponse,
@@ -14,6 +15,8 @@ from app.api.v1.schemas.dashboards import (
     DashboardPublishResponse,
     DashboardResponse,
     DashboardUpdateRequest,
+    HeadingCreateRequest,
+    HeadingUpdateRequest,
     IframeCodeRequest,
     IframeCodeResponse,
     PasswordChangeResponse,
@@ -137,6 +140,54 @@ async def remove_chart_from_dashboard(dashboard_id: int, dc_id: int) -> dict:
     if not deleted:
         raise HTTPException(status_code=404, detail="Элемент дашборда не найден")
     return {"deleted": True}
+
+
+# === Heading items ===
+
+
+@router.post("/{dashboard_id}/headings", response_model=DashboardChartResponse)
+async def add_dashboard_heading(
+    dashboard_id: int, request: HeadingCreateRequest
+) -> DashboardChartResponse:
+    """Create a new heading item on a dashboard."""
+    try:
+        layout = {
+            "layout_x": request.layout_x,
+            "layout_y": request.layout_y,
+            "layout_w": request.layout_w,
+            "layout_h": request.layout_h,
+            "sort_order": request.sort_order,
+        }
+        result = await dashboard_service.add_heading(
+            dashboard_id,
+            heading=request.heading.model_dump(),
+            layout=layout,
+        )
+        return DashboardChartResponse(**result)
+    except DashboardServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
+    except Exception as e:
+        logger.error("Failed to add dashboard heading", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}") from e
+
+
+@router.put(
+    "/{dashboard_id}/headings/{dc_id}", response_model=DashboardChartResponse
+)
+async def update_dashboard_heading(
+    dashboard_id: int, dc_id: int, request: HeadingUpdateRequest
+) -> DashboardChartResponse:
+    """Update the configuration of an existing heading item."""
+    try:
+        result = await dashboard_service.update_heading(
+            dc_id, heading=request.heading.model_dump()
+        )
+        return DashboardChartResponse(**result)
+    except DashboardServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
+    except Exception as e:
+        logger.error("Failed to update dashboard heading", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}") from e
 
 
 @router.post("/{dashboard_id}/change-password", response_model=PasswordChangeResponse)

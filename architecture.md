@@ -255,13 +255,14 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **SyncCard.tsx** — карточка синхронизации сущности с обнаружением OPERATION_TIME_LIMIT и интеграцией FilterDialog
 - **FilterDialog.tsx** — модальное окно фильтра для повторной синхронизации с ограничением по дате (поле, оператор, значение)
 - **ReferenceCard.tsx** — карточка справочника
-- **charts/ChartRenderer.tsx** — рендер чартов (bar, line, pie, area, scatter) через recharts с поддержкой настроек отображения (legend, grid, axes, line/area/pie параметры)
+- **charts/ChartRenderer.tsx** — рендер чартов (bar, line, pie, area, scatter) через recharts с поддержкой настроек отображения (legend, grid, axes, line/area/pie параметры). Опциональный проп `fontScale?: number` — масштабирует все текстовые элементы (data labels, ticks, axis labels, legend, pie label, indicator, table) через helper `fs(base) = max(8, round(base * fontScale))`; при `fontScale == null` helper возвращает исходные константы, `IndicatorRenderer` использует `py-8`, `TableRenderer` сохраняет Tailwind `text-sm` на `<table>` — non-TV режим байт-стабилен относительно master. Внутренние `IndicatorRenderer` и `TableRenderer` также принимают `fontScale`
 - **charts/ChartSettingsPanel.tsx** — панель настроек чарта (visual, data format, line/area/pie settings) с PATCH сохранением в chart_config
 - **charts/ChartCard.tsx** — карточка сохранённого чарта (pin, refresh, settings, SQL, embed, delete)
 - **charts/IframeCopyButton.tsx** — кнопка "Embed" для копирования iframe HTML
 - **dashboards/PublishModal.tsx** — модалка публикации дашборда (выбор чартов, title, description, refresh interval → пароль + URL)
 - **dashboards/DashboardCard.tsx** — карточка дашборда в списке (open, edit, link, delete)
 - **dashboards/PasswordGate.tsx** — форма ввода пароля для публичного дашборда
+- **dashboards/HeadingItem.tsx** — полиморфный заголовок дашборда (h1–h6) с inline-редактированием, panel настроек (level, align, color, bg_color, divider). Опциональный `fontScale?: number` — при `!= 1` применяет inline `fontSize` через `baseRem[level] * fontScale` rem-единицами, иначе fallback на Tailwind text-3xl..text-sm
 - **ai/AISubTabs.tsx** — горизонтальные подтабы "Графики" | "Отчёты" (используется в ChartsPage и ReportsPage)
 - **reports/ReportChat.tsx** — чат-интерфейс диалога с LLM: список сообщений, поле ввода, индикатор генерации, кнопка нового чата
 - **reports/ReportCard.tsx** — карточка отчёта: статус, расписание, кнопки (запустить, результаты, SQL, Prompt, расписание, закрепить, удалить), просмотр/редактирование SQL-запросов и промпта

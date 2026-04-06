@@ -216,6 +216,8 @@ export const en: Translations = {
     autoRefresh: 'Auto-refresh:',
     loadingTab: 'Loading tab...',
     loadingChartData: 'Loading...',
+    tvMode: 'TV mode',
+    tvModeReset: 'Reset layout',
   },
   editor: {
     clickToEdit: 'Click to edit',

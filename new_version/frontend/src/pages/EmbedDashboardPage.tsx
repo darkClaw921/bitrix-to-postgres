@@ -5,6 +5,8 @@ import ExportButtons from '../components/charts/ExportButtons'
 import { getCardStyleClasses, getCardInlineStyle, getTitleSizeClass } from '../components/charts/cardStyleUtils'
 import PasswordGate from '../components/dashboards/PasswordGate'
 import HeadingItem from '../components/dashboards/HeadingItem'
+import { TvModeGrid } from '../components/dashboards/TvModeGrid'
+import { useTvMode } from '../hooks/useTvMode'
 import SelectorBar from '../components/selectors/SelectorBar'
 import { useTranslation } from '../i18n'
 import { publicApi } from '../services/api'
@@ -59,6 +61,25 @@ export default function EmbedDashboardPage() {
   const [activeTab, setActiveTab] = useState<string>('main')
   const [linkedCache, setLinkedCache] = useState<Record<string, TabData>>({})
   const [linkedLoading, setLinkedLoading] = useState(false)
+
+  // TV mode (?tv=1). `tvKey` is incremented by the "Reset layout" button to
+  // remount TvModeGrid so it picks up the cleared localStorage state.
+  const { tvMode, setTvMode } = useTvMode()
+  const [tvKey, setTvKey] = useState(0)
+  // Per-linked-tab storageKey: each tab persists its own RGL layout under a
+  // distinct key, mirroring how `filterValuesByTab` keeps tab-scoped filters.
+  const tvStorageKey = activeTab === 'main' ? (slug ?? '') : activeTab
+  // Resets the persisted TV layout for the active tab and remounts the grid
+  // (via tvKey++) so it re-seeds defaults. Wrapped in try/catch because
+  // localStorage can throw in privacy mode / when storage is disabled.
+  const handleTvReset = (): void => {
+    try {
+      localStorage.removeItem('tv_layout_' + tvStorageKey)
+    } catch {
+      /* private mode / disabled storage — silently skip */
+    }
+    setTvKey((k) => k + 1)
+  }
 
   const handleAuth = useCallback(
     async (password: string): Promise<string> => {
@@ -319,9 +340,116 @@ export default function EmbedDashboardPage() {
 
   const activeFilterValues = filterValuesByTab[activeTab] || {}
 
+  /**
+   * TV-mode chart cell renderer. Mirrors `DashboardChartCard` but:
+   *  - drops the CSS-grid `gridStyle` (RGL positions the cell itself);
+   *  - uses `h-full flex flex-col` so the chart fills the RGL cell;
+   *  - applies inline `fontSize` to the title (Tailwind class loses to inline);
+   *  - forwards `fontScale` and `chartHeight` from `TvCellMeasurer` into the
+   *    chart so axes/legend/values scale with cell size.
+   *
+   * Closure access to `activeChartData` keeps it in sync with the active tab
+   * without having to thread the map through `TvModeGrid` props twice.
+   */
+  const renderTvChartCard = (
+    dc: DashboardChart,
+    fontScale: number,
+    chartHeight: number,
+  ): React.ReactNode => {
+    const data = activeChartData[dc.id] || null
+    const title = dc.title_override || dc.chart_title || 'Chart'
+    const description = dc.description_override || dc.chart_description
+    const config = dc.chart_config as unknown as ChartDisplayConfig | null
+
+    const spec: ChartSpec = {
+      title,
+      chart_type: (dc.chart_type || 'bar') as ChartSpec['chart_type'],
+      sql_query: '',
+      data_keys: { x: config?.x || 'x', y: config?.y || 'y' },
+      colors: config?.colors,
+      description,
+      legend: config?.legend,
+      grid: config?.grid,
+      xAxis: config?.xAxis,
+      yAxis: config?.yAxis,
+      line: config?.line,
+      area: config?.area,
+      pie: config?.pie,
+      indicator: config?.indicator,
+      table: config?.table,
+      funnel: config?.funnel,
+      horizontal_bar: config?.horizontal_bar,
+      general: config?.general,
+      designLayout: config?.designLayout,
+    }
+
+    const cardClasses = config?.cardStyle
+      ? getCardStyleClasses(config.cardStyle)
+      : 'bg-white rounded-lg shadow-sm border border-gray-200 p-4'
+    const cardInline = getCardInlineStyle(config?.cardStyle)
+
+    const titleTransformStyle: React.CSSProperties | undefined = config?.designLayout?.title
+      ? {
+          transform: `translate(${config.designLayout.title.dx ?? 0}px, ${config.designLayout.title.dy ?? 0}px)`,
+        }
+      : undefined
+
+    const titleStyle: React.CSSProperties = {
+      fontSize: `${Math.round(14 * fontScale)}px`,
+      ...titleTransformStyle,
+    }
+
+    return (
+      <div className={`${cardClasses} h-full flex flex-col group relative`} style={cardInline}>
+        <div className="flex items-start mb-1 flex-shrink-0">
+          <h3 className="font-semibold text-gray-700 truncate flex-1 min-w-0" style={titleStyle}>
+            {title}
+          </h3>
+        </div>
+        {data && (
+          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
+            <ExportButtons data={data.data} title={title} />
+          </div>
+        )}
+        <div className="flex-1 min-h-0">
+          {data ? (
+            <ChartRenderer
+              spec={spec}
+              data={data.data}
+              height={chartHeight}
+              fontScale={fontScale}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+              {t('embed.loadingChartData')}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  /**
+   * TV-mode heading cell renderer. Wraps `HeadingItem` so it fills the RGL
+   * cell and forwards `fontScale` so the heading scales with the cell size.
+   */
+  const renderTvHeading = (dc: DashboardChart, fontScale: number): React.ReactNode => {
+    const heading: HeadingConfig =
+      (dc.heading_config as HeadingConfig) || {
+        text: '',
+        level: 2,
+        align: 'left',
+        divider: false,
+      }
+    return (
+      <div className="h-full w-full">
+        <HeadingItem heading={heading} fontScale={fontScale} />
+      </div>
+    )
+  }
   return (
-    <div className="min-h-screen bg-gray-50 p-3 md:p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className={tvMode ? 'min-h-screen bg-gray-50 p-2' : 'min-h-screen bg-gray-50 p-3 md:p-6'}>
+      <div className={tvMode ? 'w-full' : 'max-w-7xl mx-auto'}>
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-2 gap-2">
           <h1 className="text-xl md:text-2xl font-bold text-gray-800">{dashboard.title}</h1>
           <div className="flex items-center space-x-3 text-xs text-gray-400">
@@ -341,9 +469,28 @@ export default function EmbedDashboardPage() {
             )}
             <span className="text-gray-300">|</span>
             <span>{t('embed.autoRefresh')} {dashboard.refresh_interval_minutes} min</span>
+            <span className="text-gray-300">|</span>
+            <label className="flex items-center space-x-1 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={tvMode}
+                onChange={(e) => setTvMode(e.target.checked)}
+                className="h-3 w-3 cursor-pointer"
+              />
+              <span>{t('embed.tvMode')}</span>
+            </label>
+            {tvMode && (
+              <button
+                type="button"
+                onClick={handleTvReset}
+                className="px-2 py-0.5 text-xs text-gray-500 border border-gray-300 rounded hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              >
+                {t('embed.tvModeReset')}
+              </button>
+            )}
           </div>
         </div>
-        {dashboard.description && (
+        {dashboard.description && !tvMode && (
           <p className="text-gray-500 mb-4">{dashboard.description}</p>
         )}
 
@@ -390,6 +537,15 @@ export default function EmbedDashboardPage() {
           <div className="flex items-center justify-center h-64 text-gray-400">
             {t('embed.loadingTab')}
           </div>
+        ) : tvMode ? (
+          <TvModeGrid
+            key={`${tvKey}_${tvStorageKey}`}
+            storageKey={tvStorageKey}
+            charts={activeCharts}
+            chartData={activeChartData}
+            renderChart={renderTvChartCard}
+            renderHeading={renderTvHeading}
+          />
         ) : (
           <div
             className="grid gap-4"
@@ -512,12 +668,12 @@ function DashboardChartCard({
 
   return (
     <div
-      className={cardClasses}
+      className={`${cardClasses} group relative`}
       style={{ ...gridStyle, ...cardInline }}
     >
-      <div className="flex items-start justify-between mb-1">
+      <div className="flex items-start mb-1">
         <h3
-          className={`font-semibold text-gray-700 ${titleClass}`}
+          className={`font-semibold text-gray-700 flex-1 min-w-0 ${titleClass}`}
           style={
             config?.designLayout?.title
               ? { transform: `translate(${config.designLayout.title.dx ?? 0}px, ${config.designLayout.title.dy ?? 0}px)` }
@@ -526,8 +682,12 @@ function DashboardChartCard({
         >
           {title}
         </h3>
-        {data && <ExportButtons data={data.data} title={title} />}
       </div>
+      {data && (
+        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
+          <ExportButtons data={data.data} title={title} />
+        </div>
+      )}
       {description && (
         <p className="text-xs text-gray-400 mb-2">{description}</p>
       )}

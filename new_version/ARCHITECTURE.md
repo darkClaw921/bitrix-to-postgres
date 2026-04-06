@@ -707,7 +707,7 @@ frontend/src/
 │   ├── SyncCard.tsx           # Карточка синхронизации CRM-сущности
 │   ├── ReferenceCard.tsx      # Карточка справочника (статусы, воронки, валюты)
 │   ├── charts/
-│   │   ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter/funnel/horizontal_bar через Recharts, indicator — KPI-карточка, table — таблица с итогами и сортировкой)
+│   │   ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter/funnel/horizontal_bar через Recharts, indicator — KPI-карточка, table — таблица с итогами и сортировкой). Опциональный проп fontScale?: number — масштабирует ticks, axis labels, legend, data labels, pie label, indicator value и table cells через helper fs(base)=max(8, round(base*fontScale)). При fontScale==null — IndicatorRenderer использует py-8, TableRenderer сохраняет text-sm на <table> (non-TV режим байт-стабилен относительно master)
 │   │   ├── ChartSettingsPanel.tsx # Панель настроек отображения чарта (цвета, оси, legend, grid, настройки для каждого типа)
 │   │   ├── ChartCard.tsx      # Карточка сохранённого чарта с действиями
 │   │   └── PromptEditorModal.tsx  # Модальное окно редактирования Bitrix-промпта для AI (markdown-редактор)
@@ -715,7 +715,8 @@ frontend/src/
 │   │   ├── DashboardCard.tsx  # Карточка дашборда в списке
 │   │   ├── PasswordGate.tsx   # Форма ввода пароля для публичного дашборда
 │   │   ├── PublishModal.tsx   # Модальное окно публикации дашборда
-│   │   └── HeadingItem.tsx    # Полиморфный элемент-заголовок дашборда: динамический тег h1-h6, выравнивание, цвет текста и фона, разделитель. В editable режиме — inline-edit текста (input, blur/Enter/Esc) и popover ⚙ с настройками level/align/color/bg/divider. Read-only в embed.
+│   │   ├── HeadingItem.tsx    # Полиморфный элемент-заголовок дашборда: динамический тег h1-h6, выравнивание, цвет текста и фона, разделитель. В editable режиме — inline-edit текста (input, blur/Enter/Esc) и popover ⚙ с настройками level/align/color/bg/divider. Read-only в embed. Опциональный fontScale?: number — при значении != 1 применяет inline fontSize = baseRem[level] * fontScale rem (Tailwind text-3xl..text-sm остаётся как fallback); при undefined/1 — mergedTitleStyle === titleStyle (не-TV режим байт-стабилен).
+│   │   └── TvModeGrid.tsx     # TV-режим публичного дашборда: интерактивный react-grid-layout (24 колонки, адаптивный rowHeight = max(20, innerHeight/24)), merge layout из localStorage[tv_layout_<storageKey>] и дефолта из dc.layout_* (миграция 12→24: x*2, w*2). Внутренний TvCellMeasurer через useElementSize вычисляет fontScale = clamp(0.4, 2.5, sqrt(w*h)/350) и chartHeight = max(60, h-44), прокидывает в renderChart/renderHeading колбэки родителя. Persist layout в localStorage обёрнут в try/catch. Использует useContainerWidth + mounted гард. Все элементы имеют minW=1, minH=1 (без maxH) — даже headings — чтобы в TV-режиме можно было ужимать без ограничений.
 │   └── selectors/
 │       ├── SelectorBar.tsx        # Панель фильтров: auto-apply (debounce 250 мс / text 500 мс), инициализация дефолтов из config.default_value (резолв date-токенов), кнопка Reset. Опционально linkedSlug — берёт опции через linked endpoint
 │       ├── DateRangeSelector.tsx  # Два input[date] (from/to) + token-based пресеты (TODAY/LAST_7_DAYS/LAST_30_DAYS/THIS_QUARTER_START)
@@ -735,14 +736,16 @@ frontend/src/
 │   ├── ConfigPage.tsx         # Настройки синхронизации
 │   ├── MonitoringPage.tsx     # Мониторинг
 │   ├── ValidationPage.tsx     # Валидация данных
-│   ├── EmbedDashboardPage.tsx # Публичный дашборд: аутентификация, вкладки (linked-дашборды), авто-обновление, per-tab селекторы и per-tab filterValuesByTab (фильтры главного и вторичных табов хранятся раздельно). Полиморфный рендер dashboard.charts: ветка item_type==='heading' рендерит HeadingItem (read-only) в позицию gridStyle, остальные — DashboardChartCard. Фильтрует heading из fetchAllChartData/fetchLinkedChartData чтобы не делать запросы /chart/{id}/data.
+│   ├── EmbedDashboardPage.tsx # Публичный дашборд: аутентификация, вкладки (linked-дашборды), авто-обновление, per-tab селекторы и per-tab filterValuesByTab (фильтры главного и вторичных табов хранятся раздельно). Полиморфный рендер dashboard.charts: ветка item_type==='heading' рендерит HeadingItem (read-only) в позицию gridStyle, остальные — DashboardChartCard. Фильтрует heading из fetchAllChartData/fetchLinkedChartData чтобы не делать запросы /chart/{id}/data. TV-режим (?tv=1 через useTvMode): чекбокс «Режим ТВ» и кнопка «Сбросить макет» в шапке (handleTvReset чистит localStorage[tv_layout_<storageKey>] и инкрементит tvKey для remount); при tvMode внешний контейнер становится fullscreen (p-2 / w-full, description скрыт); inline-функции renderTvChartCard(dc, fontScale, chartHeight) и renderTvHeading(dc, fontScale) повторяют логику DashboardChartCard/HeadingItem с inline fontSize=Math.round(14*fontScale)px и прокидывают fontScale в ChartRenderer/HeadingItem; условный рендер: tvMode → <TvModeGrid key={tvKey + '_' + tvStorageKey} storageKey charts chartData renderChart renderHeading />, иначе исходный CSS-grid без изменений. tvStorageKey = activeTab === 'main' ? slug : activeTab — каждый linked-таб хранит свой layout отдельно.
 │   └── DashboardEditorPage.tsx # Редактор дашборда: grid-layout, override, ссылки, SelectorEditorSection (CRUD фильтров + маппинги + AI генерация). Toolbar кнопка "+ Заголовок" (handleAddHeading через useAddDashboardHeading). Полиморфный рендер dashboard.charts: ветка item_type==='heading' использует EditorHeadingCard (HeadingItem editable + кнопка удаления), остальные — EditorChartCard. gridLayout для heading элементов задаёт minH=1, minW=2, maxH=4 (chart остаётся minW=2, minH=2). Загрузка chart-данных пропускает heading элементы.
 ├── hooks/
 │   ├── useSync.ts             # React Query хуки для синхронизации и справочников
 │   ├── useCharts.ts           # React Query хуки для чартов, схемы, истории генерации и промптов (useChartPromptTemplate, useUpdateChartPromptTemplate)
 │   ├── useDashboards.ts       # React Query хуки для CRUD дашбордов, layout, ссылок, паролей. Heading-хуки: useAddDashboardHeading, useUpdateDashboardHeading (инвалидируют ['dashboard', dashboardId])
 │   ├── useSelectors.ts        # React Query хуки для CRUD селекторов, маппингов, опций, AI-генерации, колонок чартов
-│   └── useAuth.ts             # Хук авторизации
+│   ├── useAuth.ts             # Хук авторизации
+│   ├── useElementSize.ts      # Generic ResizeObserver-хук: возвращает {ref,width,height} для любого HTMLElement, useLayoutEffect, contentRect, disconnect on unmount (используется TvModeGrid)
+│   └── useTvMode.ts           # Синхронизация булевого tvMode ↔ URL ?tv=1 (lazy init, history.replaceState, popstate-listener; без react-router) — для TV-режима EmbedDashboardPage
 ├── utils/
 │   └── dateTokens.ts          # Зеркало backend date_tokens.py: DATE_TOKENS, resolveDateToken, resolveFilterValue, isDateOnly, isDateToken, tokenLabel
 ├── services/

@@ -747,7 +747,8 @@ frontend/src/
 │   ├── useElementSize.ts      # Generic ResizeObserver-хук: возвращает {ref,width,height} для любого HTMLElement, useLayoutEffect, contentRect, disconnect on unmount (используется TvModeGrid)
 │   └── useTvMode.ts           # Синхронизация булевого tvMode ↔ URL ?tv=1 (lazy init, history.replaceState, popstate-listener; без react-router) — для TV-режима EmbedDashboardPage
 ├── utils/
-│   └── dateTokens.ts          # Зеркало backend date_tokens.py: DATE_TOKENS, resolveDateToken, resolveFilterValue, isDateOnly, isDateToken, tokenLabel
+│   ├── dateTokens.ts          # Зеркало backend date_tokens.py: DATE_TOKENS, resolveDateToken, resolveFilterValue, isDateOnly, isDateToken, tokenLabel
+│   └── clipboard.ts           # copyToClipboard(text): обёртка над navigator.clipboard.writeText с fallback на document.execCommand('copy') через off-screen textarea — работает на HTTP и в браузерах без Clipboard API
 ├── services/
 │   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi, dashboardsApi, publicApi). Типы DashboardSelector, SelectorMapping (с post_filter_resolve_*), LabelResolver, FilterValue. Полиморфный DashboardChart (item_type='chart'|'heading', chart_id?, heading_config?). Heading-типы: HeadingConfig (text, level 1-6, align, color, bg_color, divider), HeadingCreateRequest, HeadingUpdateRequest. Endpoints: dashboardsApi.generateSelectors, dashboardsApi.addHeading, dashboardsApi.updateHeading, publicApi.getLinkedPublicSelectorOptionsBatch
 └── store/

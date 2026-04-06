@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { PublishedReportListItem } from '../../services/api'
 import { useDeletePublishedReport, usePublishedReport, useAddPublishedReportLink, useRemovePublishedReportLink, useChangePublishedReportPassword } from '../../hooks/useReports'
+import { copyToClipboard } from '../../utils/clipboard'
 import { useTranslation } from '../../i18n'
 
 interface PublishedReportCardProps {
@@ -26,7 +27,8 @@ export default function PublishedReportCard({ report, allPublishedReports }: Pub
   const reportUrl = `${window.location.origin}/embed/report/${report.slug}`
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(reportUrl).then(() => {
+    copyToClipboard(reportUrl).then((ok) => {
+      if (!ok) return
       setCopiedLink(true)
       setTimeout(() => setCopiedLink(false), 2000)
     })
@@ -149,7 +151,7 @@ export default function PublishedReportCard({ report, allPublishedReports }: Pub
             </div>
             <button
               onClick={() => {
-                navigator.clipboard.writeText(newPassword)
+                copyToClipboard(newPassword)
                 setNewPassword(null)
               }}
               className="px-3 py-1 text-xs bg-yellow-200 text-yellow-800 rounded hover:bg-yellow-300"

@@ -154,7 +154,7 @@ class DashboardService:
         engine = get_engine()
 
         query = text(
-            "SELECT id, slug, title, description, is_active, "
+            "SELECT id, slug, title, tab_label, description, is_active, "
             "refresh_interval_minutes, created_at, updated_at "
             "FROM published_dashboards WHERE id = :id"
         )
@@ -175,7 +175,7 @@ class DashboardService:
         engine = get_engine()
 
         query = text(
-            "SELECT id, slug, title, description, is_active, "
+            "SELECT id, slug, title, tab_label, description, is_active, "
             "refresh_interval_minutes, created_at, updated_at "
             "FROM published_dashboards WHERE slug = :slug"
         )
@@ -300,6 +300,8 @@ class DashboardService:
         title: str | None = None,
         description: str | None = None,
         refresh_interval_minutes: int | None = None,
+        tab_label: str | None = None,
+        clear_tab_label: bool = False,
     ) -> dict[str, Any]:
         engine = get_engine()
 
@@ -315,6 +317,11 @@ class DashboardService:
         if refresh_interval_minutes is not None:
             updates.append("refresh_interval_minutes = :refresh_interval_minutes")
             params["refresh_interval_minutes"] = refresh_interval_minutes
+        if clear_tab_label:
+            updates.append("tab_label = NULL")
+        elif tab_label is not None:
+            updates.append("tab_label = :tab_label")
+            params["tab_label"] = tab_label
 
         if not updates:
             raise DashboardServiceError("Нет полей для обновления")

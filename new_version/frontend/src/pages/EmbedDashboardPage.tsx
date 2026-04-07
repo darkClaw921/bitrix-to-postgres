@@ -506,7 +506,7 @@ export default function EmbedDashboardPage() {
         {hasTabs && (
           <div className="flex space-x-1 border-b border-gray-200 mb-4">
             <TabButton
-              label={dashboard.title}
+              label={dashboard.tab_label || dashboard.title}
               isActive={activeTab === 'main'}
               onClick={() => handleTabClick('main')}
             />

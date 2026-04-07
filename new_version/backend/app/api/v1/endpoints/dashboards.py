@@ -89,6 +89,8 @@ async def update_dashboard(
             title=request.title,
             description=request.description,
             refresh_interval_minutes=request.refresh_interval_minutes,
+            tab_label=request.tab_label,
+            clear_tab_label=request.tab_label == "",
         )
         return DashboardResponse(**dashboard)
     except DashboardServiceError as e:

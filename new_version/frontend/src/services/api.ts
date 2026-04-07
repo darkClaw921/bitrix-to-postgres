@@ -667,6 +667,7 @@ export interface Dashboard {
   id: number
   slug: string
   title: string
+  tab_label?: string
   description?: string
   is_active: boolean
   refresh_interval_minutes: number
@@ -712,6 +713,7 @@ export interface DashboardUpdateRequest {
   title?: string
   description?: string
   refresh_interval_minutes?: number
+  tab_label?: string
 }
 
 export interface LayoutItem {

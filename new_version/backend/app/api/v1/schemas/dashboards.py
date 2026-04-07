@@ -27,6 +27,7 @@ class DashboardUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, max_length=255)
     description: Optional[str] = None
     refresh_interval_minutes: Optional[int] = Field(None, ge=1, le=1440)
+    tab_label: Optional[str] = Field(None, max_length=255)
 
 
 class LayoutItem(BaseModel):
@@ -208,6 +209,7 @@ class DashboardResponse(BaseModel):
     id: int
     slug: str
     title: str
+    tab_label: Optional[str] = None
     description: Optional[str] = None
     is_active: bool = True
     refresh_interval_minutes: int = 10

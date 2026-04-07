@@ -252,6 +252,7 @@ export interface Translations {
     customDescription: string
     linkedDashboards: string
     linkedDescription: string
+    mainTabLabel: string
     dashboard: string
     tabLabel: string
     customLabel: string

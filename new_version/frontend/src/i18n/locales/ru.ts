@@ -252,6 +252,7 @@ export const ru: Translations = {
     customDescription: 'Своё описание',
     linkedDashboards: 'Связанные дашборды (Вкладки)',
     linkedDescription: 'Свяжите другие дашборды для отображения в виде вкладок на публичной странице.',
+    mainTabLabel: 'Название первой вкладки (текущий дашборд)',
     dashboard: 'Дашборд',
     tabLabel: 'Название вкладки (необязательно)',
     customLabel: 'Своё название',

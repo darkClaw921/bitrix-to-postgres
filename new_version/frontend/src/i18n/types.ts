@@ -658,6 +658,12 @@ export interface Translations {
     clickEdgeToConfig: string
     deleteMapping: string
     noMappings: string
+    // Inline mapping panel
+    addChartMapping: string
+    selectChart: string
+    selectColumn: string
+    addMapping: string
+    confirmDeleteMapping: string
   }
   footer: {
     version: string

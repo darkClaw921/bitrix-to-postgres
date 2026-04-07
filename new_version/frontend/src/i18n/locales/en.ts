@@ -649,6 +649,11 @@ export const en: Translations = {
     clickEdgeToConfig: 'Click on a connection to configure it',
     deleteMapping: 'Delete mapping',
     noMappings: 'No mappings. Drag from selector to a chart column.',
+    addChartMapping: 'Add chart',
+    selectChart: '-- Select chart --',
+    selectColumn: '-- Select field --',
+    addMapping: 'Add',
+    confirmDeleteMapping: 'Delete this chart mapping?',
   },
   footer: {
     version: 'UI Version',

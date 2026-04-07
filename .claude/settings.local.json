@@ -37,7 +37,8 @@
       "Bash(grep:*)",
       "Bash(echo:*)",
       "Bash(python -c:*)",
-      "Bash(python:*)"
+      "Bash(/usr/local/bin/node:*)",
+      "Bash(/opt/homebrew/bin/npx tsc:*)"
     ]
   }
 }

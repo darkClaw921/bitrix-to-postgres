@@ -156,22 +156,22 @@ function IndicatorRenderer({ spec, data, fontScale }: { spec: ChartSpec; data: R
   const maxByHeight = autoFit && containerHeight > 0 ? containerHeight * 0.8 : Infinity
   const finalSizePx = Math.max(10, Math.min(requestedSizePx, maxByWidth, maxByHeight))
 
-  // Non-regression: keep py-8 when fontScale is undefined (editor & non-TV embed).
-  // TV mode (fontScale defined) uses py-2 so the indicator fits in small cells.
-  const paddingClass = fontScale == null ? 'py-8' : 'py-2'
-
+  // Centering layer uses `position: absolute; inset: 0; display: grid;
+  // place-items: center` instead of the older `flex h-full justify-center`.
+  // The grid+absolute combo is robust against quirks of `flex-1 min-h-0` parents
+  // (which sometimes fail to give children a determinate height that `h-full`
+  // can resolve against, leaving content visually pushed to the bottom).
   return (
-    <div
-      ref={fitRef}
-      className={`flex flex-col items-center justify-center h-full w-full overflow-hidden ${paddingClass}`}
-    >
-      <div
-        className="font-bold leading-tight text-center break-words max-w-full"
-        style={{ fontSize: `${finalSizePx}px`, color: indicatorCfg.color || '#1f2937' }}
-      >
-        {indicatorCfg.prefix && <span>{indicatorCfg.prefix} </span>}
-        {displayValue}
-        {indicatorCfg.suffix && <span> {indicatorCfg.suffix}</span>}
+    <div ref={fitRef} className="relative h-full w-full overflow-hidden">
+      <div className="absolute inset-0 grid place-items-center px-3">
+        <div
+          className="font-bold leading-tight text-center break-words max-w-full"
+          style={{ fontSize: `${finalSizePx}px`, color: indicatorCfg.color || '#1f2937' }}
+        >
+          {indicatorCfg.prefix && <span>{indicatorCfg.prefix} </span>}
+          {displayValue}
+          {indicatorCfg.suffix && <span> {indicatorCfg.suffix}</span>}
+        </div>
       </div>
     </div>
   )

@@ -349,7 +349,7 @@ export const en: Translations = {
     numberFormat: 'Number format:',
     formatDefault: 'Default',
     formatNumber: 'Number (1,234.56)',
-    formatCurrency: 'Currency ($1,234.56)',
+    formatCurrency: 'Currency (₽1,234.56)',
     formatPercent: 'Percent (12.5%)',
     formatCompact: 'Compact (1.2K / 3.4M)',
     decimalPlaces: 'Decimal places:',

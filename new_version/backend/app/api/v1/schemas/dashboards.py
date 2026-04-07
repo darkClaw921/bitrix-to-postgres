@@ -119,6 +119,27 @@ class HeadingUpdateRequest(BaseModel):
     heading: HeadingConfig
 
 
+class ChartAddRequest(BaseModel):
+    """Request to attach an existing AI chart to a dashboard.
+
+    Used by the editor's "+ Чарт" UI to add charts to dashboards that have
+    already been published. All layout fields are optional: when omitted the
+    service computes sensible defaults — ``layout_x=0``, ``layout_w=6``,
+    ``layout_h=4``, ``layout_y=MAX(layout_y+layout_h)`` so the new chart
+    lands at the bottom of the existing layout without overlap, and
+    ``sort_order=MAX+1``. Sending ``layout_y=0`` explicitly is interpreted
+    as "place at the very top" — only ``None`` triggers the bottom-append
+    fallback.
+    """
+
+    chart_id: int = Field(..., gt=0)
+    layout_x: Optional[int] = None
+    layout_y: Optional[int] = None
+    layout_w: Optional[int] = None
+    layout_h: Optional[int] = None
+    sort_order: Optional[int] = None
+
+
 # --- Responses ---
 
 

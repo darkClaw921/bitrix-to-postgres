@@ -284,6 +284,14 @@ export interface Translations {
     headingColor: string
     headingBg: string
     headingDivider: string
+    addChart: string
+    addChartTitle: string
+    addChartSearchPlaceholder: string
+    addChartEmpty: string
+    addChartNothingFound: string
+    addChartLoading: string
+    addChartFailed: string
+    addChartAdd: string
   }
   syncCard: {
     syncing: string

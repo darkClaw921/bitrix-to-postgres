@@ -5,6 +5,7 @@ import type {
   DashboardUpdateRequest,
   DashboardLayoutUpdateRequest,
   ChartOverrideUpdateRequest,
+  ChartAddRequest,
   IframeCodeRequest,
   HeadingCreateRequest,
   HeadingUpdateRequest,
@@ -99,6 +100,19 @@ export function useRemoveChartFromDashboard() {
       dashboardsApi.removeChart(dashboardId, dcId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboards'] })
+    },
+  })
+}
+
+export function useAddDashboardChart() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ dashboardId, data }: { dashboardId: number; data: ChartAddRequest }) =>
+      dashboardsApi.addChart(dashboardId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', variables.dashboardId] })
       queryClient.invalidateQueries({ queryKey: ['dashboards'] })
     },
   })

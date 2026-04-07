@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import ExportButtons from '../components/charts/ExportButtons'
-import { getCardStyleClasses, getCardInlineStyle, getTitleSizeClass } from '../components/charts/cardStyleUtils'
+import { getCardStyleClasses, getCardInlineStyle, getTitleSizeClass, getTvTitleBasePx } from '../components/charts/cardStyleUtils'
 import PasswordGate from '../components/dashboards/PasswordGate'
 import HeadingItem from '../components/dashboards/HeadingItem'
 import { TvModeGrid } from '../components/dashboards/TvModeGrid'
@@ -394,8 +394,16 @@ export default function EmbedDashboardPage() {
         }
       : undefined
 
+    // Title base size mirrors `getTitleSizeClass` (sm/md/lg/xl) so the
+    // settings panel works in TV mode; indicators get a larger default
+    // because they have no axes/legend competing for the eye.
+    const titleBasePx = getTvTitleBasePx(dc.chart_type || 'bar', config?.general?.titleFontSize)
+
+    const titleFontPx = dc.chart_type === 'indicator'
+      ? Math.max(14, Math.round(titleBasePx * fontScale))
+      : Math.round(titleBasePx * fontScale)
     const titleStyle: React.CSSProperties = {
-      fontSize: `${Math.round(14 * fontScale)}px`,
+      fontSize: `${titleFontPx}px`,
       ...titleTransformStyle,
     }
 

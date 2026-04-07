@@ -10,7 +10,7 @@ import ChartSettingsPanel from '../components/charts/ChartSettingsPanel'
 import DesignModeOverlay from '../components/charts/DesignModeOverlay'
 import DesignModeToolbar from '../components/charts/design/DesignModeToolbar'
 import ExportButtons from '../components/charts/ExportButtons'
-import { getCardStyleClasses, getCardInlineStyle } from '../components/charts/cardStyleUtils'
+import { getCardStyleClasses, getCardInlineStyle, getTvTitleBasePx } from '../components/charts/cardStyleUtils'
 import SelectorEditorSection from '../components/selectors/SelectorEditorSection'
 import HeadingItem from '../components/dashboards/HeadingItem'
 import { TvModeGrid } from '../components/dashboards/TvModeGrid'
@@ -30,8 +30,10 @@ import {
   useUpdateDashboardLinks,
   useAddDashboardHeading,
   useUpdateDashboardHeading,
+  useAddDashboardChart,
 } from '../hooks/useDashboards'
 import { chartsApi } from '../services/api'
+import type { SavedChart } from '../services/api'
 import { copyToClipboard } from '../utils/clipboard'
 import { useTranslation } from '../i18n'
 import type { DashboardChart, DashboardLink, ChartSpec, ChartDataResponse, ChartDisplayConfig, HeadingConfig } from '../services/api'
@@ -87,6 +89,7 @@ export default function DashboardEditorPage() {
   const updateLinks = useUpdateDashboardLinks()
   const addHeading = useAddDashboardHeading()
   const updateHeading = useUpdateDashboardHeading()
+  const addChart = useAddDashboardChart()
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState('')
@@ -95,6 +98,10 @@ export default function DashboardEditorPage() {
   const [chartData, setChartData] = useState<Record<number, ChartDataResponse>>({})
   const [newPassword, setNewPassword] = useState<string | null>(null)
   const [copiedLink, setCopiedLink] = useState(false)
+
+  // "Add chart" picker modal state
+  const [addChartOpen, setAddChartOpen] = useState(false)
+  const [addChartError, setAddChartError] = useState<string | null>(null)
 
   // Grid layout state
   const [gridLayout, setGridLayout] = useState<Layout>([])
@@ -188,7 +195,45 @@ export default function DashboardEditorPage() {
     )
   }
 
+  // react-grid-layout fires onLayoutChange on every internal pass — including
+  // hover/drag handshakes during a resize that emit byte-identical layouts.
+  // Without dedup we call setGridLayout on every tick, which causes a re-
+  // render storm and the chart visibly "jumps" during fast resizes
+  // (especially right after adding a chart, when chart-data fetch + RGL
+  // measurement compete on the same frame). The ref-based comparison
+  // mirrors TvModeGrid.handleLayoutChange.
+  const gridLayoutRef = useRef<Layout>([])
+  useEffect(() => {
+    gridLayoutRef.current = gridLayout
+  }, [gridLayout])
+
   const handleLayoutChange = useCallback((newLayout: Layout) => {
+    const prev = gridLayoutRef.current
+    // When RGL reports fewer items than we track it means a chart is being added
+    // (new child not yet rendered) or removed (refetch in progress). Skip the
+    // update — useEffect([dashboard]) will properly sync gridLayout once refetch
+    // completes. Without this guard, the optimistic gridLayout entry added in
+    // handleAddChart.onSuccess would be wiped before the child mounts, causing
+    // RGL to auto-assign h=1 for the new chart.
+    if (newLayout.length < prev.length) return
+    if (prev.length === newLayout.length) {
+      let same = true
+      for (let i = 0; i < prev.length; i++) {
+        const a = prev[i]
+        const b = newLayout[i]
+        if (
+          a.i !== b.i ||
+          a.x !== b.x ||
+          a.y !== b.y ||
+          a.w !== b.w ||
+          a.h !== b.h
+        ) {
+          same = false
+          break
+        }
+      }
+      if (same) return
+    }
     setGridLayout(newLayout)
     setLayoutDirty(true)
   }, [])
@@ -267,6 +312,46 @@ export default function DashboardEditorPage() {
     )
   }
 
+  // Add an existing AI chart to this dashboard. We pass only `chart_id` —
+  // the backend computes layout defaults (6×4 cell, layout_y=MAX(y+h) so
+  // the new chart lands at the bottom of the layout without overlap and
+  // without the previous "y=9999 sentinel" that caused react-grid-layout
+  // to visibly compact during the first paint after refetch.
+  const handleAddChart = (chartId: number): void => {
+    setAddChartError(null)
+    addChart.mutate(
+      {
+        dashboardId,
+        data: { chart_id: chartId },
+      },
+      {
+        onSuccess: (newChart) => {
+          // Immediately add the new chart to gridLayout with correct backend dimensions
+          // BEFORE refetch() updates dashboard.charts. This prevents the one-frame mismatch
+          // where RGL sees N+1 children but only N layout items and auto-assigns h=2,w=1.
+          setGridLayout((prev) => [
+            ...prev,
+            {
+              i: String(newChart.id),
+              x: newChart.layout_x,
+              y: newChart.layout_y,
+              w: newChart.layout_w,
+              h: newChart.layout_h,
+              minW: 2,
+              minH: 2,
+            },
+          ])
+          setAddChartOpen(false)
+          refetch()
+        },
+        onError: (err: unknown) => {
+          const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
+          setAddChartError(axiosErr?.response?.data?.detail || axiosErr?.message || t('editor.addChartFailed'))
+        },
+      },
+    )
+  }
+
   const handleUpdateHeading = useCallback(
     (dcId: number, heading: HeadingConfig) => {
       updateHeading.mutate(
@@ -338,8 +423,16 @@ export default function DashboardEditorPage() {
         }
       : undefined
 
+    // Title base size mirrors `getTitleSizeClass` (sm/md/lg/xl) so the
+    // settings panel works in TV mode; indicators get a larger default
+    // because they have no axes/legend competing for the eye.
+    const titleBasePx = getTvTitleBasePx(dc.chart_type || 'bar', config?.general?.titleFontSize)
+
+    const titleFontPx = dc.chart_type === 'indicator'
+      ? Math.max(14, Math.round(titleBasePx * fontScale))
+      : Math.round(titleBasePx * fontScale)
     const titleStyle: React.CSSProperties = {
-      fontSize: `${Math.round(14 * fontScale)}px`,
+      fontSize: `${titleFontPx}px`,
       ...titleTransformStyle,
     }
 
@@ -508,6 +601,15 @@ export default function DashboardEditorPage() {
               </div>
             )}
             <button
+              onClick={() => {
+                setAddChartError(null)
+                setAddChartOpen(true)
+              }}
+              className="btn btn-secondary text-sm"
+            >
+              {t('editor.addChart')}
+            </button>
+            <button
               onClick={handleAddHeading}
               disabled={addHeading.isPending}
               className="btn btn-secondary text-sm"
@@ -646,6 +748,18 @@ export default function DashboardEditorPage() {
           {t('editor.backToCharts')}
         </button>
       </div>
+
+      {addChartOpen && (
+        <AddChartPickerModal
+          excludeChartIds={dashboard.charts
+            .map((dc) => dc.chart_id)
+            .filter((id): id is number => id != null)}
+          isAdding={addChart.isPending}
+          error={addChartError}
+          onCancel={() => setAddChartOpen(false)}
+          onPick={handleAddChart}
+        />
+      )}
     </div>
   )
 
@@ -1148,3 +1262,171 @@ function LinkedDashboardsSection({
   )
 }
 
+/**
+ * Modal-style chart picker for the editor's "+ Чарт" button.
+ *
+ * Loads up to 100 saved charts via `chartsApi.list`, hides the ones already
+ * present on this dashboard (`excludeChartIds`), filters by a client-side
+ * search input, and calls `onPick(chartId)` when the user picks a row.
+ *
+ * Renders through `createPortal` into `document.body` so it shows on top of
+ * the editor in TV mode (where the editor itself is rendered through a
+ * portal with a `fixed inset-0 z-40` overlay).
+ */
+function AddChartPickerModal({
+  excludeChartIds,
+  isAdding,
+  error,
+  onCancel,
+  onPick,
+}: {
+  excludeChartIds: number[]
+  isAdding: boolean
+  error: string | null
+  onCancel: () => void
+  onPick: (chartId: number) => void
+}) {
+  const { t } = useTranslation()
+  const [charts, setCharts] = useState<SavedChart[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setLoadError(null)
+    chartsApi
+      .list(1, 100)
+      .then((res) => {
+        if (cancelled) return
+        setCharts(res.charts || [])
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        const axiosErr = err as { message?: string }
+        setLoadError(axiosErr?.message || 'Error')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const excludeSet = new Set(excludeChartIds)
+  const trimmedSearch = search.trim().toLowerCase()
+  const visibleCharts = charts
+    .filter((c) => !excludeSet.has(c.id))
+    .filter((c) => {
+      if (!trimmedSearch) return true
+      return (
+        c.title.toLowerCase().includes(trimmedSearch) ||
+        (c.description ?? '').toLowerCase().includes(trimmedSearch)
+      )
+    })
+
+  const allEmpty = !loading && charts.filter((c) => !excludeSet.has(c.id)).length === 0
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel()
+      }}
+    >
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-800">{t('editor.addChartTitle')}</h3>
+          <button
+            onClick={onCancel}
+            className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+            aria-label={t('common.close')}
+          >
+            &times;
+          </button>
+        </div>
+
+        <div className="px-5 py-3 border-b border-gray-100">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('editor.addChartSearchPlaceholder')}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+            autoFocus
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {loading && (
+            <div className="text-sm text-gray-400 text-center py-6">
+              {t('editor.addChartLoading')}
+            </div>
+          )}
+          {!loading && loadError && (
+            <div className="text-sm text-red-500 text-center py-6">{loadError}</div>
+          )}
+          {!loading && !loadError && allEmpty && (
+            <div className="text-sm text-gray-400 text-center py-6">
+              {t('editor.addChartEmpty')}
+            </div>
+          )}
+          {!loading && !loadError && !allEmpty && visibleCharts.length === 0 && (
+            <div className="text-sm text-gray-400 text-center py-6">
+              {t('editor.addChartNothingFound')}
+            </div>
+          )}
+          {!loading && !loadError && visibleCharts.length > 0 && (
+            <ul className="divide-y divide-gray-100">
+              {visibleCharts.map((c) => (
+                <li
+                  key={c.id}
+                  className="flex items-start justify-between gap-3 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-800 truncate">
+                      <span className="truncate">{c.title}</span>
+                      <span className="text-xs text-gray-400 font-normal whitespace-nowrap">
+                        {c.chart_type}
+                      </span>
+                      {c.is_pinned && (
+                        <span className="text-xs text-yellow-500 whitespace-nowrap">★</span>
+                      )}
+                    </div>
+                    {c.description && (
+                      <div className="text-xs text-gray-500 truncate mt-0.5">
+                        {c.description}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => onPick(c.id)}
+                    disabled={isAdding}
+                    className="btn btn-primary text-xs flex-shrink-0"
+                  >
+                    {isAdding ? t('editor.adding') : t('editor.addChartAdd')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {error && (
+          <div className="px-5 py-2 border-t border-gray-100">
+            <p className="text-xs text-red-500">{error}</p>
+          </div>
+        )}
+
+        <div className="px-5 py-3 border-t border-gray-200 flex justify-end">
+          <button onClick={onCancel} className="btn btn-secondary text-sm">
+            {t('common.cancel')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}

@@ -732,6 +732,18 @@ export interface ChartOverrideUpdateRequest {
   description_override?: string
 }
 
+export interface ChartAddRequest {
+  chart_id: number
+  /** Optional layout overrides; omit to let the server compute defaults
+   *  (layout_x=0, layout_w=6, layout_h=4, layout_y=MAX(y+h) so the new
+   *  chart lands at the bottom of the existing layout). */
+  layout_x?: number
+  layout_y?: number
+  layout_w?: number
+  layout_h?: number
+  sort_order?: number
+}
+
 export interface IframeCodeRequest {
   chart_ids: number[]
   width?: string
@@ -782,6 +794,9 @@ export const dashboardsApi = {
 
   removeChart: (dashboardId: number, dcId: number) =>
     api.delete(`/dashboards/${dashboardId}/charts/${dcId}`).then((r) => r.data),
+
+  addChart: (dashboardId: number, data: ChartAddRequest) =>
+    api.post<DashboardChart>(`/dashboards/${dashboardId}/charts`, data).then((r) => r.data),
 
   addHeading: (dashboardId: number, data: HeadingCreateRequest) =>
     api.post<DashboardChart>(`/dashboards/${dashboardId}/headings`, data).then((r) => r.data),

@@ -111,7 +111,17 @@ function formatTableCell(value: unknown, format?: 'number' | 'currency' | 'perce
   return num.toLocaleString()
 }
 
-function IndicatorRenderer({ spec, data, fontScale }: { spec: ChartSpec; data: Record<string, unknown>[]; fontScale?: number }) {
+function IndicatorRenderer({
+  spec,
+  data,
+  fontScale,
+  fillHeight,
+}: {
+  spec: ChartSpec
+  data: Record<string, unknown>[]
+  fontScale?: number
+  fillHeight?: boolean
+}) {
   const indicatorCfg = spec.indicator ?? {}
   const yKeys = Array.isArray(spec.data_keys.y) ? spec.data_keys.y : [spec.data_keys.y]
   const valueKey = yKeys[0]
@@ -134,36 +144,45 @@ function IndicatorRenderer({ spec, data, fontScale }: { spec: ChartSpec; data: R
   const baseRem = baseRemMap[indicatorCfg.fontSize || 'lg'] ?? 3.5
   const requestedSizePx = baseRem * 16 * (fontScale ?? 1)
 
-  // Auto-fit: measure the container and DERIVE the font size purely from the
-  // available HEIGHT. Width is intentionally NOT a constraint — the user
-  // explicitly asked that long values be allowed to wrap or overflow rather
-  // than shrink horizontally. When auto-fit is ON the value grows/shrinks to
-  // fill almost the whole cell height (the preset size is ignored, otherwise
-  // a tall card would be left with a small value floating in empty space).
-  // When auto-fit is OFF we fall back to the user-chosen preset size.
+  // The renderer runs in three families of contexts that need different sizing
+  // strategies:
+  //   1. "Fill" mode (fillHeight=true) — TV mode and the dashboard editor body:
+  //      the parent has an INTENTIONALLY set definite height (RGL cell or
+  //      flex-1 min-h-0 column). Here we want the value to fill almost the
+  //      whole cell vertically — derive the font size from the measured
+  //      container height. Width is intentionally not a constraint.
+  //   2. "Compact" mode (fillHeight=false) — All Charts page (ChartCard) and
+  //      embed pages: the parent is either a CSS grid that stretches all
+  //      siblings to the tallest item or a fixed pixel height from layout. In
+  //      both cases, blindly filling height makes the indicator value
+  //      ridiculously large because the cell height is determined by other
+  //      content. Here we use the user-chosen preset size and only shrink it
+  //      if the cell happens to be smaller than the preset.
   const { ref: fitRef, height: containerHeight } = useElementSize<HTMLDivElement>()
   const autoFit = indicatorCfg.autoFit !== false
-  const finalSizePx = autoFit && containerHeight > 0
-    ? Math.max(10, containerHeight * 0.9)
-    : Math.max(10, requestedSizePx)
 
-  // Centering: plain `flex items-center` + horizontal alignment. We deliberately
-  // do NOT use absolute positioning here because IndicatorRenderer is mounted
-  // in very different contexts:
-  //   - ChartCard (All Charts page): parent is a regular block <div> with no
-  //     defined height. `h-full` would resolve to 0, collapsing an absolutely-
-  //     positioned child and pushing the value text outside the card.
-  //   - EditorChartCard (Dashboard editor): parent is `flex-1 min-h-0` inside
-  //     a flex column, so it has an actual computed height.
-  //   - TV-mode cells: parent has an explicit pixel height from RGL.
-  //
-  // To make all three contexts behave the same, we apply a `minHeight` floor
-  // when no fontScale is provided (i.e. outside TV mode). This guarantees a
-  // visible centering area in the All Charts view, while leaving TV mode free
-  // to use whatever height the RGL cell provides. Floor history: 200 → 120 →
-  // 80 so cards waste as little vertical space as possible in compact lists.
+  let finalSizePx: number
+  if (fillHeight) {
+    finalSizePx = autoFit && containerHeight > 0
+      ? Math.max(10, containerHeight * 0.9)
+      : Math.max(10, requestedSizePx)
+  } else {
+    // Compact mode: never grow above the preset; only shrink if the cell is
+    // smaller than the preset (the original pre-fill behavior).
+    const cap = autoFit && containerHeight > 0 ? containerHeight * 0.9 : Infinity
+    finalSizePx = Math.max(10, Math.min(requestedSizePx, cap))
+  }
+
+  // Wrapper height behavior also differs between modes:
+  //   - Fill: take 100% of the parent (h-full), with a minHeight floor so the
+  //     non-TV non-RGL contexts (regular flex column with no fixed height)
+  //     still have a visible centering area.
+  //   - Compact: do NOT use h-full — otherwise CSS grid stretch on the All
+  //     Charts page would inflate the wrapper to the row height (and the
+  //     value with it). Use auto height with a minHeight floor so the card
+  //     stays the size of its content + small padding.
   const wrapperStyle: React.CSSProperties = {
-    minHeight: fontScale == null ? 80 : undefined,
+    minHeight: 80,
   }
 
   // Horizontal alignment: defaults to center for backward compatibility, but
@@ -174,10 +193,12 @@ function IndicatorRenderer({ spec, data, fontScale }: { spec: ChartSpec; data: R
   const textAlignClass =
     textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'
 
+  const heightClass = fillHeight ? 'h-full' : ''
+
   return (
     <div
       ref={fitRef}
-      className={`flex items-center w-full h-full overflow-hidden px-1 ${justifyClass}`}
+      className={`flex items-center w-full ${heightClass} overflow-hidden px-1 ${justifyClass}`}
       style={wrapperStyle}
     >
       <div
@@ -466,9 +487,14 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
   // Funnel display config
   const funnelCfg = spec.funnel ?? { showLabels: true, labelPosition: 'right' as const }
 
-  // Indicator — rendered as plain HTML, no ResponsiveContainer
+  // Indicator — rendered as plain HTML, no ResponsiveContainer.
+  // `fillHeight` tells the renderer it's mounted in a context with a real
+  // intentional height it should fill (TV mode or dashboard editor body).
+  // ChartCard / embed pages pass numeric heights and live inside CSS grids
+  // that stretch siblings — there we want compact preset-sized values.
   if (chart_type === 'indicator') {
-    return <IndicatorRenderer spec={spec} data={data} fontScale={fontScale} />
+    const fillHeight = fontScale != null || height === '100%'
+    return <IndicatorRenderer spec={spec} data={data} fontScale={fontScale} fillHeight={fillHeight} />
   }
 
   // Table — rendered as plain HTML, no ResponsiveContainer

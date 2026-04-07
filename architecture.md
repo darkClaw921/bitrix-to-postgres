@@ -91,10 +91,12 @@
   - SQL валидация (`validate_sql_query`, `validate_table_names`, `ensure_limit`)
   - Контекст схемы (`get_schema_context`, `get_allowed_tables`, `get_tables_info`)
   - Выполнение запросов (`execute_chart_query`) с таймаутом
-  - CRUD чартов (`save_chart`, `get_charts`, `get_chart_by_id`, `delete_chart`, `toggle_pin`, `update_chart_config`)
+  - CRUD чартов (`save_chart`, `get_charts`, `get_chart_by_id`, `delete_chart`, `toggle_pin`, `update_chart_config`, `update_chart_sql`)
+  - `update_chart_sql(chart_id, new_sql, title?, description?)` — валидирует (SELECT-only, allowed_tables, ensure_limit), выполняет smoke-test через `execute_chart_query`, затем UPDATE
   - CRUD описаний схемы (`save_schema_description`, `get_latest_schema_description`, etc.)
 - **ai_service.py** — `AIService`:
   - `generate_chart_spec(prompt, schema_context)` → JSON спецификация чарта
+  - `refine_chart_sql(current_sql, instruction, schema_context)` → обновлённый SQL-запрос по текстовой инструкции пользователя (промпт CHART_SQL_REFINE_PROMPT)
   - `generate_schema_description(schema_context)` → Markdown документация
   - `generate_report_step(conversation_history, schema_context)` → шаг диалога генерации отчёта (вопрос или готовая спецификация)
   - `analyze_report_data(report_title, sql_results, analysis_prompt, user_prompt, report_context)` → tuple[str, str] (markdown-отчёт, полный промпт отправленный в LLM)
@@ -168,7 +170,7 @@
 
 ##### Эндпоинты (`app/api/v1/endpoints/`)
 - **auth.py** — POST `/login` — single-user аутентификация (email + password из .env), возвращает JWT access token
-- **charts.py** — POST `/generate`, POST `/save`, GET `/list`, GET `/{id}/data`, PATCH `/{id}/config`, DELETE `/{id}`, POST `/{id}/pin`
+- **charts.py** — POST `/generate`, POST `/execute-sql`, POST `/save`, GET `/list`, GET `/{id}/data`, PATCH `/{id}/config`, PATCH `/{id}/sql` (ручное обновление SQL с валидацией + smoke-test), POST `/{id}/refine-sql-ai` (ChartSqlRefineRequest → ChartSqlRefineResponse, AI-рефайн SQL по текстовой инструкции без сохранения), DELETE `/{id}`, POST `/{id}/pin`, GET/PUT `/prompt-template/bitrix-context`
 - **dashboards.py** (internal):
   - POST `/publish`, GET `/list`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}`
   - PUT `/{id}/layout`, PUT `/{id}/charts/{dc_id}`, DELETE `/{id}/charts/{dc_id}`
@@ -224,13 +226,13 @@ React 18 + TypeScript + Vite + Tailwind CSS
 
 #### Сервисы и хуки
 - **src/services/api.ts** — axios HTTP клиент (с 401 interceptor → redirect на /login), все типы и API объекты:
-  - `syncApi`, `statusApi`, `webhooksApi`, `referencesApi`, `chartsApi` (с `updateConfig` для PATCH), `schemaApi`
+  - `syncApi`, `statusApi`, `webhooksApi`, `referencesApi`, `chartsApi` (с `updateConfig`, `updateSql`, `refineSqlWithAi` для ручного и AI-редактирования SQL сохранённых чартов), `schemaApi`
   - `dashboardsApi` — publish, list, get, update, delete, updateLayout, updateChartOverride, removeChart, changePassword, getIframeCode, addLink, removeLink, updateLinks, listSelectors, createSelector, updateSelector, deleteSelector, getSelectorOptions, getChartColumns, getChartTables, previewFilter
   - `reportsApi` — converse, save, list, get, delete, update, updateSchedule, run, togglePin, getRuns, getRun, getPromptTemplate, updatePromptTemplate
   - `publishedReportsApi` — publish, list, get, delete, changePassword, addLink, removeLink, updateLinks
   - `publicApi` — getChartMeta, getChartData, authenticateDashboard, getDashboard, getDashboardChartData, getLinkedDashboard, getLinkedDashboardChartData, getDashboardChartDataFiltered, getLinkedDashboardChartDataFiltered, getPublicSelectors, getPublicSelectorOptions, authenticateReport, getPublicReport, getLinkedReport
 - **src/hooks/useSync.ts** — хуки синхронизации и справочников
-- **src/hooks/useCharts.ts** — хуки чартов (`useUpdateChartConfig` для PATCH config) и описаний схемы
+- **src/hooks/useCharts.ts** — хуки чартов (`useUpdateChartConfig` для PATCH config, `useUpdateChartSql` для PATCH sql, `useRefineChartSqlWithAi` для AI-рефайна) и описаний схемы
 - **src/hooks/useDashboards.ts** — `usePublishDashboard`, `useDashboardList`, `useDashboard`, `useUpdateDashboard`, `useDeleteDashboard`, `useUpdateDashboardLayout`, `useUpdateChartOverride`, `useRemoveChartFromDashboard`, `useChangeDashboardPassword`, `useIframeCode`, `useAddDashboardLink`, `useRemoveDashboardLink`, `useUpdateDashboardLinks`
 - **src/hooks/useReports.ts** — хуки отчётов: `useReportConverse`, `useReportSave`, `useReports`, `useDeleteReport`, `useUpdateReport`, `useUpdateReportSchedule`, `useRunReport`, `useToggleReportPin`, `useReportRuns`, `useReportPromptTemplate`, `useUpdateReportPromptTemplate`, `usePublishReport`, `usePublishedReport`, `usePublishedReports`, `useDeletePublishedReport`, `useChangePublishedReportPassword`, `useAddPublishedReportLink`, `useRemovePublishedReportLink`
 - **src/hooks/useSelectors.ts** — `useDashboardSelectors`, `useCreateSelector`, `useUpdateSelector`, `useDeleteSelector`, `useSelectorOptions`, `useChartColumns`, `useFilterPreview`
@@ -257,7 +259,8 @@ React 18 + TypeScript + Vite + Tailwind CSS
 - **ReferenceCard.tsx** — карточка справочника
 - **charts/ChartRenderer.tsx** — рендер чартов (bar, line, pie, area, scatter) через recharts с поддержкой настроек отображения (legend, grid, axes, line/area/pie параметры). Опциональный проп `fontScale?: number` — масштабирует все текстовые элементы (data labels, ticks, axis labels, legend, pie label, indicator, table) через helper `fs(base) = max(8, round(base * fontScale))`; при `fontScale == null` helper возвращает исходные константы, `IndicatorRenderer` использует `py-8`, `TableRenderer` сохраняет Tailwind `text-sm` на `<table>` — non-TV режим байт-стабилен относительно master. Внутренние `IndicatorRenderer` и `TableRenderer` также принимают `fontScale`
 - **charts/ChartSettingsPanel.tsx** — панель настроек чарта (visual, data format, line/area/pie settings) с PATCH сохранением в chart_config
-- **charts/ChartCard.tsx** — карточка сохранённого чарта (pin, refresh, settings, SQL, embed, delete)
+- **charts/ChartCard.tsx** — карточка сохранённого чарта (pin, refresh, settings, SQL, edit-SQL, embed, delete). Кнопка «Изменить» открывает `SqlEditorModal`
+- **charts/SqlEditorModal.tsx** — модалка редактирования SQL сохранённого чарта: textarea с текущим SQL, кнопка «Предпросмотр» (POST `/charts/execute-sql`) с табличным превью первых 50 строк, AI-панель «Что изменить» (POST `/charts/{id}/refine-sql-ai` — вставляет результат в редактор), кнопка «Сохранить» (PATCH `/charts/{id}/sql`)
 - **charts/IframeCopyButton.tsx** — кнопка "Embed" для копирования iframe HTML
 - **dashboards/PublishModal.tsx** — модалка публикации дашборда (выбор чартов, title, description, refresh interval → пароль + URL)
 - **dashboards/DashboardCard.tsx** — карточка дашборда в списке (open, edit, link, delete)

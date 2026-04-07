@@ -28,28 +28,25 @@ export default function DateRangeSelector({ value, onChange }: Props) {
   }
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex gap-1.5">
-        <div className="flex-1">
-          <label className="text-[10px] text-gray-400 uppercase">{t('selectors.from')}</label>
-          <input
-            type="date"
-            className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-            value={toInputDate(current.from)}
-            onChange={(e) => onChange({ ...current, from: e.target.value || undefined })}
-          />
-        </div>
-        <div className="flex-1">
-          <label className="text-[10px] text-gray-400 uppercase">{t('selectors.to')}</label>
-          <input
-            type="date"
-            className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
-            value={toInputDate(current.to)}
-            onChange={(e) => onChange({ ...current, to: e.target.value || undefined })}
-          />
-        </div>
-      </div>
-      <div className="flex gap-1 flex-wrap">
+    <div className="flex items-center gap-1.5 flex-nowrap">
+      <input
+        type="date"
+        aria-label={t('selectors.from')}
+        title={t('selectors.from')}
+        className="border border-gray-300 rounded px-2 py-1 text-sm w-[130px]"
+        value={toInputDate(current.from)}
+        onChange={(e) => onChange({ ...current, from: e.target.value || undefined })}
+      />
+      <span className="text-xs text-gray-400">–</span>
+      <input
+        type="date"
+        aria-label={t('selectors.to')}
+        title={t('selectors.to')}
+        className="border border-gray-300 rounded px-2 py-1 text-sm w-[130px]"
+        value={toInputDate(current.to)}
+        onChange={(e) => onChange({ ...current, to: e.target.value || undefined })}
+      />
+      <div className="flex gap-1 ml-1">
         {[
           { label: t('selectors.today'), from: 'TODAY', to: 'TODAY' },
           { label: t('selectors.last7Days'), from: 'LAST_7_DAYS', to: 'TODAY' },
@@ -58,7 +55,8 @@ export default function DateRangeSelector({ value, onChange }: Props) {
         ].map((preset) => (
           <button
             key={preset.label}
-            className="px-2 py-0.5 text-[11px] bg-gray-100 hover:bg-gray-200 rounded text-gray-600"
+            type="button"
+            className="px-2 py-1 text-[11px] bg-gray-100 hover:bg-gray-200 rounded text-gray-600 whitespace-nowrap"
             onClick={() => setTokenRange(preset.from, preset.to)}
           >
             {preset.label}

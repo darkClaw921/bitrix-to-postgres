@@ -185,9 +185,21 @@ export interface Translations {
     historyClearAll: string
     historyItemDate: string
     editSql: string
+    editSqlButton: string
     runSql: string
     runningSql: string
     sqlError: string
+    aiRefineSql: string
+    aiRefineSqlButton: string
+    aiGenerating: string
+    resetSql: string
+    preview: string
+    running: string
+    previewResult: string
+    previewTruncated: string
+    previewEmpty: string
+    noChanges: string
+    hasChanges: string
   }
   schema: {
     aiDescription: string

@@ -1120,6 +1120,59 @@ class ChartService:
         logger.info("Chart config updated", chart_id=chart_id)
         return updated
 
+    async def update_chart_sql(
+        self,
+        chart_id: int,
+        new_sql: str,
+        title: str | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """Replace the SQL query of a saved chart.
+
+        Validates the new SQL (SELECT only, allowed tables, LIMIT) and
+        executes it once to ensure it runs, then persists it. Optionally
+        updates ``title`` / ``description`` in the same transaction.
+
+        Raises ``ChartServiceError`` if validation or execution fails.
+        """
+        chart = await self.get_chart_by_id(chart_id)
+        if not chart:
+            raise ChartServiceError(f"Чарт с id={chart_id} не найден")
+
+        # Validate + normalize SQL: same pipeline as generate_chart().
+        settings = get_settings()
+        self.validate_sql_query(new_sql)
+        allowed = await self.get_allowed_tables()
+        self.validate_table_names(new_sql, allowed)
+        safe_sql = self.ensure_limit(new_sql, settings.chart_max_rows)
+
+        # Smoke-test: run it once so we catch syntax/runtime errors before
+        # committing the update (the caller's preview usually already did
+        # this, but we re-run as a safety net).
+        await self.execute_chart_query(safe_sql)
+
+        engine = get_engine()
+        updates: list[str] = ["sql_query = :sql", "updated_at = NOW()"]
+        params: dict[str, Any] = {"id": chart_id, "sql": safe_sql}
+        if title is not None:
+            updates.append("title = :title")
+            params["title"] = title
+        if description is not None:
+            updates.append("description = :description")
+            params["description"] = description
+
+        update_query = text(
+            f"UPDATE ai_charts SET {', '.join(updates)} WHERE id = :id"  # noqa: S608
+        )
+        async with engine.begin() as conn:
+            await conn.execute(update_query, params)
+
+        updated = await self.get_chart_by_id(chart_id)
+        if not updated:
+            raise ChartServiceError(f"Чарт с id={chart_id} не найден после обновления")
+        logger.info("Chart SQL updated", chart_id=chart_id)
+        return updated
+
     async def toggle_pin(self, chart_id: int) -> dict[str, Any]:
         """Toggle the is_pinned flag on a chart."""
         engine = get_engine()

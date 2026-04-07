@@ -14,6 +14,45 @@ from app.infrastructure.database.connection import get_engine
 
 logger = get_logger(__name__)
 
+CHART_SQL_REFINE_PROMPT = """You are a SQL query refactoring assistant for a CRM analytics dashboard.
+You will receive the CURRENT SQL query of an existing chart and a natural-language
+INSTRUCTION describing what the user wants changed. Your job is to return a
+single updated SELECT query that satisfies the instruction.
+
+Available database schema:
+{schema_context}
+
+{bitrix_context}
+
+Current SQL query:
+```sql
+{current_sql}
+```
+
+User instruction (highest priority — this is what to change):
+{instruction}
+
+## Rules
+1. ONLY use SELECT statements — no INSERT, UPDATE, DELETE, DROP, ALTER, CREATE.
+2. ONLY reference tables from the schema above.
+3. Always include LIMIT (max 10000 rows).
+4. Use standard SQL compatible with both PostgreSQL and MySQL.
+5. Preserve the chart's general shape when possible (same aggregate / grouping
+   structure) — change ONLY what the user asked for. Do not rename output
+   columns unless the user asked for it, otherwise the saved chart's
+   chart_config (data_keys, colors) will break.
+6. For aggregations, always use GROUP BY.
+7. MySQL CAST compatibility: use CHAR (not varchar) inside CAST.
+8. MySQL identifier quoting: backticks for aliases with spaces or Cyrillic.
+9. Все сущности из Битрикса обращай по bitrix_id.
+
+## Output format
+Return ONLY a JSON object with a single key, no markdown, no commentary:
+{{
+  "sql_query": "SELECT ..."
+}}
+"""
+
 CHART_SYSTEM_PROMPT = """You are a SQL query and chart configuration generator for a CRM analytics dashboard.
 
 Available database schema:
@@ -458,6 +497,58 @@ class AIService:
 
         logger.info("Chart spec generated", chart_type=spec.get("chart_type"))
         return spec
+
+    async def refine_chart_sql(
+        self,
+        current_sql: str,
+        instruction: str,
+        schema_context: str,
+    ) -> str:
+        """Refine an existing chart's SQL based on a user instruction.
+
+        Args:
+            current_sql: The chart's current ``sql_query`` (saved in the DB).
+            instruction: Free-form description of the change the user wants
+                (e.g. "добавь фильтр по последним 30 дням", "сгруппируй
+                по менеджерам").
+            schema_context: Formatted DB schema (tables, columns, types).
+
+        Returns:
+            The refined SQL string. Chart type / data_keys are NOT touched —
+            the caller should assume the chart config stays the same unless
+            the refined query obviously breaks it.
+        """
+        bitrix_context = await self._get_bitrix_context()
+        system_message = CHART_SQL_REFINE_PROMPT.format(
+            schema_context=schema_context,
+            bitrix_context=bitrix_context,
+            current_sql=current_sql,
+            instruction=instruction,
+        )
+
+        logger.info("Refining chart SQL", instruction=instruction, model=self.model)
+
+        content = await self._complete(
+            system_message,
+            "Верни обновлённый SQL в JSON.",
+            2000,
+        )
+        if not content:
+            raise AIServiceError("AI вернул пустой ответ")
+
+        content = _extract_json(content)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error("Invalid JSON from AI (refine_chart_sql)", content=content)
+            raise AIServiceError("AI вернул невалидный JSON") from e
+
+        new_sql = parsed.get("sql_query") if isinstance(parsed, dict) else None
+        if not isinstance(new_sql, str) or not new_sql.strip():
+            raise AIServiceError("AI не вернул sql_query")
+
+        logger.info("Chart SQL refined", length=len(new_sql))
+        return new_sql.strip()
 
     async def generate_selectors(
         self,

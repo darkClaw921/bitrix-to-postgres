@@ -462,6 +462,24 @@ export const chartsApi = {
   updateConfig: (chartId: number, config: Partial<ChartDisplayConfig>) =>
     api.patch<SavedChart>(`/charts/${chartId}/config`, { config }).then((r) => r.data),
 
+  updateSql: (chartId: number, sqlQuery: string, title?: string, description?: string) =>
+    api
+      .patch<SavedChart>(`/charts/${chartId}/sql`, {
+        sql_query: sqlQuery,
+        ...(title !== undefined ? { title } : {}),
+        ...(description !== undefined ? { description } : {}),
+      })
+      .then((r) => r.data),
+
+  refineSqlWithAi: (chartId: number, instruction: string) =>
+    api
+      .post<{ sql_query: string }>(
+        `/charts/${chartId}/refine-sql-ai`,
+        { instruction },
+        { timeout: AI_REQUEST_TIMEOUT },
+      )
+      .then((r) => r.data),
+
   getPromptTemplate: () =>
     api.get<ChartPromptTemplate>('/charts/prompt-template/bitrix-context').then((r) => r.data),
 

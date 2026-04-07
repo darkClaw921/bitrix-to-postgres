@@ -14,6 +14,9 @@ from app.api.v1.schemas.charts import (
     ChartResponse,
     ChartSaveRequest,
     ChartSpec,
+    ChartSqlRefineRequest,
+    ChartSqlRefineResponse,
+    ChartSqlUpdateRequest,
 )
 from app.config import get_settings
 from app.core.exceptions import AIServiceError, ChartServiceError
@@ -161,6 +164,59 @@ async def update_chart_config(
         return ChartResponse(**chart)
     except ChartServiceError as e:
         raise HTTPException(status_code=404, detail=e.message) from e
+
+
+@router.patch("/{chart_id}/sql", response_model=ChartResponse)
+async def update_chart_sql(
+    chart_id: int, request: ChartSqlUpdateRequest
+) -> ChartResponse:
+    """Replace a saved chart's SQL query (manual or AI-refined)."""
+    try:
+        chart = await chart_service.update_chart_sql(
+            chart_id,
+            request.sql_query,
+            title=request.title,
+            description=request.description,
+        )
+        return ChartResponse(**chart)
+    except ChartServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
+
+
+@router.post("/{chart_id}/refine-sql-ai", response_model=ChartSqlRefineResponse)
+async def refine_chart_sql_ai(
+    chart_id: int, request: ChartSqlRefineRequest
+) -> ChartSqlRefineResponse:
+    """Rewrite a saved chart's SQL via AI based on a natural-language instruction.
+
+    Returns the refined SQL WITHOUT saving. The client should preview the
+    result via ``POST /charts/execute-sql`` and then commit via
+    ``PATCH /charts/{chart_id}/sql``.
+    """
+    chart = await chart_service.get_chart_by_id(chart_id)
+    if not chart:
+        raise HTTPException(status_code=404, detail="Чарт не найден")
+
+    try:
+        schema_desc = await chart_service.get_any_latest_schema_description()
+        if not schema_desc:
+            raise HTTPException(
+                status_code=400,
+                detail="Сначала сгенерируйте описание схемы базы данных (GET /api/v1/schema/describe).",
+            )
+        schema_context = schema_desc["markdown"]
+
+        new_sql = await ai_service.refine_chart_sql(
+            current_sql=chart["sql_query"],
+            instruction=request.instruction,
+            schema_context=schema_context,
+        )
+        return ChartSqlRefineResponse(sql_query=new_sql)
+    except AIServiceError as e:
+        logger.error("AI SQL refine error", error=e.message)
+        raise HTTPException(status_code=502, detail=e.message) from e
+    except ChartServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
 
 
 @router.delete("/{chart_id}")

@@ -99,9 +99,13 @@ app/api/
 | `POST` | `/api/v1/webhooks/bitrix` | Приём webhooks |
 | `POST` | `/api/v1/webhooks/register` | Регистрация в Bitrix24 |
 | `POST` | `/api/v1/charts/generate` | AI-генерация чарта из промпта |
+| `POST` | `/api/v1/charts/execute-sql` | Выполнение raw SQL с валидацией (для preview-редактирования) |
 | `POST` | `/api/v1/charts/save` | Сохранение чарта |
 | `GET` | `/api/v1/charts/list` | Список сохранённых чартов |
 | `GET` | `/api/v1/charts/{id}/data` | Обновление данных чарта |
+| `PATCH` | `/api/v1/charts/{id}/config` | Обновление chart_config (deep merge) |
+| `PATCH` | `/api/v1/charts/{id}/sql` | Ручное обновление sql_query чарта (ChartSqlUpdateRequest: sql_query, title?, description?). Валидирует SELECT-only, allowed_tables, ensure_limit, делает smoke-test через execute_chart_query |
+| `POST` | `/api/v1/charts/{id}/refine-sql-ai` | AI-рефайн SQL по текстовой инструкции пользователя (ChartSqlRefineRequest: instruction → ChartSqlRefineResponse: sql_query). Без сохранения, клиент затем вызывает PATCH /sql |
 | `DELETE` | `/api/v1/charts/{id}` | Удаление чарта |
 | `POST` | `/api/v1/charts/{id}/pin` | Закрепить/открепить чарт |
 | `GET` | `/api/v1/charts/prompt-template/bitrix-context` | Получение промпта для AI генерации чартов (инструкции по работе с Bitrix24) |
@@ -185,6 +189,7 @@ class AIService:
     async def _get_report_context() -> str  # Загружает активный report-промпт из report_prompt_templates
 
     async def generate_chart_spec(prompt: str, schema_context: str) -> dict  # Автоматически подгружает Bitrix-контекст
+    async def refine_chart_sql(current_sql: str, instruction: str, schema_context: str) -> str  # AI-рефайн SQL существующего чарта по текстовой инструкции; использует CHART_SQL_REFINE_PROMPT; возвращает только sql_query
     async def generate_schema_description(schema_context: str) -> str
     async def generate_selectors(charts_context: str, schema_context: str, user_request: str | None = None) -> list[dict]  # AI-генерация селекторов с поддержкой токенов, post_filter и опционального текстового пожелания пользователя. Endpoint generate_selectors дополнительно фильтрует charts по chart_ids перед формированием charts_context
     async def generate_report_step(conversation_history: list[dict], schema_context: str) -> dict
@@ -250,6 +255,8 @@ class ChartService:
     async def get_charts(page, per_page) -> tuple[list[dict], int]
     async def delete_chart(chart_id: int) -> bool
     async def toggle_pin(chart_id: int) -> dict
+    async def update_chart_config(chart_id: int, config_patch: dict) -> dict  # Deep-merge chart_config
+    async def update_chart_sql(chart_id: int, new_sql: str, title?: str, description?: str) -> dict  # Валидирует SELECT-only, allowed_tables, ensure_limit, smoke-test через execute_chart_query, затем UPDATE ai_charts.sql_query (+ опц. title/description)
 
     # CRUD описаний схемы
     async def get_any_latest_schema_description() -> dict | None  # Последнее описание без фильтров (для генерации чартов)
@@ -709,7 +716,8 @@ frontend/src/
 │   ├── charts/
 │   │   ├── ChartRenderer.tsx  # Универсальный рендер чарта (bar/line/pie/area/scatter/funnel/horizontal_bar через Recharts, indicator — KPI-карточка, table — таблица с итогами и сортировкой). Опциональный проп fontScale?: number — масштабирует ticks, axis labels, legend, data labels, pie label, indicator value и table cells через helper fs(base)=max(8, round(base*fontScale)). При fontScale==null — IndicatorRenderer использует py-8, TableRenderer сохраняет text-sm на <table> (non-TV режим байт-стабилен относительно master)
 │   │   ├── ChartSettingsPanel.tsx # Панель настроек отображения чарта (цвета, оси, legend, grid, настройки для каждого типа)
-│   │   ├── ChartCard.tsx      # Карточка сохранённого чарта с действиями
+│   │   ├── ChartCard.tsx      # Карточка сохранённого чарта с действиями (pin/refresh/settings/SQL/edit-SQL/embed/delete). Кнопка "Изменить" открывает SqlEditorModal
+│   │   ├── SqlEditorModal.tsx # Модалка редактирования SQL сохранённого чарта: textarea с текущим SQL, панель AI "Что изменить?" (POST /charts/{id}/refine-sql-ai вставляет результат в редактор), кнопка "Предпросмотр" (POST /charts/execute-sql, таблица первых 50 строк), "Сохранить" (PATCH /charts/{id}/sql)
 │   │   └── PromptEditorModal.tsx  # Модальное окно редактирования Bitrix-промпта для AI (markdown-редактор)
 │   ├── dashboards/
 │   │   ├── DashboardCard.tsx  # Карточка дашборда в списке
@@ -740,7 +748,7 @@ frontend/src/
 │   └── DashboardEditorPage.tsx # Редактор дашборда: grid-layout, override, ссылки, SelectorEditorSection (CRUD фильтров + маппинги + AI генерация). Toolbar кнопка "+ Заголовок" (handleAddHeading через useAddDashboardHeading). Полиморфный рендер dashboard.charts: ветка item_type==='heading' использует EditorHeadingCard (HeadingItem editable + кнопка удаления), остальные — EditorChartCard. gridLayout для heading элементов задаёт minH=1, minW=2, maxH=4 (chart остаётся minW=2, minH=2). Загрузка chart-данных пропускает heading элементы.
 ├── hooks/
 │   ├── useSync.ts             # React Query хуки для синхронизации и справочников
-│   ├── useCharts.ts           # React Query хуки для чартов, схемы, истории генерации и промптов (useChartPromptTemplate, useUpdateChartPromptTemplate)
+│   ├── useCharts.ts           # React Query хуки для чартов, схемы, истории генерации и промптов (useChartPromptTemplate, useUpdateChartPromptTemplate, useUpdateChartConfig, useUpdateChartSql для PATCH /sql, useRefineChartSqlWithAi для POST /refine-sql-ai)
 │   ├── useDashboards.ts       # React Query хуки для CRUD дашбордов, layout, ссылок, паролей. Heading-хуки: useAddDashboardHeading, useUpdateDashboardHeading (инвалидируют ['dashboard', dashboardId])
 │   ├── useSelectors.ts        # React Query хуки для CRUD селекторов, маппингов, опций, AI-генерации, колонок чартов
 │   ├── useAuth.ts             # Хук авторизации

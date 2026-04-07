@@ -3,6 +3,7 @@ import ChartRenderer from './ChartRenderer'
 import ChartSettingsPanel from './ChartSettingsPanel'
 import IframeCopyButton from './IframeCopyButton'
 import ExportButtons from './ExportButtons'
+import SqlEditorModal from './SqlEditorModal'
 import type { SavedChart, ChartDisplayConfig } from '../../services/api'
 import { useChartData, useDeleteChart, useToggleChartPin, useUpdateChartConfig } from '../../hooks/useCharts'
 import { useTranslation } from '../../i18n'
@@ -16,6 +17,7 @@ export default function ChartCard({ chart }: ChartCardProps) {
   const { t } = useTranslation()
   const [showSql, setShowSql] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showSqlEditor, setShowSqlEditor] = useState(false)
   const { data: freshData, refetch, isFetching } = useChartData(chart.id)
   const deleteChart = useDeleteChart()
   const togglePin = useToggleChartPin()
@@ -54,61 +56,83 @@ export default function ChartCard({ chart }: ChartCardProps) {
   const cardInline = getCardInlineStyle(config.cardStyle)
   const titleClass = getTitleSizeClass(config.general?.titleFontSize)
 
+  // Force the toolbar visible when a panel is open; otherwise the user would
+  // need to hover the card just to find the button that closes it.
+  const forceToolbarVisible = showSettings || showSql
+  const toolbarVisibility = forceToolbarVisible
+    ? 'opacity-100'
+    : 'opacity-0 group-hover:opacity-100'
+
   return (
-    <div className={cardClasses} style={cardInline}>
-      <div className="flex justify-end mb-2">
-        <div className="flex space-x-1">
-          <button
-            onClick={() => togglePin.mutate(chart.id)}
-            className={`p-1.5 rounded text-sm ${
-              chart.is_pinned
-                ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-            }`}
-            title={chart.is_pinned ? t('charts.unpin') : t('charts.pin')}
-          >
-            {chart.is_pinned ? t('charts.pinned') : t('charts.pin')}
-          </button>
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="p-1.5 rounded text-sm bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-50"
-            title={t('charts.refreshData')}
-          >
-            {isFetching ? '...' : t('charts.refresh')}
-          </button>
-          <IframeCopyButton chartId={chart.id} />
-          {chartData && <ExportButtons data={chartData} title={chart.title} />}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`p-1.5 rounded text-sm ${
-              showSettings
-                ? 'bg-blue-100 text-blue-700'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-            }`}
-            title={t('charts.chartSettings')}
-          >
-            {t('charts.settings')}
-          </button>
-          <button
-            onClick={() => setShowSql(!showSql)}
-            className="p-1.5 rounded text-sm bg-gray-100 text-gray-500 hover:bg-gray-200"
-            title={t('charts.showSql')}
-          >
-            {t('charts.sql')}
-          </button>
-          <button
-            onClick={() => {
-              if (confirm(t('editor.confirmDeleteChart'))) deleteChart.mutate(chart.id)
-            }}
-            className="p-1.5 rounded text-sm bg-red-50 text-red-500 hover:bg-red-100"
-            title={t('common.delete')}
-          >
-            {t('common.delete')}
-          </button>
+    <div className={`${cardClasses} group relative`} style={cardInline}>
+      <div
+        className={`absolute top-3 right-3 ${toolbarVisibility} transition-opacity duration-150 z-10`}
+      >
+        <div className="flex flex-col gap-1 bg-white/90 backdrop-blur-sm rounded p-1 shadow-sm">
+          {/* Row 1 — display & export actions */}
+          <div className="flex space-x-1 justify-end">
+            <button
+              onClick={() => togglePin.mutate(chart.id)}
+              className={`p-1.5 rounded text-sm ${
+                chart.is_pinned
+                  ? 'bg-yellow-100 text-yellow-700'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+              title={chart.is_pinned ? t('charts.unpin') : t('charts.pin')}
+            >
+              {chart.is_pinned ? t('charts.pinned') : t('charts.pin')}
+            </button>
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="p-1.5 rounded text-sm bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-50"
+              title={t('charts.refreshData')}
+            >
+              {isFetching ? '...' : t('charts.refresh')}
+            </button>
+            <IframeCopyButton chartId={chart.id} />
+            {chartData && <ExportButtons data={chartData} title={chart.title} />}
+          </div>
+          {/* Row 2 — edit & delete actions */}
+          <div className="flex space-x-1 justify-end">
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className={`p-1.5 rounded text-sm ${
+                showSettings
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+              title={t('charts.chartSettings')}
+            >
+              {t('charts.settings')}
+            </button>
+            <button
+              onClick={() => setShowSql(!showSql)}
+              className="p-1.5 rounded text-sm bg-gray-100 text-gray-500 hover:bg-gray-200"
+              title={t('charts.showSql')}
+            >
+              {t('charts.sql')}
+            </button>
+            <button
+              onClick={() => setShowSqlEditor(true)}
+              className="p-1.5 rounded text-sm bg-blue-50 text-blue-600 hover:bg-blue-100"
+              title={t('charts.editSql')}
+            >
+              {t('charts.editSqlButton')}
+            </button>
+            <button
+              onClick={() => {
+                if (confirm(t('editor.confirmDeleteChart'))) deleteChart.mutate(chart.id)
+              }}
+              className="p-1.5 rounded text-sm bg-red-50 text-red-500 hover:bg-red-100"
+              title={t('common.delete')}
+            >
+              {t('common.delete')}
+            </button>
+          </div>
         </div>
       </div>
-      <div className="mb-3">
+      <div className="mb-3 pr-2">
         <h3 className={`font-semibold ${titleClass}`}>{chart.title}</h3>
         {chart.description && (
           <p className="text-sm text-gray-500 mt-1">{chart.description}</p>
@@ -150,6 +174,14 @@ export default function ChartCard({ chart }: ChartCardProps) {
         )}
         <span>{new Date(chart.created_at).toLocaleDateString()}</span>
       </div>
+
+      {showSqlEditor && (
+        <SqlEditorModal
+          chart={chart}
+          onClose={() => setShowSqlEditor(false)}
+          onSaved={() => refetch()}
+        />
+      )}
     </div>
   )
 }

@@ -56,6 +56,36 @@ class ChartConfigUpdateRequest(BaseModel):
     )
 
 
+class ChartSqlUpdateRequest(BaseModel):
+    """Request to replace a saved chart's SQL query (manual edit).
+
+    The backend validates the new SQL (SELECT-only, allowed tables, LIMIT) and
+    executes it once to verify it works before committing the update.
+    """
+
+    sql_query: str = Field(..., min_length=5, max_length=5000)
+    title: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+
+
+class ChartSqlRefineRequest(BaseModel):
+    """Request to refine an existing chart's SQL via AI.
+
+    The caller provides a free-form instruction describing what to change
+    (e.g. "добавь фильтр по последним 30 дням" or "сгруппируй по менеджерам").
+    Returns the refined SQL without saving — the client previews/edits and
+    then calls PATCH ``/{chart_id}/sql`` to commit.
+    """
+
+    instruction: str = Field(..., min_length=3, max_length=2000)
+
+
+class ChartSqlRefineResponse(BaseModel):
+    """Response from AI SQL refinement."""
+
+    sql_query: str
+
+
 # --- Chart spec (from AI) ---
 
 

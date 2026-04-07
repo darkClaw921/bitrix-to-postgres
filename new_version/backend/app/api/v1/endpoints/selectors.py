@@ -194,6 +194,16 @@ async def generate_selectors(
             status_code=400, detail="В дашборде нет чартов для анализа"
         )
 
+    # Restrict to user-selected charts if chart_ids is provided.
+    if request and request.chart_ids:
+        allowed_ids = set(request.chart_ids)
+        charts = [c for c in charts if c.get("id") in allowed_ids]
+        if not charts:
+            raise HTTPException(
+                status_code=400,
+                detail="Ни один из выбранных чартов не найден в дашборде",
+            )
+
     # Build a compact charts_context: id, title, sql, columns, tables.
     charts_lines: list[str] = []
     for c in charts:

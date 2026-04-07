@@ -169,9 +169,14 @@ class GenerateSelectorsRequest(BaseModel):
     ``user_request`` lets the user describe in natural language which selectors
     they want (e.g. "нужны фильтры по дате создания и менеджеру"). It is passed
     to the AI as a high-priority hint.
+
+    ``chart_ids`` restricts selector generation to a subset of dashboard charts
+    (``dashboard_charts.id`` values). When ``None`` or empty, all charts of the
+    dashboard are used.
     """
 
     user_request: Optional[str] = Field(None, max_length=2000)
+    chart_ids: Optional[list[int]] = None
 
 
 class GenerateSelectorsResponse(BaseModel):

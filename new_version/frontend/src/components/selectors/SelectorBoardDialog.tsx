@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   ReactFlow,
+  ReactFlowProvider,
   addEdge,
   useNodesState,
   useEdgesState,
+  useUpdateNodeInternals,
   Controls,
   Background,
   MarkerType,
@@ -55,7 +57,18 @@ interface StaticValue {
 
 const SELECTOR_NODE_ID = 'selector-node'
 
-export default function SelectorBoardDialog({
+export default function SelectorBoardDialog(props: Props) {
+  // useUpdateNodeInternals (and other React Flow hooks that talk to the
+  // internal store) require a ReactFlowProvider somewhere up the tree.
+  // Wrapping the inner component here keeps the public API unchanged.
+  return (
+    <ReactFlowProvider>
+      <SelectorBoardDialogInner {...props} />
+    </ReactFlowProvider>
+  )
+}
+
+function SelectorBoardDialogInner({
   dashboardId,
   charts,
   selector,
@@ -116,6 +129,33 @@ export default function SelectorBoardDialog({
     chartNode: ChartNode,
   }), [])
 
+  // AI-generated mappings often reference columns that are NOT in the chart's
+  // SELECT output (e.g. a `date_range` filter targeting `date_create` on the
+  // underlying table even though the chart only SELECTs aggregates). The
+  // backend applies such filters via ChartService.apply_filters regardless,
+  // but the visual board can only render an edge when a matching target
+  // <Handle> exists. To make existing mappings visible, we augment each
+  // chart's column list with any extra columns coming from saved mappings —
+  // the handle gets created and the edge attaches.
+  const getColumnsForChart = useCallback(
+    (dcId: number): { columns: string[]; extras: Set<string> } => {
+      const fromSelect = chartColumnsCache[dcId] || []
+      const extras = new Set<string>()
+      if (selector?.mappings) {
+        for (const m of selector.mappings) {
+          if (m.dashboard_chart_id === dcId && !fromSelect.includes(m.target_column)) {
+            extras.add(m.target_column)
+          }
+        }
+      }
+      return {
+        columns: extras.size > 0 ? [...fromSelect, ...extras] : fromSelect,
+        extras,
+      }
+    },
+    [chartColumnsCache, selector?.mappings],
+  )
+
   // Build initial nodes
   const buildInitialNodes = useCallback((): Node[] => {
     const selectorNode: Node = {
@@ -129,20 +169,24 @@ export default function SelectorBoardDialog({
       },
     }
 
-    const chartNodes: Node[] = charts.map((dc, i) => ({
-      id: `chart-${dc.id}`,
-      type: 'chartNode',
-      position: { x: 500, y: 30 + i * 220 },
-      data: {
-        chartTitle: dc.title_override || dc.chart_title || `Chart #${dc.chart_id}`,
-        dcId: dc.id,
-        columns: chartColumnsCache[dc.id] || [],
-        loading: !chartColumnsCache[dc.id],
-      },
-    }))
+    const chartNodes: Node[] = charts.map((dc, i) => {
+      const { columns, extras } = getColumnsForChart(dc.id)
+      return {
+        id: `chart-${dc.id}`,
+        type: 'chartNode',
+        position: { x: 500, y: 30 + i * 220 },
+        data: {
+          chartTitle: dc.title_override || dc.chart_title || `Chart #${dc.chart_id}`,
+          dcId: dc.id,
+          columns,
+          extraColumns: extras,
+          loading: !chartColumnsCache[dc.id],
+        },
+      }
+    })
 
     return [selectorNode, ...chartNodes]
-  }, [charts, label, selectorType, operator, chartColumnsCache])
+  }, [charts, label, selectorType, operator, chartColumnsCache, getColumnsForChart])
 
   // Edges start empty. We populate them from `selector.mappings` only after
   // the referenced charts have loaded their columns — otherwise ReactFlow
@@ -151,6 +195,12 @@ export default function SelectorBoardDialog({
   // edges, so the user sees no connections at all.
   const [nodes, setNodes, onNodesChange] = useNodesState(buildInitialNodes())
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+
+  // Force ReactFlow to re-measure node handles when chart columns load.
+  // Without this, handles added dynamically (after node mount) are not
+  // registered in ReactFlow's internal store, so edges silently fail to
+  // attach to them and the canvas appears empty.
+  const updateNodeInternals = useUpdateNodeInternals()
 
   // Edge type with callbacks
   const edgeTypesObj: EdgeTypes = useMemo(() => ({
@@ -172,24 +222,41 @@ export default function SelectorBoardDialog({
     })
   }, [charts, dashboardId])
 
-  // Update chart nodes when columns load
+  // Update chart nodes when columns load (or when mappings-derived extras change)
   useEffect(() => {
+    const refreshedNodeIds: string[] = []
     setNodes((nds) =>
       nds.map((n) => {
         if (n.type === 'chartNode') {
           const dcId = (n.data as { dcId: number }).dcId
-          const cols = chartColumnsCache[dcId]
-          if (cols) {
+          const cached = chartColumnsCache[dcId]
+          if (!cached) return n
+          const { columns, extras } = getColumnsForChart(dcId)
+          const prevCols = ((n.data as { columns?: string[] }).columns) || []
+          const changed =
+            prevCols.length !== columns.length ||
+            prevCols.some((c, i) => c !== columns[i])
+          if (changed || (n.data as { loading?: boolean }).loading !== false) {
+            refreshedNodeIds.push(n.id)
             return {
               ...n,
-              data: { ...n.data, columns: cols, loading: false },
+              data: { ...n.data, columns, extraColumns: extras, loading: false },
             }
           }
         }
         return n
       }),
     )
-  }, [chartColumnsCache, setNodes])
+    // Tell ReactFlow about the newly-rendered <Handle> elements; otherwise
+    // edges built from saved mappings don't find them and stay invisible.
+    if (refreshedNodeIds.length > 0) {
+      // Defer one frame so the DOM commit (with the new handles) lands
+      // before ReactFlow re-measures the node.
+      requestAnimationFrame(() => {
+        refreshedNodeIds.forEach((id) => updateNodeInternals(id))
+      })
+    }
+  }, [chartColumnsCache, setNodes, updateNodeInternals, getColumnsForChart])
 
   // Update selector node when config changes
   useEffect(() => {
@@ -279,12 +346,21 @@ export default function SelectorBoardDialog({
         },
       })),
     )
+
+    // Force ReactFlow to re-measure each referenced chart node so the
+    // freshly-rendered <Handle> elements get registered in the internal
+    // store. Without this, edges added to dynamically-created handles are
+    // silently dropped and the canvas appears empty.
+    requestAnimationFrame(() => {
+      referencedChartIds.forEach((id) => updateNodeInternals(`chart-${id}`))
+    })
   }, [
     chartColumnsCache,
     selector?.mappings,
     setEdges,
     handleDeleteEdge,
     handleConfigureEdge,
+    updateNodeInternals,
   ])
 
   // Handle new connection

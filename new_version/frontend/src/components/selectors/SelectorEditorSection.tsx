@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from '../../i18n'
 import {
   useDashboardSelectors,
@@ -40,6 +40,34 @@ export default function SelectorEditorSection({ dashboardId, charts }: Props) {
   const [acceptedSet, setAcceptedSet] = useState<Set<number>>(new Set())
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [aiUserRequest, setAiUserRequest] = useState('')
+  const [aiSelectedChartIds, setAiSelectedChartIds] = useState<Set<number>>(new Set())
+
+  // Only real charts are eligible for AI selector generation (headings are excluded).
+  const eligibleCharts = useMemo(
+    () => charts.filter((c) => c.item_type !== 'heading'),
+    [charts],
+  )
+
+  // When the AI panel opens or the list of eligible charts changes,
+  // default to "all charts selected".
+  useEffect(() => {
+    if (aiPanelOpen) {
+      setAiSelectedChartIds(new Set(eligibleCharts.map((c) => c.id)))
+    }
+  }, [aiPanelOpen, eligibleCharts])
+
+  const toggleAiChart = (dcId: number) => {
+    setAiSelectedChartIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(dcId)) next.delete(dcId)
+      else next.add(dcId)
+      return next
+    })
+  }
+
+  const selectAllAiCharts = () =>
+    setAiSelectedChartIds(new Set(eligibleCharts.map((c) => c.id)))
+  const clearAllAiCharts = () => setAiSelectedChartIds(new Set())
 
   const handleCreate = () => {
     setEditingSelector(null)
@@ -98,13 +126,23 @@ export default function SelectorEditorSection({ dashboardId, charts }: Props) {
   }
 
   const handleAiGenerate = async () => {
+    if (aiSelectedChartIds.size === 0) {
+      setAiError('Выберите хотя бы один чарт для генерации селекторов')
+      return
+    }
     setAiLoading(true)
     setAiError(null)
     setAiPreview(null)
     try {
+      // If user selected all eligible charts, omit chart_ids — backend will use all.
+      const allSelected =
+        eligibleCharts.length > 0 &&
+        aiSelectedChartIds.size === eligibleCharts.length
+      const chartIds = allSelected ? undefined : Array.from(aiSelectedChartIds)
       const res = await dashboardsApi.generateSelectors(
         dashboardId,
         aiUserRequest.trim() || undefined,
+        chartIds,
       )
       setAiPreview(res.selectors || [])
       setAcceptedSet(new Set(res.selectors?.map((_, i) => i) || []))
@@ -190,13 +228,74 @@ export default function SelectorEditorSection({ dashboardId, charts }: Props) {
             maxLength={2000}
             className="w-full px-2 py-1.5 text-sm border border-purple-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
           />
+
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-purple-700">
+                Чарты для генерации селекторов
+              </label>
+              <div className="flex items-center gap-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={selectAllAiCharts}
+                  className="text-purple-700 hover:underline"
+                >
+                  Выбрать все
+                </button>
+                <span className="text-gray-300">|</span>
+                <button
+                  type="button"
+                  onClick={clearAllAiCharts}
+                  className="text-purple-700 hover:underline"
+                >
+                  Снять все
+                </button>
+              </div>
+            </div>
+            {eligibleCharts.length === 0 ? (
+              <div className="text-[11px] text-gray-500 px-2 py-1.5 bg-white border border-purple-200 rounded">
+                В дашборде нет чартов, доступных для генерации
+              </div>
+            ) : (
+              <div className="max-h-[180px] overflow-y-auto bg-white border border-purple-200 rounded p-2 space-y-1">
+                {eligibleCharts.map((c) => {
+                  const checked = aiSelectedChartIds.has(c.id)
+                  const title = c.title_override || c.chart_title || `Chart #${c.id}`
+                  return (
+                    <label
+                      key={c.id}
+                      className="flex items-center gap-2 text-xs cursor-pointer hover:bg-purple-50 px-1 py-0.5 rounded"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleAiChart(c.id)}
+                      />
+                      <span className="truncate flex-1" title={title}>
+                        {title}
+                      </span>
+                      {c.chart_type && (
+                        <span className="text-[10px] text-gray-400 uppercase">
+                          {c.chart_type}
+                        </span>
+                      )}
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+            <div className="text-[11px] text-gray-500 mt-1">
+              По умолчанию выбраны все чарты. Выбрано: {aiSelectedChartIds.size} / {eligibleCharts.length}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between mt-2">
             <div className="text-[11px] text-gray-500">
               Если оставить пустым — AI сам подберёт наиболее полезные фильтры. {aiUserRequest.length}/2000
             </div>
             <button
               onClick={handleAiGenerate}
-              disabled={aiLoading}
+              disabled={aiLoading || aiSelectedChartIds.size === 0}
               className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
             >
               {aiLoading ? 'Генерация...' : 'Сгенерировать'}

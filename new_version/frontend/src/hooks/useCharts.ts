@@ -75,6 +75,36 @@ export function useUpdateChartConfig() {
   })
 }
 
+export function useUpdateChartSql() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      chartId,
+      sqlQuery,
+      title,
+      description,
+    }: {
+      chartId: number
+      sqlQuery: string
+      title?: string
+      description?: string
+    }) => chartsApi.updateSql(chartId, sqlQuery, title, description),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['savedCharts'] })
+      queryClient.invalidateQueries({ queryKey: ['chartData', variables.chartId] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
+export function useRefineChartSqlWithAi() {
+  return useMutation({
+    mutationFn: ({ chartId, instruction }: { chartId: number; instruction: string }) =>
+      chartsApi.refineSqlWithAi(chartId, instruction),
+  })
+}
+
 export function useSchemaDescription() {
   return useQuery({
     queryKey: ['schemaDescription'],

@@ -189,49 +189,70 @@ export default function SelectorBar({
 
   if (selectors.length === 0) return null
 
+  // Selectors are laid out in a single horizontal row (wrapping only when
+  // the viewport can't fit them). Per-type widths are chosen so every
+  // selector sits on one line — date_range is wider because it has to host
+  // from/to inputs + four preset chips, while dropdown/text are narrow.
+  const typeClass = (sel: DashboardSelector): string => {
+    switch (sel.selector_type) {
+      case 'date_range':
+        return 'flex-shrink-0'
+      case 'single_date':
+        return 'w-[150px] flex-shrink-0'
+      case 'dropdown':
+      case 'multi_select':
+        return 'w-[200px] flex-shrink-0'
+      case 'text':
+      default:
+        return 'w-[180px] flex-shrink-0'
+    }
+  }
+
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-3 mb-4">
-      <div className="flex flex-wrap gap-3 items-end">
+    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 mb-4">
+      <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
         {selectors.map((sel) => (
-          <div key={sel.id} className="min-w-[160px] max-w-[240px] flex-shrink-0">
-            <label className="block text-xs text-gray-500 mb-1">
+          <div key={sel.id} className={`flex items-center gap-2 ${typeClass(sel)}`}>
+            <label className="text-xs text-gray-500 whitespace-nowrap">
               {sel.label}
               {sel.is_required && <span className="text-red-500 ml-0.5">*</span>}
             </label>
-            {sel.selector_type === 'dropdown' && (
-              <DropdownSelector
-                options={options[sel.id] || []}
-                value={draft[sel.name] ?? null}
-                onChange={(v) => updateDraft(sel, v)}
-                loading={loadingOpts}
-              />
-            )}
-            {sel.selector_type === 'multi_select' && (
-              <MultiSelectSelector
-                options={options[sel.id] || []}
-                value={(draft[sel.name] as unknown[]) || []}
-                onChange={(v) => updateDraft(sel, v)}
-                loading={loadingOpts}
-              />
-            )}
-            {sel.selector_type === 'date_range' && (
-              <DateRangeSelector
-                value={(draft[sel.name] as { from?: string; to?: string }) || null}
-                onChange={(v) => updateDraft(sel, v)}
-              />
-            )}
-            {sel.selector_type === 'single_date' && (
-              <SingleDateSelector
-                value={(draft[sel.name] as string) || null}
-                onChange={(v) => updateDraft(sel, v)}
-              />
-            )}
-            {sel.selector_type === 'text' && (
-              <TextSelector
-                value={(draft[sel.name] as string) || null}
-                onChange={(v) => updateDraft(sel, v)}
-              />
-            )}
+            <div className="flex-1 min-w-0">
+              {sel.selector_type === 'dropdown' && (
+                <DropdownSelector
+                  options={options[sel.id] || []}
+                  value={draft[sel.name] ?? null}
+                  onChange={(v) => updateDraft(sel, v)}
+                  loading={loadingOpts}
+                />
+              )}
+              {sel.selector_type === 'multi_select' && (
+                <MultiSelectSelector
+                  options={options[sel.id] || []}
+                  value={(draft[sel.name] as unknown[]) || []}
+                  onChange={(v) => updateDraft(sel, v)}
+                  loading={loadingOpts}
+                />
+              )}
+              {sel.selector_type === 'date_range' && (
+                <DateRangeSelector
+                  value={(draft[sel.name] as { from?: string; to?: string }) || null}
+                  onChange={(v) => updateDraft(sel, v)}
+                />
+              )}
+              {sel.selector_type === 'single_date' && (
+                <SingleDateSelector
+                  value={(draft[sel.name] as string) || null}
+                  onChange={(v) => updateDraft(sel, v)}
+                />
+              )}
+              {sel.selector_type === 'text' && (
+                <TextSelector
+                  value={(draft[sel.name] as string) || null}
+                  onChange={(v) => updateDraft(sel, v)}
+                />
+              )}
+            </div>
           </div>
         ))}
 
@@ -239,7 +260,7 @@ export default function SelectorBar({
           {!autoApply && (
             <button
               onClick={handleApply}
-              className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
             >
               {t('selectors.applyFilters')}
             </button>
@@ -247,7 +268,7 @@ export default function SelectorBar({
           {hasActiveFilters && (
             <button
               onClick={handleReset}
-              className="px-3 py-1.5 text-gray-500 text-sm rounded border border-gray-300 hover:bg-gray-50 transition-colors"
+              className="px-3 py-1 text-gray-500 text-sm rounded border border-gray-300 hover:bg-gray-50 transition-colors"
             >
               {t('selectors.resetFilters')}
             </button>

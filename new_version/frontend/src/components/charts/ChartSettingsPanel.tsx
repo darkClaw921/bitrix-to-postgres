@@ -29,7 +29,7 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
     color: '#1f2937',
     decimals: undefined as number | undefined,
     format: undefined as 'number' | 'currency' | 'percent' | 'compact' | undefined,
-    currencySymbol: '$',
+    currencySymbol: '₽',
     autoFit: true,
   })
   const [table, setTable] = useState(config.table ?? { showColumnTotals: false, showRowTotals: false, sortable: true, defaultSortDirection: 'asc' as const, pageSize: 0 })
@@ -349,8 +349,8 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
                   type="text"
                   maxLength={4}
                   className="border rounded px-2 py-0.5 text-xs"
-                  placeholder="$"
-                  value={indicator.currencySymbol ?? '$'}
+                  placeholder="₽"
+                  value={indicator.currencySymbol ?? '₽'}
                   onChange={(e) => setIndicator({ ...indicator, currencySymbol: e.target.value })}
                 />
               </label>

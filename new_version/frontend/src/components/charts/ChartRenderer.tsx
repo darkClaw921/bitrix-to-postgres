@@ -77,7 +77,7 @@ function formatIndicatorNumber(
       ? { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
       : {}
   const formatted = value.toLocaleString(undefined, opts)
-  if (format === 'currency') return `${currencySymbol || '$'}${formatted}`
+  if (format === 'currency') return `${currencySymbol || '₽'}${formatted}`
   if (format === 'percent') return `${formatted}%`
   return formatted
 }

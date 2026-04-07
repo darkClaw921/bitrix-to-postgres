@@ -349,7 +349,7 @@ export const ru: Translations = {
     numberFormat: 'Формат числа:',
     formatDefault: 'По умолчанию',
     formatNumber: 'Число (1 234,56)',
-    formatCurrency: 'Валюта ($1 234,56)',
+    formatCurrency: 'Валюта (₽1 234,56)',
     formatPercent: 'Процент (12,5%)',
     formatCompact: 'Сокращённый (1,2 K / 3,4 M)',
     decimalPlaces: 'Знаков после запятой:',

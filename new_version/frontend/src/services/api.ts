@@ -254,7 +254,7 @@ export interface ChartDisplayConfig {
     // Number formatting
     decimals?: number  // 0..6, default = original locale formatting
     format?: 'number' | 'currency' | 'percent' | 'compact'  // compact = K/M/B abbreviation
-    currencySymbol?: string  // used when format='currency', default '$'
+    currencySymbol?: string  // used when format='currency', default '₽'
     autoFit?: boolean  // when true, scale font down so the value always fits the cell
   }
   // table

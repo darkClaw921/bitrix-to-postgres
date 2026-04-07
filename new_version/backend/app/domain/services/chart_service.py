@@ -770,17 +770,34 @@ class ChartService:
         )
 
         if top_where is not None:
-            # Append AND after the existing top-level WHERE conditions, just
-            # before the next top-level boundary keyword (GROUP BY/ORDER BY/...).
+            # Append the new conditions to the existing top-level WHERE, but
+            # WRAP THE EXISTING CONDITIONS IN PARENTHESES FIRST. SQL operator
+            # precedence puts AND above OR, so appending " AND new_cond" to a
+            # WHERE that contains a top-level OR (e.g. "WHERE a = 1 OR b = 2")
+            # would parse as "a = 1 OR (b = 2 AND new_cond)" — the new filter
+            # silently wouldn't apply to the first branch of the OR. Wrapping
+            # the original conditions in parens preserves the intended
+            # semantics regardless of how they're composed.
             if top_insert_before is not None and top_insert_before > top_where:
-                insert_pos = top_insert_before
-                modified_sql = (
-                    sql[:insert_pos].rstrip()
-                    + f" AND {where_clause} "
-                    + sql[insert_pos:]
-                )
+                where_end = top_insert_before
+                suffix = sql[where_end:]
             else:
-                modified_sql = sql.rstrip().rstrip(";") + f" AND {where_clause}"
+                stripped = sql.rstrip().rstrip(";")
+                where_end = len(stripped)
+                suffix = sql[where_end:]
+
+            # sql[top_where:top_where+5] is "WHERE" (case-insensitive); strip
+            # the keyword and whitespace to get just the existing conditions.
+            existing_conditions = sql[top_where + 5:where_end].strip()
+            prefix = sql[:top_where].rstrip()
+            new_where = (
+                f"WHERE ({existing_conditions}) AND {where_clause}"
+                if existing_conditions
+                else f"WHERE {where_clause}"
+            )
+            modified_sql = f"{prefix} {new_where}"
+            if suffix:
+                modified_sql += f" {suffix.lstrip()}"
         else:
             # No top-level WHERE — insert one before the next boundary keyword.
             if top_insert_before is not None:

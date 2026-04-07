@@ -649,6 +649,11 @@ export const ru: Translations = {
     clickEdgeToConfig: 'Нажмите на связь для настройки',
     deleteMapping: 'Удалить связь',
     noMappings: 'Нет связей. Перетащите от селектора к колонке графика.',
+    addChartMapping: 'Добавить чарт',
+    selectChart: '-- Выберите чарт --',
+    selectColumn: '-- Выберите поле --',
+    addMapping: 'Добавить',
+    confirmDeleteMapping: 'Удалить эту привязку чарта?',
   },
   footer: {
     version: 'Версия UI',

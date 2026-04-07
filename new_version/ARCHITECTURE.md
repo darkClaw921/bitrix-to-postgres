@@ -123,7 +123,7 @@ app/api/
 | `POST` | `/api/v1/dashboards/{id}/selectors/{sid}/mappings` | Добавление маппинга (селектор → чарт + колонка) |
 | `DELETE` | `/api/v1/dashboards/{id}/selectors/{sid}/mappings/{mid}` | Удаление маппинга |
 | `GET` | `/api/v1/dashboards/{id}/selectors/{sid}/options` | Получение опций для dropdown/multi_select |
-| `POST` | `/api/v1/dashboards/{id}/selectors/generate` | AI-генерация селекторов на основе SQL-запросов чартов |
+| `POST` | `/api/v1/dashboards/{id}/selectors/generate` | AI-генерация селекторов на основе SQL-запросов чартов. Body: GenerateSelectorsRequest (user_request?, chart_ids? — список dashboard_chart_id для ограничения генерации; пусто/null = все чарты дашборда) |
 | `GET` | `/api/v1/dashboards/{id}/charts/{dc_id}/columns` | Получение списка колонок из SQL-запроса чарта |
 | `POST` | `/api/v1/dashboards/{id}/headings` | Создание heading-элемента в дашборде (HeadingCreateRequest → DashboardChartResponse, item_type='heading') |
 | `PUT` | `/api/v1/dashboards/{id}/headings/{dc_id}` | Обновление heading_config существующего heading-элемента (HeadingUpdateRequest → DashboardChartResponse) |
@@ -186,7 +186,7 @@ class AIService:
 
     async def generate_chart_spec(prompt: str, schema_context: str) -> dict  # Автоматически подгружает Bitrix-контекст
     async def generate_schema_description(schema_context: str) -> str
-    async def generate_selectors(charts_context: str, schema_context: str, user_request: str | None = None) -> list[dict]  # AI-генерация селекторов с поддержкой токенов, post_filter и опционального текстового пожелания пользователя
+    async def generate_selectors(charts_context: str, schema_context: str, user_request: str | None = None) -> list[dict]  # AI-генерация селекторов с поддержкой токенов, post_filter и опционального текстового пожелания пользователя. Endpoint generate_selectors дополнительно фильтрует charts по chart_ids перед формированием charts_context
     async def generate_report_step(conversation_history: list[dict], schema_context: str) -> dict
     async def analyze_report_data(report_title, sql_results, analysis_prompt, ...) -> tuple[str, str]
 ```
@@ -750,7 +750,7 @@ frontend/src/
 │   ├── dateTokens.ts          # Зеркало backend date_tokens.py: DATE_TOKENS, resolveDateToken, resolveFilterValue, isDateOnly, isDateToken, tokenLabel
 │   └── clipboard.ts           # copyToClipboard(text): обёртка над navigator.clipboard.writeText с fallback на document.execCommand('copy') через off-screen textarea — работает на HTTP и в браузерах без Clipboard API
 ├── services/
-│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi, dashboardsApi, publicApi). Типы DashboardSelector, SelectorMapping (с post_filter_resolve_*), LabelResolver, FilterValue. Полиморфный DashboardChart (item_type='chart'|'heading', chart_id?, heading_config?). Heading-типы: HeadingConfig (text, level 1-6, align, color, bg_color, divider), HeadingCreateRequest, HeadingUpdateRequest. Endpoints: dashboardsApi.generateSelectors, dashboardsApi.addHeading, dashboardsApi.updateHeading, publicApi.getLinkedPublicSelectorOptionsBatch
+│   └── api.ts                 # Axios клиент, типы, API-объекты (syncApi, referencesApi, chartsApi, schemaApi, dashboardsApi, publicApi). Типы DashboardSelector, SelectorMapping (с post_filter_resolve_*), LabelResolver, FilterValue. Полиморфный DashboardChart (item_type='chart'|'heading', chart_id?, heading_config?). Heading-типы: HeadingConfig (text, level 1-6, align, color, bg_color, divider), HeadingCreateRequest, HeadingUpdateRequest. Endpoints: dashboardsApi.generateSelectors(dashboardId, userRequest?, chartIds?) — chartIds ограничивает AI-генерацию подмножеством чартов, dashboardsApi.addHeading, dashboardsApi.updateHeading, publicApi.getLinkedPublicSelectorOptionsBatch
 └── store/
     ├── authStore.ts           # Zustand store авторизации
     └── syncStore.ts           # Zustand store синхронизации

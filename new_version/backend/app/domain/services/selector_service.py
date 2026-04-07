@@ -606,20 +606,32 @@ class SelectorService:
         }
         where_clause = op_map.get(operator, f"{col_ref} = '{sample_value}'")
 
-        # Build filtered SQL using apply_filters and then substitute params
+        # Build filtered SQL using apply_filters and then substitute params.
+        # The value shape must match what _build_condition expects for this
+        # operator, otherwise the condition is silently dropped and the
+        # preview shows the original SQL unchanged.
+        if operator in ("in", "not_in"):
+            sample_for_filter: Any = [sample_value]
+        elif operator == "between":
+            sample_for_filter = {"from": sample_value, "to": sample_value}
+        else:
+            sample_for_filter = sample_value
+
         filters = [{
             "column": target_column,
             "operator": operator,
-            "value": sample_value,
+            "value": sample_for_filter,
             "table": target_table,
             "param_prefix": "pv0",
         }]
         filtered_sql, _ = ChartService.apply_filters(original_sql, filters)
-        # Replace bind params with literal sample values for preview
-        filtered_sql = filtered_sql.replace(":pv0", f"'{sample_value}'")
+        # Replace bind params with literal sample values for preview.
+        # Order matters: replace the longer, more specific names first so the
+        # shorter ":pv0" substring doesn't accidentally chew through ":pv0_from".
         filtered_sql = filtered_sql.replace(":pv0_from", f"'{sample_value}'")
         filtered_sql = filtered_sql.replace(":pv0_to", f"'{sample_value}'")
         filtered_sql = filtered_sql.replace(":pv0_0", f"'{sample_value}'")
+        filtered_sql = filtered_sql.replace(":pv0", f"'{sample_value}'")
 
         return {
             "original_sql": original_sql,

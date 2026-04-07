@@ -810,13 +810,21 @@ export const dashboardsApi = {
   previewFilter: (dashboardId: number, dcId: number, data: FilterPreviewRequest) =>
     api.post<FilterPreviewResponse>(`/dashboards/${dashboardId}/charts/${dcId}/preview-filter`, data).then((r) => r.data),
 
-  generateSelectors: (dashboardId: number, userRequest?: string) =>
-    api
+  generateSelectors: (
+    dashboardId: number,
+    userRequest?: string,
+    chartIds?: number[],
+  ) => {
+    const body: { user_request?: string; chart_ids?: number[] } = {}
+    if (userRequest) body.user_request = userRequest
+    if (chartIds && chartIds.length > 0) body.chart_ids = chartIds
+    return api
       .post<{ selectors: SelectorCreateRequest[] }>(
         `/dashboards/${dashboardId}/selectors/generate`,
-        userRequest ? { user_request: userRequest } : {},
+        body,
       )
-      .then((r) => r.data),
+      .then((r) => r.data)
+  },
 
 }
 

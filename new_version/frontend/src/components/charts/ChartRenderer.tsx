@@ -493,7 +493,11 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
   // ChartCard / embed pages pass numeric heights and live inside CSS grids
   // that stretch siblings — there we want compact preset-sized values.
   if (chart_type === 'indicator') {
-    const fillHeight = fontScale != null || height === '100%'
+    // fillHeight=true only in TV mode (fontScale is set by TvCellMeasurer).
+    // In the normal editor/embed context height="100%" is passed for non-indicator
+    // charts but indicators should NOT grow to fill the cell — they must stay at
+    // the user-chosen preset size (compact mode).
+    const fillHeight = fontScale != null
     return <IndicatorRenderer spec={spec} data={data} fontScale={fontScale} fillHeight={fillHeight} />
   }
 

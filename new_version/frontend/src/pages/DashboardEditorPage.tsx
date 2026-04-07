@@ -147,7 +147,7 @@ export default function DashboardEditorPage() {
           w: c.layout_w,
           h: c.layout_h,
           minW: 2,
-          minH: c.item_type === 'heading' ? 1 : 2,
+          minH: c.item_type === 'heading' ? 1 : c.chart_type === 'indicator' ? 1 : 2,
           maxH: c.item_type === 'heading' ? 4 : undefined,
         })),
       )
@@ -338,7 +338,7 @@ export default function DashboardEditorPage() {
               w: newChart.layout_w,
               h: newChart.layout_h,
               minW: 2,
-              minH: 2,
+              minH: newChart.chart_type === 'indicator' ? 1 : 2,
             },
           ])
           setAddChartOpen(false)

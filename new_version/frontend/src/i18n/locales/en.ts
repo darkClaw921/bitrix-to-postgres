@@ -368,6 +368,8 @@ export const en: Translations = {
     decimalPlacesPlaceholder: 'auto',
     currencySymbol: 'Currency symbol:',
     autoFit: 'Fit value to cell',
+    textAlign: 'Text alignment:',
+    center: 'Center',
     tableSettings: 'Table Settings',
     columnTotals: 'Column totals',
     rowTotals: 'Row totals',

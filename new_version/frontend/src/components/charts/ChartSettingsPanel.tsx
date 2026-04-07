@@ -304,6 +304,19 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
               />
             </label>
 
+            <label className="flex items-center gap-2">
+              <span className="text-gray-500">{t('chartSettings.textAlign')}</span>
+              <select
+                className="border rounded px-1 py-0.5 text-xs"
+                value={indicator.textAlign || 'center'}
+                onChange={(e) => setIndicator({ ...indicator, textAlign: e.target.value as 'left' | 'center' | 'right' })}
+              >
+                <option value="left">{t('chartSettings.left')}</option>
+                <option value="center">{t('chartSettings.center')}</option>
+                <option value="right">{t('chartSettings.right')}</option>
+              </select>
+            </label>
+
             <label className="flex flex-col gap-1">
               <span className="text-gray-500">{t('chartSettings.numberFormat')}</span>
               <select

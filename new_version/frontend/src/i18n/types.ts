@@ -368,6 +368,8 @@ export interface Translations {
     decimalPlacesPlaceholder: string
     currencySymbol: string
     autoFit: string
+    textAlign: string
+    center: string
     tableSettings: string
     columnTotals: string
     rowTotals: string

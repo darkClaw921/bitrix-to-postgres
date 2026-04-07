@@ -256,6 +256,7 @@ export interface ChartDisplayConfig {
     format?: 'number' | 'currency' | 'percent' | 'compact'  // compact = K/M/B abbreviation
     currencySymbol?: string  // used when format='currency', default '₽'
     autoFit?: boolean  // when true, scale font down so the value always fits the cell
+    textAlign?: 'left' | 'center' | 'right'  // horizontal alignment of value text, default 'center'
   }
   // table
   table?: {

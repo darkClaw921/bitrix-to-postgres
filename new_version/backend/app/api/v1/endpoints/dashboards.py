@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.api.v1.schemas.dashboards import (
+    ChartAddRequest,
     ChartOverrideUpdateRequest,
     DashboardChartResponse,
     DashboardLayoutUpdateRequest,
@@ -140,6 +141,38 @@ async def remove_chart_from_dashboard(dashboard_id: int, dc_id: int) -> dict:
     if not deleted:
         raise HTTPException(status_code=404, detail="Элемент дашборда не найден")
     return {"deleted": True}
+
+
+@router.post("/{dashboard_id}/charts", response_model=DashboardChartResponse)
+async def add_chart_to_dashboard(
+    dashboard_id: int, request: ChartAddRequest
+) -> DashboardChartResponse:
+    """Attach an existing AI chart to a dashboard.
+
+    Mirrors ``add_dashboard_heading`` but for chart items: validates that
+    both the dashboard and chart exist, then inserts a new ``dashboard_charts``
+    row with ``item_type='chart'`` and the supplied layout (defaults to a 6×4
+    cell at the top-left, ``sort_order = MAX+1``).
+    """
+    try:
+        layout = {
+            "layout_x": request.layout_x,
+            "layout_y": request.layout_y,
+            "layout_w": request.layout_w,
+            "layout_h": request.layout_h,
+            "sort_order": request.sort_order,
+        }
+        result = await dashboard_service.add_chart(
+            dashboard_id,
+            chart_id=request.chart_id,
+            layout=layout,
+        )
+        return DashboardChartResponse(**result)
+    except DashboardServiceError as e:
+        raise HTTPException(status_code=400, detail=e.message) from e
+    except Exception as e:
+        logger.error("Failed to add chart to dashboard", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}") from e
 
 
 # === Heading items ===

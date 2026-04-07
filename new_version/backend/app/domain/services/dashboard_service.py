@@ -477,6 +477,142 @@ class DashboardService:
             "created_at": None,
         }
 
+    async def add_chart(
+        self,
+        dashboard_id: int,
+        chart_id: int,
+        layout: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Append an existing AI chart to a dashboard as a new dashboard_chart row.
+
+        Mirrors :meth:`add_heading` but inserts an ``item_type='chart'`` row
+        with the given ``chart_id``. Used by the editor's "Add chart" UI to
+        attach charts to dashboards that have already been published.
+
+        :param dashboard_id: target dashboard id (must exist).
+        :param chart_id: ai_charts.id of the chart to attach (must exist).
+        :param layout: optional layout dict with keys ``layout_x``, ``layout_y``,
+            ``layout_w``, ``layout_h``, ``sort_order``. Missing keys fall back to
+            sensible defaults (6×4 in the bottom-left); missing ``sort_order`` is
+            computed as MAX+1 for the dashboard so the new chart appears last.
+        :returns: dict compatible with ``DashboardChartResponse`` (including the
+            joined chart_title/chart_type/chart_config/sql_query fields).
+        :raises DashboardServiceError: if the dashboard or chart doesn't exist.
+        """
+        engine = get_engine()
+        dialect = get_dialect()
+        layout = layout or {}
+
+        # 1. Verify the dashboard exists
+        dashboard_check = text("SELECT id FROM published_dashboards WHERE id = :id")
+        async with engine.begin() as conn:
+            dashboard_row = (
+                await conn.execute(dashboard_check, {"id": dashboard_id})
+            ).fetchone()
+        if not dashboard_row:
+            raise DashboardServiceError("Дашборд не найден")
+
+        # 2. Verify the chart exists (FK constraint would also catch this but
+        # the user-facing error is much nicer than a SQL violation)
+        chart_check = text("SELECT id FROM ai_charts WHERE id = :id")
+        async with engine.begin() as conn:
+            chart_row = (await conn.execute(chart_check, {"id": chart_id})).fetchone()
+        if not chart_row:
+            raise DashboardServiceError("Чарт не найден")
+
+        # 3. Compute sort_order = MAX(sort_order) + 1 if not provided
+        sort_order = layout.get("sort_order")
+        if sort_order is None:
+            sort_query = text(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 "
+                "FROM dashboard_charts WHERE dashboard_id = :dashboard_id"
+            )
+            async with engine.begin() as conn:
+                sort_order = (
+                    await conn.execute(sort_query, {"dashboard_id": dashboard_id})
+                ).scalar() or 0
+
+        # 4. Resolve layout fields. ``None`` is treated as "use default" while
+        # an explicit ``0`` is preserved (so callers can pin the new chart to
+        # the top-left when they really want to). For ``layout_y`` the default
+        # is ``MAX(layout_y + layout_h)`` of the existing rows so the new chart
+        # lands at the bottom of the layout instead of overlapping the top —
+        # this avoids the editor's react-grid-layout having to compact a
+        # sentinel ``9999`` value, which otherwise causes a visible jump.
+        layout_x_val = layout.get("layout_x")
+        layout_x_resolved = 0 if layout_x_val is None else int(layout_x_val)
+        layout_w_val = layout.get("layout_w")
+        layout_w_resolved = 6 if layout_w_val is None else int(layout_w_val)
+        layout_h_val = layout.get("layout_h")
+        layout_h_resolved = 4 if layout_h_val is None else int(layout_h_val)
+
+        layout_y_val = layout.get("layout_y")
+        if layout_y_val is None:
+            max_y_query = text(
+                "SELECT COALESCE(MAX(layout_y + layout_h), 0) "
+                "FROM dashboard_charts WHERE dashboard_id = :dashboard_id"
+            )
+            async with engine.begin() as conn:
+                layout_y_resolved = (
+                    await conn.execute(
+                        max_y_query, {"dashboard_id": dashboard_id}
+                    )
+                ).scalar() or 0
+            layout_y_resolved = int(layout_y_resolved)
+        else:
+            layout_y_resolved = int(layout_y_val)
+
+        params: dict[str, Any] = {
+            "dashboard_id": dashboard_id,
+            "chart_id": chart_id,
+            "item_type": "chart",
+            "layout_x": layout_x_resolved,
+            "layout_y": layout_y_resolved,
+            "layout_w": layout_w_resolved,
+            "layout_h": layout_h_resolved,
+            "sort_order": int(sort_order),
+        }
+
+        # 5. INSERT and grab inserted id (cross-DB pattern, see add_heading)
+        if dialect == "mysql":
+            insert_query = text(
+                "INSERT INTO dashboard_charts "
+                "(dashboard_id, chart_id, item_type, "
+                "layout_x, layout_y, layout_w, layout_h, sort_order) "
+                "VALUES (:dashboard_id, :chart_id, :item_type, "
+                ":layout_x, :layout_y, :layout_w, :layout_h, :sort_order)"
+            )
+            async with engine.begin() as conn:
+                result = await conn.execute(insert_query, params)
+                dc_id = result.lastrowid
+        else:
+            insert_query = text(
+                "INSERT INTO dashboard_charts "
+                "(dashboard_id, chart_id, item_type, "
+                "layout_x, layout_y, layout_w, layout_h, sort_order) "
+                "VALUES (:dashboard_id, :chart_id, :item_type, "
+                ":layout_x, :layout_y, :layout_w, :layout_h, :sort_order) "
+                "RETURNING id"
+            )
+            async with engine.begin() as conn:
+                result = await conn.execute(insert_query, params)
+                dc_id = result.scalar()
+
+        logger.info(
+            "Dashboard chart added",
+            dashboard_id=dashboard_id,
+            chart_id=chart_id,
+            dc_id=dc_id,
+            sort_order=params["sort_order"],
+        )
+
+        # 6. Return the created item using the same projection as _get_dashboard_charts
+        items = await self._get_dashboard_charts(dashboard_id)
+        for item in items:
+            if item.get("id") == dc_id:
+                return item
+        raise DashboardServiceError("Чарт не найден после добавления")
+
     async def update_heading(
         self,
         dc_id: int,

@@ -134,31 +134,22 @@ function IndicatorRenderer({ spec, data, fontScale }: { spec: ChartSpec; data: R
   const baseRem = baseRemMap[indicatorCfg.fontSize || 'lg'] ?? 3.5
   const requestedSizePx = baseRem * 16 * (fontScale ?? 1)
 
-  // Auto-fit: measure the container and shrink the font size if the rendered
-  // text would overflow horizontally. We approximate text width as
-  // `0.55 * fontSize * charCount` (a reasonable average for sans-serif fonts).
-  // Auto-fit defaults to ON — without it, long values like "3 337 172,289" at
-  // 56px easily overflow the card. Users who explicitly want the legacy fixed
-  // size can disable it via the settings panel.
-  const { ref: fitRef, width: containerWidth, height: containerHeight } = useElementSize<HTMLDivElement>()
+  // Auto-fit: measure the container and DERIVE the font size purely from the
+  // available HEIGHT. Width is intentionally NOT a constraint — the user
+  // explicitly asked that long values be allowed to wrap or overflow rather
+  // than shrink horizontally. When auto-fit is ON the value grows/shrinks to
+  // fill almost the whole cell height (the preset size is ignored, otherwise
+  // a tall card would be left with a small value floating in empty space).
+  // When auto-fit is OFF we fall back to the user-chosen preset size.
+  const { ref: fitRef, height: containerHeight } = useElementSize<HTMLDivElement>()
   const autoFit = indicatorCfg.autoFit !== false
-  const prefixLen = indicatorCfg.prefix ? indicatorCfg.prefix.length + 1 : 0
-  const suffixLen = indicatorCfg.suffix ? indicatorCfg.suffix.length + 1 : 0
-  const totalChars = Math.max(1, displayValue.length + prefixLen + suffixLen)
-  // Reserve 16px padding on each side (32px total) so the value doesn't kiss
-  // the card edge even at minimum font size.
-  const availableWidth = Math.max(0, containerWidth - 32)
-  const maxByWidth = autoFit && availableWidth > 0
-    ? availableWidth / (totalChars * 0.55)
-    : Infinity
-  // Cap by container height too: the rendered text should never be taller
-  // than ~80% of the cell, otherwise it visually overlaps the title.
-  const maxByHeight = autoFit && containerHeight > 0 ? containerHeight * 0.8 : Infinity
-  const finalSizePx = Math.max(10, Math.min(requestedSizePx, maxByWidth, maxByHeight))
+  const finalSizePx = autoFit && containerHeight > 0
+    ? Math.max(10, containerHeight * 0.9)
+    : Math.max(10, requestedSizePx)
 
-  // Centering: plain `flex items-center justify-center`. We deliberately do
-  // NOT use absolute positioning here because IndicatorRenderer is mounted in
-  // very different contexts:
+  // Centering: plain `flex items-center` + horizontal alignment. We deliberately
+  // do NOT use absolute positioning here because IndicatorRenderer is mounted
+  // in very different contexts:
   //   - ChartCard (All Charts page): parent is a regular block <div> with no
   //     defined height. `h-full` would resolve to 0, collapsing an absolutely-
   //     positioned child and pushing the value text outside the card.
@@ -169,19 +160,28 @@ function IndicatorRenderer({ spec, data, fontScale }: { spec: ChartSpec; data: R
   // To make all three contexts behave the same, we apply a `minHeight` floor
   // when no fontScale is provided (i.e. outside TV mode). This guarantees a
   // visible centering area in the All Charts view, while leaving TV mode free
-  // to use whatever height the RGL cell provides.
+  // to use whatever height the RGL cell provides. Floor history: 200 → 120 →
+  // 80 so cards waste as little vertical space as possible in compact lists.
   const wrapperStyle: React.CSSProperties = {
-    minHeight: fontScale == null ? 200 : undefined,
+    minHeight: fontScale == null ? 80 : undefined,
   }
+
+  // Horizontal alignment: defaults to center for backward compatibility, but
+  // users can opt into left/right via the settings panel.
+  const textAlign = indicatorCfg.textAlign || 'center'
+  const justifyClass =
+    textAlign === 'left' ? 'justify-start' : textAlign === 'right' ? 'justify-end' : 'justify-center'
+  const textAlignClass =
+    textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'
 
   return (
     <div
       ref={fitRef}
-      className="flex items-center justify-center w-full h-full overflow-hidden p-4"
+      className={`flex items-center w-full h-full overflow-hidden px-1 ${justifyClass}`}
       style={wrapperStyle}
     >
       <div
-        className="font-bold leading-tight text-center break-words max-w-full"
+        className={`font-bold leading-none break-words max-w-full ${textAlignClass}`}
         style={{ fontSize: `${finalSizePx}px`, color: indicatorCfg.color || '#1f2937' }}
       >
         {indicatorCfg.prefix && <span>{indicatorCfg.prefix} </span>}

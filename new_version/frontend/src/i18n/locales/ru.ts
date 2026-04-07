@@ -368,6 +368,8 @@ export const ru: Translations = {
     decimalPlacesPlaceholder: 'auto',
     currencySymbol: 'Символ валюты:',
     autoFit: 'Подогнать размер под ячейку',
+    textAlign: 'Выравнивание текста:',
+    center: 'По центру',
     tableSettings: 'Настройки таблицы',
     columnTotals: 'Итоги по столбцам',
     rowTotals: 'Итоги по строкам',

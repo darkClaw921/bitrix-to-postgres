@@ -252,6 +252,7 @@ export const en: Translations = {
     customDescription: 'Custom description',
     linkedDashboards: 'Linked Dashboards (Tabs)',
     linkedDescription: 'Link other dashboards to display as tabs on the public embed page.',
+    mainTabLabel: 'First tab label (current dashboard)',
     dashboard: 'Dashboard',
     tabLabel: 'Tab label (optional)',
     customLabel: 'Custom label',

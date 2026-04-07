@@ -720,6 +720,8 @@ export default function DashboardEditorPage() {
       {/* Linked Dashboards Section */}
       <LinkedDashboardsSection
         dashboardId={dashboardId}
+        currentTitle={dashboard.title}
+        currentTabLabel={dashboard.tab_label}
         linkedDashboards={dashboard.linked_dashboards || []}
         allDashboards={allDashboards?.dashboards || []}
         onAddLink={(linkedId, label) => {
@@ -737,6 +739,12 @@ export default function DashboardEditorPage() {
         onUpdateOrder={(links) => {
           updateLinks.mutate(
             { dashboardId, links },
+            { onSuccess: () => refetch() },
+          )
+        }}
+        onUpdateTabLabel={(label) => {
+          updateDashboard.mutate(
+            { id: dashboardId, data: { tab_label: label } },
             { onSuccess: () => refetch() },
           )
         }}
@@ -1109,24 +1117,32 @@ function EditorHeadingCard({
 
 function LinkedDashboardsSection({
   dashboardId,
+  currentTitle,
+  currentTabLabel,
   linkedDashboards,
   allDashboards,
   onAddLink,
   onRemoveLink,
   onUpdateOrder,
+  onUpdateTabLabel,
   isAdding,
 }: {
   dashboardId: number
+  currentTitle: string
+  currentTabLabel?: string
   linkedDashboards: DashboardLink[]
   allDashboards: { id: number; title: string; slug: string }[]
   onAddLink: (linkedId: number, label?: string) => void
   onRemoveLink: (linkId: number) => void
   onUpdateOrder: (links: { id: number; sort_order: number }[]) => void
+  onUpdateTabLabel: (label: string) => void
   isAdding: boolean
 }) {
   const { t } = useTranslation()
   const [selectedId, setSelectedId] = useState<number | ''>('')
   const [labelValue, setLabelValue] = useState('')
+  const [editingMainLabel, setEditingMainLabel] = useState(false)
+  const [mainLabelValue, setMainLabelValue] = useState(currentTabLabel || '')
 
   // Filter out self + already linked dashboards
   const linkedIds = new Set(linkedDashboards.map((l) => l.linked_dashboard_id))
@@ -1167,6 +1183,70 @@ function LinkedDashboardsSection({
       <p className="text-xs text-gray-400 mb-4">
         {t('editor.linkedDescription')}
       </p>
+
+      {/* Current dashboard as first tab — label editable when tabs exist */}
+      {linkedDashboards.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-medium text-gray-500 mb-2">{t('editor.mainTabLabel')}</p>
+          <div className="flex items-center bg-blue-50 rounded px-3 py-2 space-x-3">
+            <span className="text-xs text-blue-400 w-6">0.</span>
+            {editingMainLabel ? (
+              <div className="flex items-center flex-1 space-x-2">
+                <input
+                  type="text"
+                  value={mainLabelValue}
+                  onChange={(e) => setMainLabelValue(e.target.value)}
+                  className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                  placeholder={currentTitle}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      onUpdateTabLabel(mainLabelValue.trim())
+                      setEditingMainLabel(false)
+                    } else if (e.key === 'Escape') {
+                      setMainLabelValue(currentTabLabel || '')
+                      setEditingMainLabel(false)
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    onUpdateTabLabel(mainLabelValue.trim())
+                    setEditingMainLabel(false)
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  {t('common.save')}
+                </button>
+                <button
+                  onClick={() => {
+                    setMainLabelValue(currentTabLabel || '')
+                    setEditingMainLabel(false)
+                  }}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  {t('common.cancel')}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center flex-1 justify-between">
+                <span className="text-sm font-medium text-blue-700">
+                  {currentTabLabel || currentTitle}
+                </span>
+                <button
+                  onClick={() => {
+                    setMainLabelValue(currentTabLabel || '')
+                    setEditingMainLabel(true)
+                  }}
+                  className="text-xs text-blue-500 hover:text-blue-700 ml-2"
+                >
+                  {t('common.edit')}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Existing links */}
       {linkedDashboards.length > 0 && (

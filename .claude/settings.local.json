@@ -38,7 +38,26 @@
       "Bash(echo:*)",
       "Bash(python -c:*)",
       "Bash(/usr/local/bin/node:*)",
-      "Bash(/opt/homebrew/bin/npx tsc:*)"
+      "Bash(/opt/homebrew/bin/npx tsc:*)",
+      "Bash(python3 -m py_compile new_version/backend/alembic/versions/019_add_hide_title_to_dashboard_charts.py)",
+      "Bash(python3 -m py_compile new_version/backend/app/api/v1/schemas/dashboards.py)",
+      "Bash(python3 -m py_compile new_version/backend/app/domain/services/dashboard_service.py)",
+      "Bash(python3 -m py_compile new_version/backend/app/api/v1/endpoints/dashboards.py)",
+      "Bash(python3 -m py_compile /Users/igorgerasimov/cursorWorkspace/bitrix-bi-connector/bitrix-to-postgres/new_version/backend/alembic/versions/019_add_hide_title_to_dashboard_charts.py)",
+      "Bash(python3 -m py_compile /Users/igorgerasimov/cursorWorkspace/bitrix-bi-connector/bitrix-to-postgres/new_version/backend/app/api/v1/schemas/dashboards.py)",
+      "Bash(python3 -m py_compile /Users/igorgerasimov/cursorWorkspace/bitrix-bi-connector/bitrix-to-postgres/new_version/backend/app/domain/services/dashboard_service.py)",
+      "Bash(python3 -m py_compile /Users/igorgerasimov/cursorWorkspace/bitrix-bi-connector/bitrix-to-postgres/new_version/backend/app/api/v1/endpoints/dashboards.py)",
+      "Bash(python3 -m py_compile new_version/backend/alembic/versions/020_add_title_font_size_override.py)",
+      "Bash(python3 -m py_compile new_version/backend/alembic/versions/020_add_title_font_size_override.py new_version/backend/app/api/v1/schemas/dashboards.py new_version/backend/app/domain/services/dashboard_service.py new_version/backend/app/api/v1/endpoints/dashboards.py)",
+      "Bash(/opt/homebrew/bin/playwright:*)",
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)",
+      "Bash(npm root:*)",
+      "Bash(NODE_PATH=$\\(npm root -g\\) node -e \"const { chromium } = require\\('playwright'\\); console.log\\('ok'\\)\")",
+      "Bash(NODE_PATH=/opt/homebrew/lib/node_modules node:*)",
+      "Bash(npx playwright:*)",
+      "Bash(xargs -I{} basename {})",
+      "Bash(mysql:*)"
     ]
   }
 }

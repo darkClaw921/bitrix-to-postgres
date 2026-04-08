@@ -74,6 +74,11 @@
 - **011_create_reports_tables.py** — report_prompt_templates, ai_reports, ai_report_runs, ai_report_conversations (PG/MySQL dual dialect, default report_context промпт)
 - **012_create_published_reports_tables.py** — published_reports (slug, report_id FK, password_hash), published_report_links (PG/MySQL dual dialect)
 - **013_add_llm_prompt_to_report_runs.py** — добавление колонки llm_prompt (Text, nullable) в ai_report_runs для хранения полного промпта отправленного в LLM
+- **016_add_post_filter_to_mappings.py** — добавление post_filter в selector_chart_mappings
+- **017_add_dashboard_heading_items.py** — добавление item_type, heading_config в dashboard_charts для heading-элементов
+- **018_add_tab_label_to_dashboards.py** — добавление tab_label VARCHAR(255) NULL в published_dashboards
+- **019_add_hide_title_to_dashboard_charts.py** — добавление hide_title BOOLEAN NOT NULL DEFAULT FALSE в dashboard_charts
+- **020_add_title_font_size_override.py** — добавление title_font_size_override VARCHAR(10) NULL в dashboard_charts для переопределения размера заголовка на уровне элемента дашборда
 
 #### Очередь синхронизаций (`app/infrastructure/queue/`)
 - **sync_queue.py** — `SyncQueue`: центральная очередь с двумя каналами:
@@ -161,7 +166,7 @@
 ##### Схемы (`app/api/v1/schemas/`)
 - **common.py** — `HealthResponse`, `ErrorResponse`, `SuccessResponse`, `PaginationParams`
 - **charts.py** — `ChartGenerateRequest`, `ChartConfigUpdateRequest`, `ChartSpec`, `ChartGenerateResponse`, `ChartResponse`, `ChartListResponse`, `ChartDataResponse`
-- **dashboards.py** — `DashboardPublishRequest`, `DashboardUpdateRequest`, `LayoutItem`, `DashboardLayoutUpdateRequest`, `ChartOverrideUpdateRequest`, `DashboardAuthRequest`, `IframeCodeRequest`, `DashboardLinkRequest`, `DashboardLinkOrderItem`, `DashboardLinkUpdateRequest`, `DashboardChartResponse`, `DashboardLinkResponse`, `DashboardResponse` (с `linked_dashboards`, `selectors`), `DashboardListResponse`, `DashboardPublishResponse`, `DashboardAuthResponse`, `PasswordChangeResponse`, `IframeCodeResponse`
+- **dashboards.py** — `DashboardPublishRequest`, `DashboardUpdateRequest`, `LayoutItem`, `DashboardLayoutUpdateRequest`, `ChartOverrideUpdateRequest` (title_override, description_override, hide_title, title_font_size_override), `DashboardAuthRequest`, `IframeCodeRequest`, `DashboardLinkRequest`, `DashboardLinkOrderItem`, `DashboardLinkUpdateRequest`, `DashboardChartResponse` (включает hide_title, title_font_size_override), `DashboardLinkResponse`, `DashboardResponse` (с `linked_dashboards`, `selectors`), `DashboardListResponse`, `DashboardPublishResponse`, `DashboardAuthResponse`, `PasswordChangeResponse`, `IframeCodeResponse`
 - **selectors.py** — `SelectorCreateRequest`, `SelectorUpdateRequest`, `MappingCreateRequest`, `FilterValue`, `FilterRequest`, `SelectorResponse`, `MappingResponse`, `SelectorListResponse`, `SelectorOptionItem`, `SelectorOptionsResponse`, `ChartColumnsResponse`, `ChartTablesResponse`, `FilterPreviewRequest`, `FilterPreviewResponse`
 - **schema_description.py** — `ColumnInfo`, `TableInfo`, `SchemaTablesResponse`, `SchemaDescriptionResponse`
 - **sync.py** — `SyncConfigItem`, `BitrixFilter`, `SyncStartRequest/Response` (с optional filter), `SyncStatusItem/Response`, `SyncHistoryResponse`

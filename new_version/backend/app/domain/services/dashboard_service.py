@@ -197,7 +197,7 @@ class DashboardService:
 
         query = text(
             "SELECT dc.id, dc.dashboard_id, dc.chart_id, dc.item_type, dc.heading_config, "
-            "dc.title_override, dc.description_override, "
+            "dc.title_override, dc.description_override, dc.hide_title, dc.title_font_size_override, "
             "dc.layout_x, dc.layout_y, dc.layout_w, dc.layout_h, dc.sort_order, dc.created_at, "
             "c.title as chart_title, c.description as chart_description, "
             "c.chart_type, c.chart_config, c.sql_query, c.user_prompt "
@@ -551,7 +551,7 @@ class DashboardService:
         layout_w_val = layout.get("layout_w")
         layout_w_resolved = 6 if layout_w_val is None else int(layout_w_val)
         layout_h_val = layout.get("layout_h")
-        layout_h_resolved = 4 if layout_h_val is None else int(layout_h_val)
+        layout_h_resolved = 8 if layout_h_val is None else int(layout_h_val)
 
         layout_y_val = layout.get("layout_y")
         if layout_y_val is None:
@@ -677,6 +677,8 @@ class DashboardService:
         dc_id: int,
         title_override: str | None = None,
         description_override: str | None = None,
+        hide_title: bool | None = None,
+        title_font_size_override: str | None = None,
     ) -> dict[str, Any]:
         engine = get_engine()
 
@@ -689,6 +691,12 @@ class DashboardService:
         if description_override is not None:
             updates.append("description_override = :description_override")
             params["description_override"] = description_override
+        if hide_title is not None:
+            updates.append("hide_title = :hide_title")
+            params["hide_title"] = hide_title
+        if title_font_size_override is not None:
+            updates.append("title_font_size_override = :title_font_size_override")
+            params["title_font_size_override"] = title_font_size_override
 
         if not updates:
             raise DashboardServiceError("Нет полей для обновления")
@@ -704,8 +712,8 @@ class DashboardService:
 
         # Return the updated chart info
         select_query = text(
-            "SELECT dc.id, dc.dashboard_id, dc.chart_id, dc.title_override, dc.description_override, "
-            "dc.layout_x, dc.layout_y, dc.layout_w, dc.layout_h, dc.sort_order "
+            "SELECT dc.id, dc.dashboard_id, dc.chart_id, dc.title_override, dc.description_override, dc.hide_title, "
+            "dc.title_font_size_override, dc.layout_x, dc.layout_y, dc.layout_w, dc.layout_h, dc.sort_order "
             "FROM dashboard_charts dc WHERE dc.id = :id"
         )
         async with engine.begin() as conn:

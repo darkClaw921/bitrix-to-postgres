@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import ChartRenderer from '../components/charts/ChartRenderer'
 import ExportButtons from '../components/charts/ExportButtons'
-import { getCardStyleClasses, getCardInlineStyle, getTitleSizeClass, getTvTitleBasePx } from '../components/charts/cardStyleUtils'
+import { getCardStyleClasses, getCardInlineStyle, getTitleSizeStyle, getTvTitleBasePx } from '../components/charts/cardStyleUtils'
 import PasswordGate from '../components/dashboards/PasswordGate'
 import HeadingItem from '../components/dashboards/HeadingItem'
 import { TvModeGrid } from '../components/dashboards/TvModeGrid'
@@ -397,7 +397,7 @@ export default function EmbedDashboardPage() {
     // Title base size mirrors `getTitleSizeClass` (sm/md/lg/xl) so the
     // settings panel works in TV mode; indicators get a larger default
     // because they have no axes/legend competing for the eye.
-    const titleBasePx = getTvTitleBasePx(dc.chart_type || 'bar', config?.general?.titleFontSize)
+    const titleBasePx = getTvTitleBasePx(dc.chart_type || 'bar', dc.title_font_size_override || config?.general?.titleFontSize)
 
     const titleFontPx = dc.chart_type === 'indicator'
       ? Math.max(14, Math.round(titleBasePx * fontScale))
@@ -409,17 +409,19 @@ export default function EmbedDashboardPage() {
 
     return (
       <div className={`${cardClasses} h-full flex flex-col group relative`} style={cardInline}>
-        <div className="flex items-start mb-1 flex-shrink-0">
-          <h3 className="font-semibold text-gray-700 truncate flex-1 min-w-0" style={titleStyle}>
-            {title}
-          </h3>
-        </div>
+        {!dc.hide_title && (
+          <div className="flex items-start mb-1 flex-shrink-0">
+            <h3 className="font-semibold text-gray-700 truncate flex-1 min-w-0" style={titleStyle}>
+              {title}
+            </h3>
+          </div>
+        )}
         {data && (
           <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
             <ExportButtons data={data.data} title={title} />
           </div>
         )}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {data ? (
             <ChartRenderer
               spec={spec}
@@ -667,7 +669,7 @@ function DashboardChartCard({
     ? getCardStyleClasses(config.cardStyle)
     : 'bg-white rounded-lg shadow-sm border border-gray-200 p-4'
   const cardInline = getCardInlineStyle(config?.cardStyle)
-  const titleClass = getTitleSizeClass(config?.general?.titleFontSize)
+  const effectiveTitleSize = dc.title_font_size_override || config?.general?.titleFontSize
 
   const gridStyle = isMobile ? undefined : {
     gridColumn: `${dc.layout_x + 1} / span ${dc.layout_w}`,
@@ -679,18 +681,21 @@ function DashboardChartCard({
       className={`${cardClasses} group relative`}
       style={{ ...gridStyle, ...cardInline }}
     >
-      <div className="flex items-start mb-1">
-        <h3
-          className={`font-semibold text-gray-700 flex-1 min-w-0 ${titleClass}`}
-          style={
-            config?.designLayout?.title
-              ? { transform: `translate(${config.designLayout.title.dx ?? 0}px, ${config.designLayout.title.dy ?? 0}px)` }
-              : undefined
-          }
-        >
-          {title}
-        </h3>
-      </div>
+      {!dc.hide_title && (
+        <div className="flex items-start mb-1">
+          <h3
+            className="font-semibold text-gray-700 flex-1 min-w-0"
+            style={{
+              ...getTitleSizeStyle(effectiveTitleSize),
+              ...(config?.designLayout?.title
+                ? { transform: `translate(${config.designLayout.title.dx ?? 0}px, ${config.designLayout.title.dy ?? 0}px)` }
+                : {}),
+            }}
+          >
+            {title}
+          </h3>
+        </div>
+      )}
       {data && (
         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
           <ExportButtons data={data.data} title={title} />

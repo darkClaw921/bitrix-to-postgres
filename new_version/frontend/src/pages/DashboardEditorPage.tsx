@@ -10,7 +10,7 @@ import ChartSettingsPanel from '../components/charts/ChartSettingsPanel'
 import DesignModeOverlay from '../components/charts/DesignModeOverlay'
 import DesignModeToolbar from '../components/charts/design/DesignModeToolbar'
 import ExportButtons from '../components/charts/ExportButtons'
-import { getCardStyleClasses, getCardInlineStyle, getTvTitleBasePx } from '../components/charts/cardStyleUtils'
+import { getCardStyleClasses, getCardInlineStyle, parseTitleFontSizePx, getTvTitleBasePx } from '../components/charts/cardStyleUtils'
 import SelectorEditorSection from '../components/selectors/SelectorEditorSection'
 import HeadingItem from '../components/dashboards/HeadingItem'
 import { TvModeGrid } from '../components/dashboards/TvModeGrid'
@@ -36,10 +36,15 @@ import { chartsApi } from '../services/api'
 import type { SavedChart } from '../services/api'
 import { copyToClipboard } from '../utils/clipboard'
 import { useTranslation } from '../i18n'
-import type { DashboardChart, DashboardLink, ChartSpec, ChartDataResponse, ChartDisplayConfig, HeadingConfig } from '../services/api'
+import type { DashboardChart, DashboardLink, ChartSpec, ChartDataResponse, ChartDisplayConfig, HeadingConfig, ChartOverrideUpdateRequest } from '../services/api'
 
 const GRID_COLS = 12
-const ROW_HEIGHT = 120
+// ROW_HEIGHT=52, margin=16: h*(52+16)-16
+//   h=2 → 120px  (indicator min, was stored h=1 before migration)
+//   h=3 → 188px  (new intermediate)
+//   h=4 → 256px  (regular chart min, was stored h=2 before migration)
+// DB was migrated: all layout_h and layout_y multiplied by 2.
+const ROW_HEIGHT = 52
 
 const GRID_PRESETS = [1, 2, 3, 4] as const
 
@@ -147,8 +152,8 @@ export default function DashboardEditorPage() {
           w: c.layout_w,
           h: c.layout_h,
           minW: 2,
-          minH: c.item_type === 'heading' ? 1 : c.chart_type === 'indicator' ? 1 : 2,
-          maxH: c.item_type === 'heading' ? 4 : undefined,
+          minH: c.item_type === 'heading' ? 2 : c.chart_type === 'indicator' ? 2 : 4,
+          maxH: c.item_type === 'heading' ? 8 : undefined,
         })),
       )
 
@@ -282,9 +287,9 @@ export default function DashboardEditorPage() {
   }
 
   const handleUpdateOverride = useCallback(
-    (dcId: number, field: 'title_override' | 'description_override', value: string) => {
+    (dcId: number, data: Partial<ChartOverrideUpdateRequest>) => {
       updateOverride.mutate(
-        { dashboardId, dcId, data: { [field]: value || null } },
+        { dashboardId, dcId, data },
         { onSuccess: () => refetch() },
       )
     },
@@ -338,7 +343,7 @@ export default function DashboardEditorPage() {
               w: newChart.layout_w,
               h: newChart.layout_h,
               minW: 2,
-              minH: newChart.chart_type === 'indicator' ? 1 : 2,
+              minH: newChart.chart_type === 'indicator' ? 2 : 4,
             },
           ])
           setAddChartOpen(false)
@@ -426,7 +431,7 @@ export default function DashboardEditorPage() {
     // Title base size mirrors `getTitleSizeClass` (sm/md/lg/xl) so the
     // settings panel works in TV mode; indicators get a larger default
     // because they have no axes/legend competing for the eye.
-    const titleBasePx = getTvTitleBasePx(dc.chart_type || 'bar', config?.general?.titleFontSize)
+    const titleBasePx = getTvTitleBasePx(dc.chart_type || 'bar', dc.title_font_size_override || config?.general?.titleFontSize)
 
     const titleFontPx = dc.chart_type === 'indicator'
       ? Math.max(14, Math.round(titleBasePx * fontScale))
@@ -438,17 +443,19 @@ export default function DashboardEditorPage() {
 
     return (
       <div className={`${cardClasses} h-full flex flex-col group relative`} style={cardInline}>
-        <div className="flex items-start mb-1 flex-shrink-0">
-          <h3 className="font-semibold text-gray-700 truncate flex-1 min-w-0" style={titleStyle}>
-            {title}
-          </h3>
-        </div>
+        {!dc.hide_title && (
+          <div className="flex items-start mb-1 flex-shrink-0">
+            <h3 className="font-semibold text-gray-700 truncate flex-1 min-w-0" style={titleStyle}>
+              {title}
+            </h3>
+          </div>
+        )}
         {data && (
           <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10">
             <ExportButtons data={data.data} title={title} />
           </div>
         )}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {data ? (
             <ChartRenderer
               spec={spec}
@@ -786,7 +793,7 @@ function EditorChartCard({
   dc: DashboardChart
   data: ChartDataResponse | null
   onRemove: () => void
-  onUpdateOverride: (dcId: number, field: 'title_override' | 'description_override', value: string) => void
+  onUpdateOverride: (dcId: number, data: Partial<ChartOverrideUpdateRequest>) => void
 }) {
   const { t } = useTranslation()
   const [editTitle, setEditTitle] = useState(false)
@@ -795,6 +802,8 @@ function EditorChartCard({
   const [descVal, setDescVal] = useState(dc.description_override || '')
   const [showSettings, setShowSettings] = useState(false)
   const [settingsPos, setSettingsPos] = useState({ x: 0, y: 0 })
+  const [localTitleSize, setLocalTitleSize] = useState<number>(parseTitleFontSizePx(dc.title_font_size_override) ?? 18)
+  const titleSizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const settingsDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
   const updateConfig = useUpdateChartConfig()
   const chartContainerRef = useRef<HTMLDivElement>(null)
@@ -861,7 +870,7 @@ function EditorChartCard({
     >
       <div className="flex justify-between items-start mb-2">
         <div className="flex-1 min-w-0">
-          {editTitle ? (
+          {!dc.hide_title && (editTitle ? (
             <div className="flex items-center space-x-2">
               <input
                 type="text"
@@ -873,7 +882,7 @@ function EditorChartCard({
               />
               <button
                 onClick={() => {
-                  onUpdateOverride(dc.id, 'title_override', titleVal)
+                  onUpdateOverride(dc.id, { title_override: titleVal || undefined })
                   setEditTitle(false)
                 }}
                 className="text-xs text-blue-600 hover:text-blue-800"
@@ -886,20 +895,21 @@ function EditorChartCard({
             </div>
           ) : (
             <h3
-              className="text-sm font-semibold cursor-pointer hover:text-blue-600 truncate"
+              className="font-semibold cursor-pointer hover:text-blue-600 truncate"
               onClick={() => !designMode.isActive && setEditTitle(true)}
               title={t('editor.clickToEditTitle')}
-              style={
-                designMode.isActive && designMode.draftLayout.title
+              style={{
+                fontSize: `${localTitleSize}px`,
+                ...(designMode.isActive && designMode.draftLayout.title
                   ? { transform: `translate(${designMode.draftLayout.title.dx ?? 0}px, ${designMode.draftLayout.title.dy ?? 0}px)` }
-                  : undefined
-              }
+                  : {}),
+              }}
             >
               {title}
             </h3>
-          )}
+          ))}
 
-          {editDesc ? (
+          {!dc.hide_title && (editDesc ? (
             <div className="flex items-center space-x-2 mt-1">
               <input
                 type="text"
@@ -911,7 +921,7 @@ function EditorChartCard({
               />
               <button
                 onClick={() => {
-                  onUpdateOverride(dc.id, 'description_override', descVal)
+                  onUpdateOverride(dc.id, { description_override: descVal || undefined })
                   setEditDesc(false)
                 }}
                 className="text-xs text-blue-600"
@@ -930,7 +940,7 @@ function EditorChartCard({
             >
               {description || t('editor.addDescription')}
             </p>
-          )}
+          ))}
         </div>
 
         <div className="flex space-x-1 ml-2 flex-shrink-0">
@@ -944,6 +954,41 @@ function EditorChartCard({
               {t('editor.design')}
             </button>
           )}
+          <button
+            onClick={() => onUpdateOverride(dc.id, { hide_title: !dc.hide_title })}
+            onMouseDown={(e) => e.stopPropagation()}
+            className={`p-1 rounded text-xs ${dc.hide_title ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+            title={dc.hide_title ? 'Показать заголовок' : 'Скрыть заголовок'}
+          >
+            {dc.hide_title ? 'H' : 'H̶'}
+          </button>
+          <div
+            className="flex items-center gap-1"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <span className="text-xs text-gray-400 font-semibold">T</span>
+            <input
+              type="range"
+              min={10}
+              max={48}
+              step={1}
+              value={localTitleSize}
+              onChange={(e) => {
+                const val = Number(e.target.value)
+                setLocalTitleSize(val)
+                if (titleSizeTimerRef.current) clearTimeout(titleSizeTimerRef.current)
+                titleSizeTimerRef.current = setTimeout(() => {
+                  onUpdateOverride(dc.id, { title_font_size_override: String(val) })
+                }, 600)
+              }}
+              className="w-16 cursor-pointer accent-blue-500"
+              style={{ height: '4px' }}
+              title="Размер заголовка"
+            />
+            <span className="text-xs text-gray-500 w-7 text-right">
+              {localTitleSize}px
+            </span>
+          </div>
           <button
             onClick={(e) => {
               if (!showSettings) {
@@ -1048,7 +1093,7 @@ function EditorChartCard({
       )}
 
       <div
-        className="flex-1 min-h-0"
+        className="flex-1 min-h-0 overflow-hidden"
         onMouseDown={designMode.isActive ? (e) => e.stopPropagation() : undefined}
       >
         {data ? (
@@ -1056,6 +1101,7 @@ function EditorChartCard({
             spec={spec}
             data={data.data}
             height="100%"
+            fillHeight={true}
             designLayout={designMode.isActive ? designMode.draftLayout : config?.designLayout}
           />
         ) : (

@@ -52,6 +52,8 @@ class ChartOverrideUpdateRequest(BaseModel):
 
     title_override: Optional[str] = Field(None, max_length=255)
     description_override: Optional[str] = None
+    hide_title: Optional[bool] = None
+    title_font_size_override: Optional[str] = Field(None, max_length=10)
 
 
 class DashboardLinkRequest(BaseModel):
@@ -110,7 +112,7 @@ class HeadingCreateRequest(BaseModel):
     layout_x: int = 0
     layout_y: int = 0
     layout_w: int = 12
-    layout_h: int = 1
+    layout_h: int = 2
     sort_order: Optional[int] = None
 
 
@@ -160,6 +162,8 @@ class DashboardChartResponse(BaseModel):
     heading_config: Optional[dict[str, Any]] = None
     title_override: Optional[str] = None
     description_override: Optional[str] = None
+    hide_title: bool = False
+    title_font_size_override: Optional[str] = None
     layout_x: int = 0
     layout_y: int = 0
     layout_w: int = 6

@@ -130,6 +130,8 @@ async def update_chart_override(
             dc_id,
             title_override=request.title_override,
             description_override=request.description_override,
+            hide_title=request.hide_title,
+            title_font_size_override=request.title_font_size_override,
         )
         return result
     except DashboardServiceError as e:

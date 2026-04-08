@@ -542,6 +542,8 @@ export interface DashboardChart {
   heading_config?: HeadingConfig | null
   title_override?: string
   description_override?: string
+  hide_title?: boolean
+  title_font_size_override?: string
   layout_x: number
   layout_y: number
   layout_w: number
@@ -732,6 +734,8 @@ export interface DashboardLayoutUpdateRequest {
 export interface ChartOverrideUpdateRequest {
   title_override?: string
   description_override?: string
+  hide_title?: boolean
+  title_font_size_override?: string
 }
 
 export interface ChartAddRequest {

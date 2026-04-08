@@ -438,7 +438,9 @@ alembic/
     ├── 014_stub.py
     ├── 015_stub.py
     ├── 016_add_post_filter_to_mappings.py  # post_filter_resolve_table/_column/_id_column в selector_chart_mappings
-    └── 017_add_dashboard_heading_items.py  # Полиморфные элементы dashboard_charts: item_type, heading_config, nullable chart_id
+    ├── 017_add_dashboard_heading_items.py  # Полиморфные элементы dashboard_charts: item_type, heading_config, nullable chart_id
+    ├── 018_add_tab_label_to_dashboards.py  # Колонка tab_label в published_dashboards
+    └── 019_add_hide_title_to_dashboard_charts.py  # Колонка hide_title в dashboard_charts
 ```
 
 #### connection.py — ключевые функции:
@@ -595,6 +597,7 @@ services:
 | `heading_config` | JSON (nullable) | Параметры заголовка для `item_type='heading'`: `{text, level (1-6), align ('left'|'center'|'right'), color, bg_color, divider}`. NULL для `item_type='chart'` |
 | `title_override` | VARCHAR(255) (nullable) | Переопределение заголовка чарта на дашборде |
 | `description_override` | TEXT (nullable) | Переопределение описания чарта на дашборде |
+| `hide_title` | BOOLEAN NOT NULL DEFAULT FALSE | Скрыть заголовок элемента (полезно для индикаторов) |
 | `layout_x` | INTEGER | Координата X в grid-layout |
 | `layout_y` | INTEGER | Координата Y в grid-layout |
 | `layout_w` | INTEGER | Ширина (column units) |

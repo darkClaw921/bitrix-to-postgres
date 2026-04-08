@@ -93,6 +93,7 @@ interface ChartRendererProps {
   height?: number | string
   designLayout?: DesignLayout
   fontScale?: number
+  fillHeight?: boolean
 }
 
 function formatValue(value: number, format?: 'number' | 'currency' | 'percent'): string {
@@ -174,16 +175,15 @@ function IndicatorRenderer({
   }
 
   // Wrapper height behavior also differs between modes:
-  //   - Fill: take 100% of the parent (h-full), with a minHeight floor so the
-  //     non-TV non-RGL contexts (regular flex column with no fixed height)
-  //     still have a visible centering area.
+  //   - Fill: take 100% of the parent (h-full). No minHeight — the parent
+  //     container provides a definite height (RGL cell in editor/TV/embed).
+  //     Adding minHeight here would cause a jump at small card sizes because
+  //     the floor conflicts with containerHeight * 0.9 scaling.
   //   - Compact: do NOT use h-full — otherwise CSS grid stretch on the All
   //     Charts page would inflate the wrapper to the row height (and the
   //     value with it). Use auto height with a minHeight floor so the card
   //     stays the size of its content + small padding.
-  const wrapperStyle: React.CSSProperties = {
-    minHeight: 80,
-  }
+  const wrapperStyle: React.CSSProperties = fillHeight ? {} : { minHeight: 80 }
 
   // Horizontal alignment: defaults to center for backward compatibility, but
   // users can opt into left/right via the settings panel.
@@ -402,7 +402,7 @@ function TableRenderer({ spec, data, maxHeight, fontScale }: { spec: ChartSpec; 
   )
 }
 
-export default function ChartRenderer({ spec, data, height = 350, designLayout: designLayoutProp, fontScale }: ChartRendererProps) {
+export default function ChartRenderer({ spec, data, height = 350, designLayout: designLayoutProp, fontScale, fillHeight }: ChartRendererProps) {
   const { t } = useTranslation()
   const fs = (base: number) => Math.max(8, Math.round(base * (fontScale ?? 1)))
   const { chart_type, data_keys, colors } = spec
@@ -493,12 +493,11 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
   // ChartCard / embed pages pass numeric heights and live inside CSS grids
   // that stretch siblings — there we want compact preset-sized values.
   if (chart_type === 'indicator') {
-    // fillHeight=true only in TV mode (fontScale is set by TvCellMeasurer).
-    // In the normal editor/embed context height="100%" is passed for non-indicator
-    // charts but indicators should NOT grow to fill the cell — they must stay at
-    // the user-chosen preset size (compact mode).
-    const fillHeight = fontScale != null
-    return <IndicatorRenderer spec={spec} data={data} fontScale={fontScale} fillHeight={fillHeight} />
+    // fillHeight=true: indicator grows to fill the parent container height.
+    // Used in TV mode (fontScale set) and dashboard editor (fillHeight prop set explicitly).
+    // Compact mode (false): indicator uses its preset size, can only shrink, never grow.
+    const resolvedFillHeight = fillHeight ?? (fontScale != null)
+    return <IndicatorRenderer spec={spec} data={data} fontScale={fontScale} fillHeight={resolvedFillHeight} />
   }
 
   // Table — rendered as plain HTML, no ResponsiveContainer

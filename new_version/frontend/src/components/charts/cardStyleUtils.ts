@@ -1,3 +1,4 @@
+import type React from 'react'
 import type { ChartDisplayConfig } from '../../services/api'
 
 type CardStyle = ChartDisplayConfig['cardStyle']
@@ -72,8 +73,32 @@ const TITLE_BASE_PX: Record<string, number> = {
  * single big value.
  */
 export function getTvTitleBasePx(chartType: string, fontSize?: string): number {
-  if (fontSize && TITLE_BASE_PX[fontSize] != null) {
-    return TITLE_BASE_PX[fontSize]
+  if (fontSize) {
+    if (TITLE_BASE_PX[fontSize] != null) return TITLE_BASE_PX[fontSize]
+    const n = parseInt(fontSize, 10)
+    if (!isNaN(n)) return n
   }
   return chartType === 'indicator' ? 36 : 18
+}
+
+/**
+ * Parse title font size string:
+ *  - legacy presets ('sm'→14, 'md'→18, 'lg'→20, 'xl'→24)
+ *  - numeric string ('16' → 16)
+ *  - undefined/null → undefined
+ */
+export function parseTitleFontSizePx(fontSize?: string): number | undefined {
+  if (!fontSize) return undefined
+  if (TITLE_BASE_PX[fontSize] != null) return TITLE_BASE_PX[fontSize]
+  const n = parseInt(fontSize, 10)
+  return !isNaN(n) ? n : undefined
+}
+
+/**
+ * Returns inline style object for title font size. Use instead of getTitleSizeClass
+ * when you need numeric/slider values to work alongside legacy sm/md/lg/xl presets.
+ */
+export function getTitleSizeStyle(fontSize?: string): React.CSSProperties {
+  const px = parseTitleFontSizePx(fontSize)
+  return px != null ? { fontSize: `${px}px` } : {}
 }

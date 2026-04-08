@@ -10,7 +10,7 @@ import ChartSettingsPanel from '../components/charts/ChartSettingsPanel'
 import DesignModeOverlay from '../components/charts/DesignModeOverlay'
 import DesignModeToolbar from '../components/charts/design/DesignModeToolbar'
 import ExportButtons from '../components/charts/ExportButtons'
-import { getCardStyleClasses, getCardInlineStyle, parseTitleFontSizePx, getTvTitleBasePx } from '../components/charts/cardStyleUtils'
+import { getCardStyleClasses, getCardInlineStyle, parseTitleFontSizePx, getTitleSizeStyle } from '../components/charts/cardStyleUtils'
 import SelectorEditorSection from '../components/selectors/SelectorEditorSection'
 import HeadingItem from '../components/dashboards/HeadingItem'
 import { TvModeGrid } from '../components/dashboards/TvModeGrid'
@@ -428,16 +428,13 @@ export default function DashboardEditorPage() {
         }
       : undefined
 
-    // Title base size mirrors `getTitleSizeClass` (sm/md/lg/xl) so the
-    // settings panel works in TV mode; indicators get a larger default
-    // because they have no axes/legend competing for the eye.
-    const titleBasePx = getTvTitleBasePx(dc.chart_type || 'bar', dc.title_font_size_override || config?.general?.titleFontSize)
-
-    const titleFontPx = dc.chart_type === 'indicator'
-      ? Math.max(14, Math.round(titleBasePx * fontScale))
-      : Math.round(titleBasePx * fontScale)
+    // Title size in TV mode is taken as-is from the editor slider
+    // (`title_font_size_override`) or the legacy preset (`general.titleFontSize`).
+    // We intentionally do NOT multiply by `fontScale` — the user configures the
+    // exact size in the editor and TV mode must honour it verbatim.
+    const effectiveTitleSize = dc.title_font_size_override || config?.general?.titleFontSize
     const titleStyle: React.CSSProperties = {
-      fontSize: `${titleFontPx}px`,
+      ...getTitleSizeStyle(effectiveTitleSize),
       ...titleTransformStyle,
     }
 

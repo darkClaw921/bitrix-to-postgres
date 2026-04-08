@@ -286,6 +286,11 @@ export interface ChartDisplayConfig {
     animate?: boolean
     showDataLabels?: boolean
     margins?: { top?: number; right?: number; bottom?: number; left?: number }
+    // When true, the chart ignores TV/stretch-driven fontScale so axis ticks,
+    // legend, data labels, indicator value and table cells keep their preset
+    // font size regardless of cell size. Indicator additionally switches to
+    // compact (preset) sizing so autoFit-to-container is disabled.
+    fixedFontSize?: boolean
   }
   // design layout (interactive positioning)
   designLayout?: DesignLayout

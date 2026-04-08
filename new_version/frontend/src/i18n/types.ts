@@ -420,6 +420,8 @@ export interface Translations {
     marginRight: string
     marginBottom: string
     marginLeft: string
+    fixedFontSize: string
+    fixedFontSizeHint: string
   }
   publishModal: {
     title: string

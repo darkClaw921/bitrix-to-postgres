@@ -420,6 +420,8 @@ export const en: Translations = {
     marginRight: 'Right:',
     marginBottom: 'Bottom:',
     marginLeft: 'Left:',
+    fixedFontSize: 'Fixed font size',
+    fixedFontSizeHint: 'Font size does not change when the chart is stretched (TV mode or cell resize)',
   },
   publishModal: {
     title: 'Publish Dashboard',

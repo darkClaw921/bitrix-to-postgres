@@ -420,6 +420,8 @@ export const ru: Translations = {
     marginRight: 'Справа:',
     marginBottom: 'Снизу:',
     marginLeft: 'Слева:',
+    fixedFontSize: 'Фиксированный размер шрифта',
+    fixedFontSizeHint: 'Размер шрифта не меняется при растягивании графика (в TV-режиме и при изменении размера ячейки)',
   },
   publishModal: {
     title: 'Опубликовать дашборд',

@@ -388,7 +388,7 @@ export default function DashboardEditorPage() {
   const renderTvChartCard = (
     dc: DashboardChart,
     fontScale: number,
-    chartHeight: number,
+    _chartHeight: number,
   ): React.ReactNode => {
     const data = dc.chart_id != null ? chartData[dc.chart_id] || null : null
     const title = dc.title_override || dc.chart_title || 'Chart'
@@ -454,11 +454,15 @@ export default function DashboardEditorPage() {
         )}
         <div className="flex-1 min-h-0 overflow-hidden">
           {data ? (
+            // See EmbedDashboardPage: pass "100%" instead of the precomputed
+            // chartHeight so ResponsiveContainer tracks the real flex child
+            // height and the legend/x-axis can't overflow the card.
             <ChartRenderer
               spec={spec}
               data={data.data}
-              height={chartHeight}
+              height="100%"
               fontScale={fontScale}
+              fillHeight
             />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-400 text-sm">

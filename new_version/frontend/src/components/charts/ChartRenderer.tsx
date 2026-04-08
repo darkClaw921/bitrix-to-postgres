@@ -430,19 +430,99 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
   const showTooltip = generalCfg.showTooltip !== false
   const isAnimated = generalCfg.animate !== false
   const showDataLabels = generalCfg.showDataLabels || false
-  const defaultMargin = { top: 5, right: 20, bottom: 5, left: 0 }
+  // Defaults tuned so the first/last X-tick labels and Y-tick labels do not get
+  // clipped at the plot edges. Recharts places tick text centered on the tick,
+  // so a zero left/right margin cuts ~half the leftmost/rightmost label.
+  // Bottom defaults to 20 to leave room for the X-axis label row; when the
+  // user rotates X-ticks we bump it further below.
+  const defaultMargin = { top: 10, right: 30, bottom: 20, left: 10 }
   const baseMargin = generalCfg.margins
     ? { ...defaultMargin, ...generalCfg.margins }
-    : defaultMargin
+    : { ...defaultMargin }
+  // Rotated X-axis ticks need extra vertical room — `tick.height: 60` only
+  // allocates the tick area inside the plot, not outside margin. Without this
+  // the rotated labels get clipped against the card border. Rotation also
+  // makes the leftmost label extend to the LEFT of its tick (textAnchor=end),
+  // so we also widen left/right margins proportional to rotation magnitude.
+  const userMargins = generalCfg.margins ?? {}
+  // All margin reservations below are computed in 12px-base units, then
+  // scaled by `fontScale` so TV/preview mode (which blows up tick font via
+  // `fs()`) gets proportionally larger reservations. Without this scaling
+  // rotated dates and bottom legends get clipped again at large fontScale.
+  const fScale = fontScale ?? 1
+  const scaled = (px: number) => Math.round(px * fScale)
+
+  // Whether the legend takes room along the bottom of the chart (default
+  // placement). We need to reserve extra bottom margin for it, because
+  // Recharts places the bottom legend INSIDE the chart's bottom margin —
+  // if rotated X-axis ticks already consumed that space, the legend gets
+  // clipped by the card border.
+  const _legendHasDesignPos = dl?.legend && (dl.legend.x != null || dl.legend.y != null)
+  const legendAtBottom =
+    legendCfg.visible &&
+    !_legendHasDesignPos &&
+    (legendCfg.position == null || legendCfg.position === 'bottom')
+  const legendReserve = legendAtBottom ? scaled(24) : 0
+
+  // Dynamically compute how much room rotated X-axis tick labels need. At
+  // angle θ, a label of width W projects horizontally as |W·cos θ| + |H·sin θ|
+  // and vertically as |W·sin θ| + |H·cos θ|. W is approximated from the
+  // longest label's character count (~0.58em per char) at the current tick
+  // font size. This is far more robust than a fixed 50px — it adapts to both
+  // long labels (e.g. "2026-01-12") and to TV mode's larger fontScale.
+  const maxLabelChars = data.reduce((m, row) => {
+    const s = String(row[xKey] ?? '')
+    return s.length > m ? s.length : m
+  }, 0)
+  const tickFontPx = fs(12)
+  const approxLabelWidthPx = Math.max(1, maxLabelChars) * tickFontPx * 0.58
+  const approxLabelHeightPx = tickFontPx * 1.1
+  const angleRad = ((Math.abs(xAxisCfg.angle ?? 0)) * Math.PI) / 180
+  const horizOverhang = Math.ceil(
+    approxLabelWidthPx * Math.cos(angleRad) + approxLabelHeightPx * Math.sin(angleRad)
+  )
+  const vertOverhang = Math.ceil(
+    approxLabelWidthPx * Math.sin(angleRad) + approxLabelHeightPx * Math.cos(angleRad)
+  )
+  // +16px safety margin beyond the geometric overhang: the approximation
+  // underestimates real rendered text width (font metrics, kerning, SVG
+  // subpixel rounding) and the cost of a slightly looser reservation is
+  // much smaller than the cost of a clipped character.
+  const sidePad = horizOverhang + 16
+  const bottomPad = vertOverhang + 16
+
+  if (xAxisCfg.angle) {
+    if (userMargins.bottom == null) {
+      baseMargin.bottom = Math.max(baseMargin.bottom ?? 0, bottomPad + legendReserve)
+    }
+    if (userMargins.left == null) {
+      baseMargin.left = Math.max(baseMargin.left ?? 0, sidePad)
+    }
+    if (userMargins.right == null) {
+      baseMargin.right = Math.max(baseMargin.right ?? 0, sidePad)
+    }
+  } else if (legendAtBottom && userMargins.bottom == null) {
+    // Even without rotation, make sure the bottom legend has breathing room.
+    baseMargin.bottom = Math.max(baseMargin.bottom ?? 0, scaled(20) + legendReserve)
+  }
+  // Reserve room for the X-axis label (value text) when present.
+  if (xAxisCfg.label && userMargins.bottom == null) {
+    baseMargin.bottom = Math.max(baseMargin.bottom ?? 0, scaled(40) + legendReserve)
+  }
+  // Reserve room on the left when Y-axis label is present (YAxis width is
+  // limited; the rotated label text needs extra outer breathing room so the
+  // tick numbers don't get clipped either).
+  if (yAxisCfg.label && userMargins.left == null) {
+    baseMargin.left = Math.max(baseMargin.left ?? 0, scaled(20))
+  }
   // Apply design layout margins on top
   const chartMargin = dl?.margins
     ? { ...baseMargin, ...dl.margins }
     : baseMargin
 
   // Legend position mapping — with design layout override
-  const legendHasDesignPos = dl?.legend && (dl.legend.x != null || dl.legend.y != null)
   const legendProps = legendCfg.visible
-    ? legendHasDesignPos
+    ? _legendHasDesignPos
       ? {
           wrapperStyle: {
             position: 'absolute' as const,
@@ -463,9 +543,19 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
         }
     : null
 
-  // XAxis tick angle props
-  const xTickProps = xAxisCfg.angle
-    ? { angle: xAxisCfg.angle, textAnchor: 'end' as const, height: 60, fontSize: fs(12) }
+  // XAxis tick props. NOTE: `height` belongs on the <XAxis> element, not on
+  // tick props. Also, Recharts' <Text> inside tick uses `width` from its slot
+  // to wrap/truncate text — for rotated labels that's wrong (text has already
+  // been rotated to fit diagonally, no need to word-wrap). Passing an explicit
+  // large `width` on tick disables that truncation and lets the full label
+  // render regardless of slot width.
+  const rotated = !!xAxisCfg.angle
+  // Disable Recharts' per-slot word-wrap on rotated labels by passing a large
+  // explicit `width` — uses the dynamic label width so it always exceeds the
+  // longest label regardless of fontScale.
+  const xTickWidth = Math.max(200, Math.ceil(approxLabelWidthPx + 20))
+  const xTickProps = rotated
+    ? { angle: xAxisCfg.angle, textAnchor: 'end' as const, fontSize: fs(12), width: xTickWidth }
     : { fontSize: fs(12) }
 
   // Design layout: axis label offsets
@@ -511,16 +601,31 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
   const renderXAxis = () => (
     <XAxis
       dataKey={xKey}
+      height={rotated ? Math.max(scaled(40), bottomPad) : undefined}
+      interval={rotated ? 0 : 'preserveStartEnd'}
+      tickMargin={rotated ? scaled(8) : scaled(4)}
       label={xAxisCfg.label ? { value: xAxisCfg.label, position: 'insideBottom', offset: -5, dx: xLabelDx, dy: xLabelDy, style: { fontSize: fs(12) } } : undefined}
       tick={xTickProps}
     />
   )
 
+  // When a Y-axis label is present, widen the axis so the rotated label text
+  // (angle -90, positioned at `insideLeft`) is not clipped to the default
+  // ~60px Recharts axis width. We also offset the label (`dx: -5`) to keep
+  // a gap from the tick numbers, unless the user set their own offset.
   const renderYAxis = () => (
     <YAxis
       tickFormatter={yTickFormatter}
       tick={{ fontSize: fs(12) }}
-      label={yAxisCfg.label ? { value: yAxisCfg.label, angle: -90, position: 'insideLeft', dx: yLabelDx, dy: yLabelDy, style: { fontSize: fs(12) } } : undefined}
+      width={yAxisCfg.label ? scaled(80) : undefined}
+      label={yAxisCfg.label ? {
+        value: yAxisCfg.label,
+        angle: -90,
+        position: 'insideLeft',
+        dx: yLabelDx || -5,
+        dy: yLabelDy,
+        style: { fontSize: fs(12), textAnchor: 'middle' },
+      } : undefined}
     />
   )
 
@@ -637,18 +742,32 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
           </Funnel>
         </FunnelChart>
       ) : chart_type === 'horizontal_bar' ? (
-        <BarChart data={data} layout="vertical" margin={{ ...chartMargin, left: Math.max(chartMargin.left ?? 0, 80) }}>
-          {renderGrid()}
-          <XAxis type="number" tickFormatter={yTickFormatter} />
-          <YAxis type="category" dataKey={xKey} width={80} />
-          {renderTooltip()}
-          {renderLegend()}
-          {yKeys.map((key, i) => (
-            <Bar key={key} dataKey={key} fill={palette[i % palette.length]} isAnimationActive={isAnimated}>
-              {showDataLabels && <LabelList dataKey={key} position="right" fontSize={fs(11)} dx={dataLabelDx} dy={dataLabelDy} />}
-            </Bar>
-          ))}
-        </BarChart>
+        (() => {
+          // Compute Y-axis width from the longest category label so long names
+          // like "Звонок поступил на номер: +7..." don't get clipped. We use a
+          // conservative ~7px per character for the default font, add padding,
+          // and clamp between 80 and 200. `fontScale` (TV mode) widens further.
+          const longest = data.reduce((m, row) => {
+            const s = String(row[xKey] ?? '')
+            return s.length > m ? s.length : m
+          }, 0)
+          const charPx = 7 * (fontScale ?? 1)
+          const yAxisWidth = Math.min(200, Math.max(80, Math.round(longest * charPx) + 12))
+          return (
+            <BarChart data={data} layout="vertical" margin={{ ...chartMargin, left: Math.max(chartMargin.left ?? 0, 10) }}>
+              {renderGrid()}
+              <XAxis type="number" tickFormatter={yTickFormatter} tick={{ fontSize: fs(12) }} />
+              <YAxis type="category" dataKey={xKey} width={yAxisWidth} tick={{ fontSize: fs(12) }} />
+              {renderTooltip()}
+              {renderLegend()}
+              {yKeys.map((key, i) => (
+                <Bar key={key} dataKey={key} fill={palette[i % palette.length]} isAnimationActive={isAnimated}>
+                  {showDataLabels && <LabelList dataKey={key} position="right" fontSize={fs(11)} dx={dataLabelDx} dy={dataLabelDy} />}
+                </Bar>
+              ))}
+            </BarChart>
+          )
+        })()
       ) : (
         <BarChart data={data}>
           {renderGrid()}

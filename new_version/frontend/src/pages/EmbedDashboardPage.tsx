@@ -354,7 +354,7 @@ export default function EmbedDashboardPage() {
   const renderTvChartCard = (
     dc: DashboardChart,
     fontScale: number,
-    chartHeight: number,
+    _chartHeight: number,
   ): React.ReactNode => {
     const data = activeChartData[dc.id] || null
     const title = dc.title_override || dc.chart_title || 'Chart'
@@ -420,11 +420,20 @@ export default function EmbedDashboardPage() {
         )}
         <div className="flex-1 min-h-0 overflow-hidden">
           {data ? (
+            // Pass "100%" so ResponsiveContainer measures the actual flex
+            // child height instead of using the pre-computed `chartHeight`
+            // (which subtracts a fixed 44px title row — wrong when the TV
+            // title font is larger and pushes the content down beyond the
+            // card's `overflow:hidden` boundary, clipping the legend).
+            // `chartHeight` is still forwarded for the `fillHeight` logic
+            // used by the indicator renderer, which needs a concrete pixel
+            // value. Non-indicator charts ignore it under "100%".
             <ChartRenderer
               spec={spec}
               data={data.data}
-              height={chartHeight}
+              height="100%"
               fontScale={fontScale}
+              fillHeight
             />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-400 text-sm">

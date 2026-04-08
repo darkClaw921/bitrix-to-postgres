@@ -565,6 +565,15 @@ export default function ChartSettingsPanel({ chartType, config, onApply, isSavin
               <span>{t('chartSettings.showDataLabels')}</span>
             </label>
           )}
+
+          <label className="flex items-center gap-2" title={t('chartSettings.fixedFontSizeHint')}>
+            <input
+              type="checkbox"
+              checked={general.fixedFontSize === true}
+              onChange={(e) => setGeneral({ ...general, fixedFontSize: e.target.checked })}
+            />
+            <span>{t('chartSettings.fixedFontSize')}</span>
+          </label>
         </div>
 
         {/* Chart margins */}

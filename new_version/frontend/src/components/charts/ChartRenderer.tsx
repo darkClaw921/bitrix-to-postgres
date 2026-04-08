@@ -404,7 +404,13 @@ function TableRenderer({ spec, data, maxHeight, fontScale }: { spec: ChartSpec; 
 
 export default function ChartRenderer({ spec, data, height = 350, designLayout: designLayoutProp, fontScale, fillHeight }: ChartRendererProps) {
   const { t } = useTranslation()
-  const fs = (base: number) => Math.max(8, Math.round(base * (fontScale ?? 1)))
+  // When the user enables `general.fixedFontSize`, we fully ignore the
+  // TV/stretch-driven `fontScale` so that axis ticks, legend, labels, indicator
+  // value and table cells all keep their preset font size regardless of the
+  // surrounding cell size. This is treated as a hard override of the prop.
+  const _fixedFontSize = spec.general?.fixedFontSize === true
+  const effectiveFontScale = _fixedFontSize ? undefined : fontScale
+  const fs = (base: number) => Math.max(8, Math.round(base * (effectiveFontScale ?? 1)))
   const { chart_type, data_keys, colors } = spec
   const palette = colors?.length ? colors : DEFAULT_COLORS
   const xKey = data_keys.x
@@ -449,7 +455,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
   // scaled by `fontScale` so TV/preview mode (which blows up tick font via
   // `fs()`) gets proportionally larger reservations. Without this scaling
   // rotated dates and bottom legends get clipped again at large fontScale.
-  const fScale = fontScale ?? 1
+  const fScale = effectiveFontScale ?? 1
   const scaled = (px: number) => Math.round(px * fScale)
 
   // Whether the legend takes room along the bottom of the chart (default
@@ -586,13 +592,15 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
     // fillHeight=true: indicator grows to fill the parent container height.
     // Used in TV mode (fontScale set) and dashboard editor (fillHeight prop set explicitly).
     // Compact mode (false): indicator uses its preset size, can only shrink, never grow.
-    const resolvedFillHeight = fillHeight ?? (fontScale != null)
-    return <IndicatorRenderer spec={spec} data={data} fontScale={fontScale} fillHeight={resolvedFillHeight} />
+    // With fixedFontSize: force compact sizing so the indicator uses its
+    // preset and never autoFits to the (stretched) container.
+    const resolvedFillHeight = _fixedFontSize ? false : (fillHeight ?? (fontScale != null))
+    return <IndicatorRenderer spec={spec} data={data} fontScale={effectiveFontScale} fillHeight={resolvedFillHeight} />
   }
 
   // Table — rendered as plain HTML, no ResponsiveContainer
   if (chart_type === 'table') {
-    return <TableRenderer spec={spec} data={data} maxHeight={height} fontScale={fontScale} />
+    return <TableRenderer spec={spec} data={data} maxHeight={height} fontScale={effectiveFontScale} />
   }
 
   const renderGrid = () =>
@@ -751,7 +759,7 @@ export default function ChartRenderer({ spec, data, height = 350, designLayout: 
             const s = String(row[xKey] ?? '')
             return s.length > m ? s.length : m
           }, 0)
-          const charPx = 7 * (fontScale ?? 1)
+          const charPx = 7 * (effectiveFontScale ?? 1)
           const yAxisWidth = Math.min(200, Math.max(80, Math.round(longest * charPx) + 12))
           return (
             <BarChart data={data} layout="vertical" margin={{ ...chartMargin, left: Math.max(chartMargin.left ?? 0, 10) }}>

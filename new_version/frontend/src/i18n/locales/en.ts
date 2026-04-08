@@ -40,6 +40,7 @@ export const en: Translations = {
   ai: {
     chartsTab: 'Charts',
     reportsTab: 'Reports',
+    plansTab: 'Plans',
   },
   auth: {
     signIn: 'Sign In',

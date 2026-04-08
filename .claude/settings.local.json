@@ -58,7 +58,9 @@
       "Bash(npx playwright:*)",
       "Bash(xargs -I{} basename {})",
       "Bash(mysql:*)",
-      "Bash(env)"
+      "Bash(env)",
+      "Bash(find:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)"
     ]
   }
 }

@@ -365,7 +365,7 @@ class ChartService:
             query = text(
                 "SELECT table_name, column_name, data_type, is_nullable, column_comment "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%') "
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%' OR table_name = 'plans') "
                 "ORDER BY table_name, ordinal_position"
             )
         else:
@@ -380,7 +380,7 @@ class ChartService:
                     col_description((quote_ident(c.table_schema)||'.'||quote_ident(c.table_name))::regclass::oid, c.ordinal_position) as column_comment
                 FROM information_schema.columns c
                 WHERE c.table_schema = current_schema()
-                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%' OR c.table_name LIKE 'bitrix_%')
+                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%' OR c.table_name LIKE 'bitrix_%' OR c.table_name = 'plans')
                 ORDER BY c.table_name, c.ordinal_position
                 """
             )
@@ -444,13 +444,13 @@ class ChartService:
             query = text(
                 "SELECT DISTINCT table_name "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%' OR table_name LIKE 'stage_history_%')"
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%' OR table_name LIKE 'stage_history_%' OR table_name = 'plans')"
             )
         else:
             query = text(
                 "SELECT DISTINCT table_name "
                 "FROM information_schema.columns "
-                "WHERE (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%' OR table_name LIKE 'stage_history_%')"
+                "WHERE (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%' OR table_name LIKE 'stage_history_%' OR table_name = 'plans')"
             )
 
         async with engine.begin() as conn:
@@ -489,7 +489,7 @@ class ChartService:
             query = text(
                 "SELECT table_name, column_name, data_type, is_nullable, column_default, column_comment "
                 "FROM information_schema.columns "
-                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%') "
+                "WHERE table_schema = DATABASE() AND (table_name LIKE 'crm_%' OR table_name LIKE 'ref_%' OR table_name LIKE 'bitrix_%' OR table_name = 'plans') "
                 "ORDER BY table_name, ordinal_position"
             )
         else:
@@ -505,7 +505,7 @@ class ChartService:
                     col_description((quote_ident(c.table_schema)||'.'||quote_ident(c.table_name))::regclass::oid, c.ordinal_position) as column_comment
                 FROM information_schema.columns c
                 WHERE c.table_schema = current_schema()
-                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%' OR c.table_name LIKE 'bitrix_%')
+                  AND (c.table_name LIKE 'crm_%' OR c.table_name LIKE 'ref_%' OR c.table_name LIKE 'bitrix_%' OR c.table_name = 'plans')
                 ORDER BY c.table_name, c.ordinal_position
                 """
             )

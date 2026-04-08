@@ -10,6 +10,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.core.exceptions import AIServiceError
 from app.core.logging import get_logger
+from app.domain.services.plan_service import PlanService
 from app.infrastructure.database.connection import get_engine
 
 logger = get_logger(__name__)
@@ -317,7 +318,7 @@ class AIService:
     (``HTTP-Referer`` / ``X-Title``) are sent if configured.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, plan_service: "PlanService | None" = None) -> None:
         settings = get_settings()
 
         default_headers: dict[str, str] = {}
@@ -335,6 +336,11 @@ class AIService:
         )
         self.model = settings.openai_model
         self.provider = settings.llm_provider
+        # PlanService is used to inject the ``plans`` table context into the
+        # system prompt. We default-construct one so the existing call sites
+        # (``AIService()``) don't need to change; callers can still inject a
+        # shared instance for testing or DI.
+        self._plan_service: PlanService = plan_service or PlanService()
 
     @staticmethod
     def _to_chat_messages(
@@ -441,9 +447,18 @@ class AIService:
     async def _get_bitrix_context(self) -> str:
         """Get active Bitrix context prompt from database.
 
-        Returns:
-            Bitrix context string or empty string if not found.
+        Returns a concatenation of:
+        1. The active ``bitrix_context`` row from ``chart_prompt_templates``
+           (describes the Bitrix CRM schema for the LLM).
+        2. The ``plans`` table markdown block from
+           :meth:`PlanService.get_plans_llm_context`, so the LLM can generate
+           plan-vs-fact queries with a JOIN on ``plans``.
+
+        Both parts are best-effort: if either lookup fails the method still
+        returns whatever context it managed to assemble (possibly an empty
+        string) so the LLM call is never blocked on prompt enrichment.
         """
+        bitrix_context = ""
         engine = get_engine()
         try:
             async with engine.begin() as conn:
@@ -460,11 +475,21 @@ class AIService:
                 )
                 row = result.first()
                 if row:
-                    return row[0]
-                return ""
+                    bitrix_context = row[0] or ""
         except Exception as e:
             logger.warning("Failed to load bitrix context", error=str(e))
-            return ""
+
+        plans_context = ""
+        if self._plan_service is not None:
+            try:
+                plans_context = await self._plan_service.get_plans_llm_context()
+            except Exception as e:  # pragma: no cover — best-effort enrichment
+                logger.warning("Failed to load plans context", error=str(e))
+                plans_context = ""
+
+        if bitrix_context and plans_context:
+            return f"{bitrix_context}\n\n{plans_context}".strip()
+        return (bitrix_context or plans_context).strip()
 
     async def generate_chart_spec(self, prompt: str, schema_context: str) -> dict:
         """Generate a chart specification from a natural language prompt.

@@ -722,7 +722,8 @@ frontend/src/
 │   │   ├── ChartSettingsPanel.tsx # Панель настроек отображения чарта (цвета, оси, legend, grid, настройки для каждого типа)
 │   │   ├── ChartCard.tsx      # Карточка сохранённого чарта с действиями (pin/refresh/settings/SQL/edit-SQL/embed/delete). Кнопка "Изменить" открывает SqlEditorModal
 │   │   ├── SqlEditorModal.tsx # Модалка редактирования SQL сохранённого чарта: textarea с текущим SQL, панель AI "Что изменить?" (POST /charts/{id}/refine-sql-ai вставляет результат в редактор), кнопка "Предпросмотр" (POST /charts/execute-sql, таблица первых 50 строк), "Сохранить" (PATCH /charts/{id}/sql)
-│   │   └── PromptEditorModal.tsx  # Модальное окно редактирования Bitrix-промпта для AI (markdown-редактор)
+│   │   ├── PromptEditorModal.tsx  # Модальное окно редактирования Bitrix-промпта для AI (markdown-редактор)
+│   │   └── AvailableChartTypesModal.tsx # Модальное окно со списком всех доступных типов графиков (bar, horizontal_bar, line, area, pie, scatter, funnel, indicator, table) с описанием и примером промпта для каждого типа. Открывается из ChartsPage кнопкой "Доступные графики"
 │   ├── dashboards/
 │   │   ├── DashboardCard.tsx  # Карточка дашборда в списке
 │   │   ├── PasswordGate.tsx   # Форма ввода пароля для публичного дашборда

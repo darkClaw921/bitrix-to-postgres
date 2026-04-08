@@ -225,7 +225,15 @@ class SyncService:
             col_name = key.lower()
 
             if col_name == "id":
-                data["bitrix_id"] = str(value) if value else None
+                if value is None or value == "":
+                    data["bitrix_id"] = None
+                    data["bitrix_id_int"] = None
+                else:
+                    data["bitrix_id"] = str(value)
+                    try:
+                        data["bitrix_id_int"] = int(value)
+                    except (TypeError, ValueError):
+                        data["bitrix_id_int"] = None
                 continue
 
             if col_name not in valid_columns:

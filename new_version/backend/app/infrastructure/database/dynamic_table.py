@@ -26,6 +26,7 @@ class DynamicTableBuilder:
     RESERVED_COLUMNS = {
         "record_id",
         "bitrix_id",
+        "bitrix_id_int",
         "created_at",
         "updated_at",
     }
@@ -43,6 +44,7 @@ class DynamicTableBuilder:
         columns = [
             Column("record_id", BigInteger, primary_key=True, autoincrement=True),
             Column("bitrix_id", String(50), unique=True, nullable=False, index=True),
+            Column("bitrix_id_int", BigInteger, nullable=True, index=True),
             Column("created_at", DateTime, server_default=func.now(), nullable=False),
             Column(
                 "updated_at",
@@ -84,6 +86,11 @@ class DynamicTableBuilder:
         async with engine.begin() as conn:
             await conn.run_sync(metadata.create_all)
 
+        # If the table already existed, create_all is a no-op and won't add
+        # newly-declared system columns such as bitrix_id_int. Ensure the
+        # column and its backfill run for legacy tables as well.
+        await cls._ensure_bitrix_id_int_column(table_name)
+
         logger.info(
             "Created dynamic table",
             table_name=table_name,
@@ -91,6 +98,123 @@ class DynamicTableBuilder:
         )
 
         return table
+
+    @classmethod
+    async def _ensure_bitrix_id_int_column(cls, table_name: str) -> None:
+        """Guarantee that <table>.bitrix_id_int exists, is indexed, and is
+        backfilled from bitrix_id for rows where it is still NULL.
+
+        Idempotent: safe to call on every sync. Acts as a runtime safety net
+        for tables that were created before migration 021 or that skipped
+        alembic entirely.
+        """
+        engine = get_engine()
+        dialect = get_dialect()
+
+        async with engine.begin() as conn:
+            existing = await cls._get_existing_columns(conn)
+            table_cols = existing.get(table_name, set())
+
+            if "bitrix_id" not in table_cols:
+                # Nothing to do — this isn't a Bitrix entity table.
+                return
+
+            # 1) Add the column if missing.
+            if "bitrix_id_int" not in table_cols:
+                try:
+                    if dialect == "mysql":
+                        await conn.execute(
+                            text(
+                                f"ALTER TABLE `{table_name}` "
+                                f"ADD COLUMN bitrix_id_int BIGINT NULL"
+                            )
+                        )
+                    else:
+                        await conn.execute(
+                            text(
+                                f'ALTER TABLE "{table_name}" '
+                                f"ADD COLUMN IF NOT EXISTS bitrix_id_int BIGINT"
+                            )
+                        )
+                    logger.info(
+                        "Added bitrix_id_int column", table_name=table_name
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Failed to add bitrix_id_int column",
+                        table_name=table_name,
+                        error=str(e),
+                    )
+                    return
+
+            # 2) Backfill rows where bitrix_id_int IS NULL but bitrix_id is numeric.
+            try:
+                if dialect == "mysql":
+                    backfill_sql = (
+                        f"UPDATE `{table_name}` "
+                        f"SET bitrix_id_int = CAST(bitrix_id AS SIGNED) "
+                        f"WHERE bitrix_id_int IS NULL "
+                        f"  AND bitrix_id IS NOT NULL "
+                        f"  AND bitrix_id REGEXP '^[0-9]+$'"
+                    )
+                else:
+                    backfill_sql = (
+                        f'UPDATE "{table_name}" '
+                        f"SET bitrix_id_int = CAST(bitrix_id AS BIGINT) "
+                        f"WHERE bitrix_id_int IS NULL "
+                        f"  AND bitrix_id IS NOT NULL "
+                        f"  AND bitrix_id ~ '^[0-9]+$'"
+                    )
+                result = await conn.execute(text(backfill_sql))
+                affected = result.rowcount if result.rowcount is not None else 0
+                if affected > 0:
+                    logger.info(
+                        "Backfilled bitrix_id_int",
+                        table_name=table_name,
+                        rows=affected,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "bitrix_id_int backfill failed",
+                    table_name=table_name,
+                    error=str(e),
+                )
+
+            # 3) Ensure an index exists on bitrix_id_int.
+            idx_name = f"ix_{table_name}_bitrix_id_int"[:63]
+            try:
+                if dialect == "mysql":
+                    # MySQL has no CREATE INDEX IF NOT EXISTS before 8.0 —
+                    # check via information_schema.statistics first.
+                    check = await conn.execute(
+                        text(
+                            "SELECT 1 FROM information_schema.statistics "
+                            "WHERE table_schema = DATABASE() "
+                            "  AND table_name = :tbl AND index_name = :idx "
+                            "LIMIT 1"
+                        ),
+                        {"tbl": table_name, "idx": idx_name},
+                    )
+                    if check.first() is None:
+                        await conn.execute(
+                            text(
+                                f"CREATE INDEX `{idx_name}` "
+                                f"ON `{table_name}` (bitrix_id_int)"
+                            )
+                        )
+                else:
+                    await conn.execute(
+                        text(
+                            f'CREATE INDEX IF NOT EXISTS "{idx_name}" '
+                            f'ON "{table_name}" (bitrix_id_int)'
+                        )
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Failed to create bitrix_id_int index",
+                    table_name=table_name,
+                    error=str(e),
+                )
 
     @classmethod
     async def add_column_to_table(

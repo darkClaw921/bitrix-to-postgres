@@ -415,7 +415,7 @@ app/infrastructure/
 ├── database/
 │   ├── connection.py        # AsyncEngine, get_session, get_dialect()
 │   ├── models.py            # SQLAlchemy модели (SyncConfig, SyncLog, SyncState, AIChart, SchemaDescription, ChartPromptTemplate, PublishedDashboard, DashboardChart, DashboardLink, DashboardSelector, SelectorChartMapping)
-│   └── dynamic_table.py     # Динамическое создание таблиц (кросс-БД, с комментариями полей)
+│   └── dynamic_table.py     # Динамическое создание таблиц (кросс-БД, с комментариями полей). Системные колонки: record_id (PK), bitrix_id VARCHAR(50) UNIQUE, bitrix_id_int BIGINT nullable indexed, created_at, updated_at
 └── scheduler/
     └── scheduler.py         # APScheduler для периодической синхронизации
 
@@ -440,7 +440,9 @@ alembic/
     ├── 016_add_post_filter_to_mappings.py  # post_filter_resolve_table/_column/_id_column в selector_chart_mappings
     ├── 017_add_dashboard_heading_items.py  # Полиморфные элементы dashboard_charts: item_type, heading_config, nullable chart_id
     ├── 018_add_tab_label_to_dashboards.py  # Колонка tab_label в published_dashboards
-    └── 019_add_hide_title_to_dashboard_charts.py  # Колонка hide_title в dashboard_charts
+    ├── 019_add_hide_title_to_dashboard_charts.py  # Колонка hide_title в dashboard_charts
+    ├── 020_add_title_font_size_override.py  # Колонка title_font_size_override в dashboard_charts
+    └── 021_add_bitrix_id_int.py  # Идемпотентная миграция: добавление BIGINT-колонки bitrix_id_int во все динамические Bitrix-таблицы (crm_*/bitrix_*/stage_history_*), обработка трёх состояний (строковый/числовой/оба) для PG и MySQL, downgrade для state A
 ```
 
 #### connection.py — ключевые функции:
@@ -451,6 +453,24 @@ def get_engine()                   # Получить AsyncEngine
 def get_dialect() -> str           # "postgresql" или "mysql"
 async def get_session()            # Dependency для FastAPI
 ```
+
+#### dynamic_table.py — системные колонки динамических Bitrix-таблиц
+
+`DynamicTableBuilder` создаёт таблицы `crm_*` (deals/contacts/leads/companies), `bitrix_*` (calls) и `stage_history_*` на основе метаданных полей Bitrix API (`.fields` или захардкоженных `*_FIELD_TYPES`). Поля с именами из `RESERVED_COLUMNS` игнорируются при импорте пользовательских полей; в каждую таблицу добавляется фиксированный набор системных колонок:
+
+| Колонка | Тип | Назначение |
+|---|---|---|
+| `record_id` | `BigInteger` (PK, autoincrement) | Внутренний суррогатный ключ |
+| `bitrix_id` | `VARCHAR(50)` UNIQUE, NOT NULL, индекс | Канонический строковый идентификатор записи в Bitrix24 (источник правды для UPSERT и JOIN'ов из `chart_prompts`, `reports` и селекторных маппингов) |
+| `bitrix_id_int` | `BIGINT`, nullable, индекс `ix_<table>_bitrix_id_int` | Числовое зеркало `bitrix_id` для числовых JOIN'ов и фильтров; заполняется sync-сервисом параллельно со строковой колонкой, `bitrix_id_int::text = bitrix_id` для всех записей с числовым идентификатором |
+| `created_at` | `DateTime`, `server_default=now()` | Время первого UPSERT записи |
+| `updated_at` | `DateTime`, `server_default=now()`, `onupdate=now()` | Время последнего обновления записи |
+
+Обе колонки `bitrix_id` и `bitrix_id_int` поддерживаются одновременно: строковая — основной уникальный ключ и UPSERT-таргет, числовая — оптимизация для отчётов и чартов, которые джойнят по числовому идентификатору.
+
+Метод `DynamicTableBuilder._ensure_bitrix_id_int_column(table_name)` вызывается из `create_table_from_fields` после `metadata.create_all` и выполняет runtime-safety net для legacy-таблиц: при необходимости добавляет колонку `bitrix_id_int` (ALTER TABLE), бэкфиллит её из `bitrix_id` по регекспу `^[0-9]+$` и создаёт индекс `ix_<table>_bitrix_id_int`. Идемпотентен, запускается на каждом старте синхронизации, независим от alembic-миграции 021.
+
+Для MySQL строковые колонки с типом `String` автоматически конвертируются в `Text` (обход лимита 65535 байт на строку DDL), таблицы создаются с `mysql_row_format="DYNAMIC"`.
 
 ### 4. Core Layer (`app/core/`)
 

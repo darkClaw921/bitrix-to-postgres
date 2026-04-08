@@ -57,7 +57,8 @@
       "Bash(NODE_PATH=/opt/homebrew/lib/node_modules node:*)",
       "Bash(npx playwright:*)",
       "Bash(xargs -I{} basename {})",
-      "Bash(mysql:*)"
+      "Bash(mysql:*)",
+      "Bash(env)"
     ]
   }
 }

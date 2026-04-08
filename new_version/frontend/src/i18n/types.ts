@@ -40,6 +40,7 @@ export interface Translations {
   ai: {
     chartsTab: string
     reportsTab: string
+    plansTab: string
   }
   auth: {
     signIn: string

@@ -5,6 +5,7 @@ import ConfigPage from './pages/ConfigPage'
 import MonitoringPage from './pages/MonitoringPage'
 import ValidationPage from './pages/ValidationPage'
 import ChartsPage from './pages/ChartsPage'
+import PlansPage from './pages/PlansPage'
 import ReportsPage from './pages/ReportsPage'
 import SchemaPage from './pages/SchemaPage'
 import EmbedChartPage from './pages/EmbedChartPage'
@@ -51,6 +52,7 @@ function App() {
         <Route path="validation" element={<ValidationPage />} />
         <Route path="ai/charts" element={<ChartsPage />} />
         <Route path="ai/reports" element={<ReportsPage />} />
+        <Route path="ai/plans" element={<PlansPage />} />
         <Route path="ai" element={<Navigate to="/ai/charts" replace />} />
         <Route path="schema" element={<SchemaPage />} />
         <Route path="dashboards/:id/edit" element={<DashboardEditorPage />} />

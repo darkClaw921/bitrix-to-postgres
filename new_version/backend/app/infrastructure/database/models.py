@@ -1,9 +1,10 @@
 """SQLAlchemy database models."""
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.connection import Base
@@ -331,4 +332,48 @@ class PublishedReportLink(Base):
     label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
+    )
+
+
+class Plan(Base):
+    """User-defined plan/target value for a numeric field of any DB table.
+
+    Describes a planned numeric value (e.g. план по ``opportunity`` в ``crm_deals``
+    на менеджера за месяц). Period is expressed either in fixed form
+    (``period_type`` + ``period_value``) or as a custom date range
+    (``date_from`` / ``date_to``) — мода проверяется на уровне сервиса.
+    """
+
+    __tablename__ = "plans"
+    __table_args__ = (
+        UniqueConstraint(
+            "table_name",
+            "field_name",
+            "assigned_by_id",
+            "period_type",
+            "period_value",
+            "date_from",
+            "date_to",
+            name="uq_plan_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    table_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    field_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    assigned_by_id: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True, index=True
+    )
+    period_type: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    period_value: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    date_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    date_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    plan_value: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )

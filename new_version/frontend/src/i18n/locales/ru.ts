@@ -40,6 +40,7 @@ export const ru: Translations = {
   ai: {
     chartsTab: 'Графики',
     reportsTab: 'Отчёты',
+    plansTab: 'Планы',
   },
   auth: {
     signIn: 'Войти',

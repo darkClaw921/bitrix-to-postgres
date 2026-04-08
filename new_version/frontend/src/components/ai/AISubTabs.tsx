@@ -8,6 +8,7 @@ export default function AISubTabs() {
   const tabs = [
     { name: t('ai.chartsTab'), href: '/ai/charts' },
     { name: t('ai.reportsTab'), href: '/ai/reports' },
+    { name: t('ai.plansTab'), href: '/ai/plans' },
   ]
 
   return (

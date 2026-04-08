@@ -1220,4 +1220,121 @@ export const publishedReportsApi = {
     api.put<PublishedReportLink[]>(`/reports/published/${pubId}/links`, { links }).then((r) => r.data),
 }
 
+// === Plans Types ===
+
+export type PlanPeriodType = 'month' | 'quarter' | 'year' | 'custom'
+
+export interface Plan {
+  id: number
+  table_name: string
+  field_name: string
+  assigned_by_id: string | null
+  period_type: PlanPeriodType | null
+  period_value: string | null
+  date_from: string | null
+  date_to: string | null
+  plan_value: number | string
+  description: string | null
+  created_by_id: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface PlanCreateRequest {
+  table_name: string
+  field_name: string
+  assigned_by_id?: string | null
+  period_type: PlanPeriodType
+  period_value?: string | null
+  date_from?: string | null
+  date_to?: string | null
+  plan_value: number | string
+  description?: string | null
+  created_by_id?: string | null
+}
+
+export interface PlanUpdateRequest {
+  table_name?: string
+  field_name?: string
+  assigned_by_id?: string | null
+  period_type?: PlanPeriodType
+  period_value?: string | null
+  date_from?: string | null
+  date_to?: string | null
+  plan_value?: number | string
+  description?: string | null
+}
+
+export interface PlanVsActual {
+  plan_id: number
+  plan_value: number | string
+  actual_value: number | string
+  variance: number | string
+  variance_pct: number | null
+  period_effective_from: string
+  period_effective_to: string
+}
+
+export interface NumericFieldInfo {
+  name: string
+  data_type: string
+}
+
+export interface NumericFieldsResponse {
+  table_name: string
+  fields: NumericFieldInfo[]
+}
+
+export interface PlanTableInfo {
+  name: string
+  label?: string | null
+}
+
+export interface PlanTablesResponse {
+  tables: PlanTableInfo[]
+}
+
+export interface PlanListFilters {
+  table_name?: string
+  field_name?: string
+  assigned_by_id?: string
+  period_type?: PlanPeriodType
+}
+
+// === Plans API ===
+
+export const plansApi = {
+  list: (filters?: PlanListFilters) =>
+    api
+      .get<Plan[]>('/plans', { params: filters })
+      .then((r) => r.data),
+
+  get: (id: number) =>
+    api.get<Plan>(`/plans/${id}`).then((r) => r.data),
+
+  create: (payload: PlanCreateRequest) =>
+    api.post<Plan>('/plans', payload).then((r) => r.data),
+
+  update: (id: number, payload: PlanUpdateRequest) =>
+    api.put<Plan>(`/plans/${id}`, payload).then((r) => r.data),
+
+  remove: (id: number) =>
+    api.delete<void>(`/plans/${id}`).then((r) => r.data),
+
+  getVsActual: (id: number) =>
+    api.get<PlanVsActual>(`/plans/${id}/vs-actual`).then((r) => r.data),
+
+  getTables: () =>
+    api
+      .get<PlanTablesResponse>('/plans/meta/tables')
+      .then((r) => r.data.tables),
+
+  getNumericFields: (tableName: string) =>
+    api
+      .get<NumericFieldsResponse>('/plans/meta/numeric-fields', {
+        params: { table_name: tableName },
+      })
+      .then((r) => r.data.fields),
+}
+
 export default api

@@ -8,7 +8,7 @@ from app.api.v1.schemas.dashboards import (
     DashboardAuthResponse,
     DashboardResponse,
 )
-from app.api.v1.schemas.charts import ChartDataResponse
+from app.api.v1.schemas.charts import ChartDataResponse, PlanFactConfig
 from app.api.v1.schemas.reports import (
     PublicReportResponse,
     PublicReportRunResponse,
@@ -35,6 +35,7 @@ from app.api.v1.schemas.selectors import (
 from app.core.logging import get_logger
 from app.domain.services.chart_service import ChartService
 from app.domain.services.dashboard_service import DashboardService
+from app.domain.services.plan_service import PlanService
 from app.domain.services.report_service import ReportService
 from app.domain.services.selector_service import SelectorService
 
@@ -43,8 +44,32 @@ logger = get_logger(__name__)
 router = APIRouter()
 chart_service = ChartService()
 dashboard_service = DashboardService()
+plan_service = PlanService()
 report_service = ReportService()
 selector_service = SelectorService()
+
+
+def _extract_plan_fact_cfg(chart_info: dict) -> Optional[PlanFactConfig]:
+    """Parse ``chart_config.plan_fact`` from a chart row into a typed config.
+
+    Returns ``None`` when the chart has no ``plan_fact`` section or the
+    payload fails validation (logged as a warning — the chart still
+    renders, just without plan enrichment).
+    """
+    cfg_dict = chart_info.get("chart_config") if chart_info else None
+    if not cfg_dict or not isinstance(cfg_dict, dict):
+        return None
+    plan_fact_raw = cfg_dict.get("plan_fact")
+    if not plan_fact_raw:
+        return None
+    try:
+        return PlanFactConfig.model_validate(plan_fact_raw)
+    except Exception as exc:  # noqa: BLE001 — best-effort parsing
+        logger.warning(
+            "plan_fact config validation failed",
+            error=str(exc),
+        )
+        return None
 
 
 @router.get("/chart/{chart_id}/meta")
@@ -285,6 +310,7 @@ async def _execute_filtered_chart(
         chart_service.validate_sql_query(sql)
         sql = chart_service.ensure_limit(sql, settings.chart_max_rows)
 
+        filters: list[dict] = []
         if filter_values:
             filters = await selector_service.build_filters_for_chart(
                 chart_info["dashboard_id"], dc_id, filter_values
@@ -298,6 +324,27 @@ async def _execute_filtered_chart(
         resolvers = _label_resolvers_from_chart(chart_info)
         if resolvers:
             data = await chart_service.resolve_labels_in_data(data, resolvers)
+
+        # Post-enrichment: attach plan values if chart_config.plan_fact is set.
+        # NOTE: pass the SAME resolved filters used for apply_filters above —
+        # enrichment must not re-resolve date tokens.
+        plan_fact_cfg = _extract_plan_fact_cfg(chart_info)
+        if plan_fact_cfg is not None:
+            try:
+                data = await plan_service.enrich_rows_with_plan(
+                    data, plan_fact_cfg, filters
+                )
+                logger.debug(
+                    "plan_fact enrichment applied",
+                    chart_id=chart_info.get("chart_id") or chart_info.get("id"),
+                    row_count=len(data),
+                )
+            except Exception as exc:  # noqa: BLE001 — chart must still render
+                logger.warning(
+                    "plan_fact enrichment failed",
+                    chart_id=chart_info.get("chart_id") or chart_info.get("id"),
+                    error=str(exc),
+                )
 
         return ChartDataResponse(
             data=data,

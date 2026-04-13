@@ -175,7 +175,7 @@
 
 ##### Эндпоинты (`app/api/v1/endpoints/`)
 - **auth.py** — POST `/login` — single-user аутентификация (email + password из .env), возвращает JWT access token
-- **charts.py** — POST `/generate`, POST `/execute-sql`, POST `/save`, GET `/list`, GET `/{id}/data`, PATCH `/{id}/config`, PATCH `/{id}/sql` (ручное обновление SQL с валидацией + smoke-test), POST `/{id}/refine-sql-ai` (ChartSqlRefineRequest → ChartSqlRefineResponse, AI-рефайн SQL по текстовой инструкции без сохранения), DELETE `/{id}`, POST `/{id}/pin`, GET/PUT `/prompt-template/bitrix-context`
+- **charts.py** — POST `/generate`, POST `/execute-sql`, POST `/save`, GET `/list`, GET `/{id}/data` (post-enrichment план/факт через `PlanService.enrich_rows_with_plan` при наличии `chart_config.plan_fact`, список фильтров пустой — fallback на полный диапазон), PATCH `/{id}/config`, PATCH `/{id}/sql` (ручное обновление SQL с валидацией + smoke-test), POST `/{id}/refine-sql-ai` (ChartSqlRefineRequest → ChartSqlRefineResponse, AI-рефайн SQL по текстовой инструкции без сохранения), DELETE `/{id}`, POST `/{id}/pin`, GET/PUT `/prompt-template/bitrix-context`
 - **dashboards.py** (internal):
   - POST `/publish`, GET `/list`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}`
   - PUT `/{id}/layout`, PUT `/{id}/charts/{dc_id}`, DELETE `/{id}/charts/{dc_id}`
@@ -189,8 +189,8 @@
   - POST `/report/{slug}/auth` — авторизация паролем → JWT с `type: "report"`
   - GET `/report/{slug}` — данные опубликованного отчёта (runs + linked_reports, JWT)
   - GET `/report/{slug}/linked/{linked_slug}` — данные связанного отчёта (JWT главного)
-  - POST `/dashboard/{slug}/chart/{dc_id}/data` — данные чарта с фильтрами (FilterRequest body, JWT)
-  - POST `/dashboard/{slug}/linked/{linked_slug}/chart/{dc_id}/data` — данные чарта linked дашборда с фильтрами
+  - POST `/dashboard/{slug}/chart/{dc_id}/data` — данные чарта с фильтрами (FilterRequest body, JWT); внутри `_execute_filtered_chart` после `execute_chart_query` вызывается post-enrichment `PlanService.enrich_rows_with_plan` при наличии `chart_config.plan_fact` — используется тот же список резолвнутых фильтров из `build_filters_for_chart` (без повторного резолва дата-токенов). Хелпер `_extract_plan_fact_cfg` парсит `chart_config.plan_fact` → `PlanFactConfig`.
+  - POST `/dashboard/{slug}/linked/{linked_slug}/chart/{dc_id}/data` — данные чарта linked дашборда с фильтрами (тот же путь `_execute_filtered_chart`, симметричный post-enrichment план/факт)
   - GET `/dashboard/{slug}/selectors` — список селекторов публичного дашборда (JWT)
   - GET `/dashboard/{slug}/selector/{selector_id}/options` — опции для dropdown/multi-select (JWT)
   - GET `/dashboard/{slug}/selector-options` — batch-опции всех селекторов дашборда за один запрос (JWT)

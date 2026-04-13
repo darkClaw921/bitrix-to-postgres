@@ -68,6 +68,19 @@ Your task: generate a JSON object with the following fields:
 - data_keys (object): {{x: "column_name", y: "column_name"}} or {{x: "column_name", y: ["col1", "col2"]}} for multi-series
 - colors (array of strings): hex color codes for chart series, e.g. ["#8884d8", "#82ca9d"]
 - description (string): brief description of what the chart shows, in Russian
+- chart_config (object, optional): free-form chart config. Currently the only
+  structurally-interpreted key is `plan_fact` — see the "Таблица планов (plans)"
+  section below for details. Include `chart_config.plan_fact` ONLY when the user
+  asks for a plan-vs-fact report; for regular charts omit `chart_config` entirely.
+  Shape of plan_fact:
+  {{
+    "plan_fact": {{
+      "table_name": "<fact table, e.g. crm_deals>",
+      "field_name": "<numeric fact column, e.g. opportunity>",
+      "date_column": "<date column in table_name — begindate for crm_deals, date_create elsewhere>",
+      "group_by_column": "<optional: assigned_by_id when fact is grouped by managers; omit for a single total>"
+    }}
+  }}
 
 Rules:
 1. ONLY use SELECT statements — no INSERT, UPDATE, DELETE, DROP, ALTER, CREATE
@@ -83,6 +96,14 @@ Rules:
 11. For chart_type "horizontal_bar": same as "bar" but for scenarios with long category names or rankings. data_keys.x is the category column, data_keys.y is the value column. The bars are rendered horizontally.
 12. MySQL CAST compatibility: use CHAR (not varchar) inside CAST — correct: CAST(col AS CHAR), wrong: CAST(col AS varchar)
 13. MySQL identifier quoting: use backticks for column aliases with spaces or Cyrillic characters — correct: COUNT(*) AS `Количество`, wrong: COUNT(*) AS "Количество". Also use backticks in ORDER BY when referencing aliases: ORDER BY `Количество` DESC
+14. Plan-vs-fact charts use POST-ENRICHMENT, not a JOIN on `plans`. When the user
+    asks for a plan/fact report, return `chart_config.plan_fact` as described above
+    AND include both columns in data_keys (e.g. `"data_keys": {{"x": ["actual", "plan"], "y": "manager"}}`).
+    The backend will inject the `plan` column into each row after executing your
+    `sql_query`. Your SQL must contain ONLY the fact — NO `LEFT JOIN plans`, NO
+    subqueries against `plans`, NO hard-coded period/manager constants in WHERE.
+    See the "Таблица планов (plans)" section below for full rules and a canonical
+    example.
 """
 
 REPORT_SYSTEM_PROMPT = """Ты — AI-аналитик для CRM-системы Bitrix24. Твоя задача — помогать пользователю создавать аналитические отчёты на основе данных из базы данных.
@@ -451,8 +472,9 @@ class AIService:
         1. The active ``bitrix_context`` row from ``chart_prompt_templates``
            (describes the Bitrix CRM schema for the LLM).
         2. The ``plans`` table markdown block from
-           :meth:`PlanService.get_plans_llm_context`, so the LLM can generate
-           plan-vs-fact queries with a JOIN on ``plans``.
+           :meth:`PlanService.get_plans_llm_context`, so the LLM can pick the
+           right ``(table_name, field_name)`` pair for
+           ``chart_config.plan_fact`` (post-enrichment — no JOIN on ``plans``).
 
         Both parts are best-effort: if either lookup fails the method still
         returns whatever context it managed to assemble (possibly an empty

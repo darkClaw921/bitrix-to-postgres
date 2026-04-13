@@ -17,12 +17,14 @@ from app.api.v1.schemas.charts import (
     ChartSqlRefineRequest,
     ChartSqlRefineResponse,
     ChartSqlUpdateRequest,
+    PlanFactConfig,
 )
 from app.config import get_settings
 from app.core.exceptions import AIServiceError, ChartServiceError
 from app.core.logging import get_logger
 from app.domain.services.ai_service import AIService
 from app.domain.services.chart_service import ChartService
+from app.domain.services.plan_service import PlanService
 
 logger = get_logger(__name__)
 
@@ -30,6 +32,7 @@ router = APIRouter()
 
 ai_service = AIService()
 chart_service = ChartService()
+plan_service = PlanService()
 
 
 @router.post("/generate", response_model=ChartGenerateResponse)
@@ -144,6 +147,34 @@ async def get_chart_data(chart_id: int) -> ChartDataResponse:
         chart_service.validate_sql_query(sql)
         sql = chart_service.ensure_limit(sql, settings.chart_max_rows)
         data, exec_time = await chart_service.execute_chart_query(sql)
+
+        # Post-enrichment: if chart_config.plan_fact is set, attach plan values.
+        # This endpoint does not apply selector filters (AI page / editor preview
+        # without selectors), so pass an empty filter list — enrich_rows_with_plan
+        # handles the "full range, all plans" fallback itself.
+        # Mirror of the embed path in public._execute_filtered_chart.
+        # TODO: extract plan_fact parsing + enrichment call into a shared helper
+        # (e.g. ChartService._maybe_enrich_plan_fact) to remove duplication with
+        # public._extract_plan_fact_cfg. Keep as-is for now — two call sites only.
+        cfg_dict = chart.get("chart_config") or {}
+        plan_fact_raw = cfg_dict.get("plan_fact") if isinstance(cfg_dict, dict) else None
+        if plan_fact_raw:
+            try:
+                plan_fact_cfg = PlanFactConfig.model_validate(plan_fact_raw)
+                data = await plan_service.enrich_rows_with_plan(
+                    data, plan_fact_cfg, []
+                )
+                logger.debug(
+                    "plan_fact enrichment applied",
+                    chart_id=chart_id,
+                    row_count=len(data),
+                )
+            except Exception as exc:  # noqa: BLE001 — chart must still render
+                logger.warning(
+                    "plan_fact enrichment failed",
+                    chart_id=chart_id,
+                    error=str(exc),
+                )
 
         return ChartDataResponse(
             data=data,

@@ -13,13 +13,16 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from app.core.exceptions import AppException
 from app.core.logging import get_logger
 from app.infrastructure.database.connection import get_dialect, get_engine
+
+if TYPE_CHECKING:
+    from app.api.v1.schemas.charts import PlanFactConfig
 
 logger = get_logger(__name__)
 
@@ -649,6 +652,389 @@ class PlanService:
 
         raise PlanValidationError(f"Unknown period_type: {period_type}")
 
+    # ------------------------------------------------------------------
+    # Post-enrichment helpers (plan/fact without JOIN)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _norm_group_key(value: Any) -> str:
+        """Normalize a group key to a string for dict lookups.
+
+        Group keys coming from fact rows may be ``int`` (e.g. ``assigned_by_id``
+        stored as BIGINT) while the ``plans.assigned_by_id`` column is ``TEXT``.
+        To compare them reliably we always coerce to ``str``. ``None`` becomes
+        an empty string (effectively meaning "no group").
+        """
+        if value is None:
+            return ""
+        return str(value)
+
+    @staticmethod
+    def _coerce_date(value: Any) -> Optional[date]:
+        """Try to coerce ``value`` into a ``date`` object.
+
+        Accepts ``date``, ``datetime`` and ISO-format strings (``YYYY-MM-DD``
+        or full ISO datetime). Returns ``None`` for unparseable input so the
+        caller can safely skip malformed filter values without blowing up.
+        """
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            s = value.strip()
+            if not s:
+                return None
+            # Accept both bare date and full datetime prefixes.
+            try:
+                return date.fromisoformat(s[:10])
+            except ValueError:
+                try:
+                    return datetime.fromisoformat(s).date()
+                except ValueError:
+                    return None
+        return None
+
+    @classmethod
+    def _extract_selector_signals(
+        cls,
+        resolved_filters: Optional[list[dict[str, Any]]],
+    ) -> tuple[Optional[list[str]], Optional[tuple[date, date]]]:
+        """Extract ``(assigned_ids, date_range)`` from resolved dashboard filters.
+
+        ``resolved_filters`` is the list returned by
+        ``SelectorService.build_filters_for_chart``: every element is a dict
+        with keys ``column``, ``operator``, ``value``, ``table``,
+        ``param_prefix`` and optionally ``post_filter``. Values are already
+        passed through ``date_tokens.resolve_filter_value`` — we do not
+        re-resolve anything here.
+
+        Signals:
+        1) Filter by managers — first element whose ``column == 'assigned_by_id'``.
+           ``value`` may be a scalar (``operator == 'eq'``) or a list
+           (``operator == 'in'``). Returned as ``list[str]`` (ids coerced to
+           str so they match ``plans.assigned_by_id``). Returns ``None`` when
+           no such filter is present (i.e. "no manager filter applied").
+        2) Date range — first element with ``operator == 'between'`` whose
+           ``value`` contains ``from``/``to`` keys. Returned as
+           ``tuple[date, date]``. Returns ``None`` when no date filter exists
+           (i.e. "entire time range").
+
+        Returns ``(None, None)`` for an empty/``None`` input.
+        """
+        if not resolved_filters:
+            return None, None
+
+        assigned_ids: Optional[list[str]] = None
+        date_range: Optional[tuple[date, date]] = None
+
+        for flt in resolved_filters:
+            if not isinstance(flt, dict):
+                continue
+
+            column = flt.get("column")
+            operator = (flt.get("operator") or "").lower()
+            value = flt.get("value")
+
+            # Managers filter: match by target column name.
+            if assigned_ids is None and column == "assigned_by_id":
+                if isinstance(value, (list, tuple, set)):
+                    assigned_ids = [str(v) for v in value if v is not None]
+                elif value is not None:
+                    assigned_ids = [str(value)]
+                # Do not `continue` — one filter could theoretically be both
+                # a between (unlikely) but we still want to scan the rest.
+
+            # Date range filter: match by operator. We pick the first
+            # between-filter we see — scenario #6 in the edge-cases task.
+            if date_range is None and operator == "between":
+                range_from: Optional[date] = None
+                range_to: Optional[date] = None
+                if isinstance(value, dict):
+                    range_from = cls._coerce_date(value.get("from"))
+                    range_to = cls._coerce_date(value.get("to"))
+                elif isinstance(value, (list, tuple)) and len(value) == 2:
+                    range_from = cls._coerce_date(value[0])
+                    range_to = cls._coerce_date(value[1])
+                if range_from is not None and range_to is not None:
+                    date_range = (range_from, range_to)
+
+        return assigned_ids, date_range
+
+    @classmethod
+    def _period_intersects(
+        cls,
+        plan_row: dict[str, Any],
+        range_from: Optional[date],
+        range_to: Optional[date],
+    ) -> bool:
+        """Return True iff the plan's effective period intersects the range.
+
+        The effective plan period is resolved via the existing
+        ``_resolve_period_bounds`` (``[plan_from, plan_to)`` half-open). The
+        dashboard selector range is also treated as half-open
+        ``[range_from, range_to)``. Two half-open intervals intersect iff
+        ``plan_from < range_to AND plan_to > range_from``.
+
+        When both ``range_from`` and ``range_to`` are ``None`` the caller
+        expressed "entire time range" — every plan passes.
+
+        Malformed plan rows (bad ``period_value`` / missing ``date_from`` for
+        custom, etc.) are handled gracefully: a warning is logged and the
+        plan is skipped (scenario #4 in the edge-cases task).
+        """
+        if range_from is None and range_to is None:
+            return True
+
+        try:
+            plan_from, plan_to = cls._resolve_period_bounds(
+                plan_row.get("period_type"),
+                plan_row.get("period_value"),
+                plan_row.get("date_from"),
+                plan_row.get("date_to"),
+            )
+        except Exception as exc:
+            logger.warning(
+                "plan_enrich: failed to resolve plan period — skipping",
+                plan_id=plan_row.get("id"),
+                period_type=plan_row.get("period_type"),
+                period_value=plan_row.get("period_value"),
+                error=str(exc),
+            )
+            return False
+
+        # Half-open intersection test. A plan ending exactly at range_from
+        # (plan_to == range_from) does NOT intersect the range.
+        if range_to is not None and not (plan_from < range_to):
+            return False
+        if range_from is not None and not (plan_to > range_from):
+            return False
+        return True
+
+    async def enrich_rows_with_plan(
+        self,
+        rows: list[dict[str, Any]],
+        plan_fact_cfg: "PlanFactConfig",
+        resolved_filters: Optional[list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        """Post-enrich fact rows with plan values from the ``plans`` table.
+
+        This is the core of the "plan/fact without JOIN" flow: the chart's
+        SQL query only produces fact values, and this method afterwards
+        attaches the corresponding plan value to every row using the
+        dashboard selectors that are already applied to the fact.
+
+        Args:
+            rows: Fact rows returned by ``chart_service.execute_chart_query``.
+                Mutated in place for efficiency — the same list is returned.
+            plan_fact_cfg: Typed config read from ``chart_config.plan_fact``.
+                Carries ``table_name``, ``field_name``, optional
+                ``group_by_column`` and ``plan_key``.
+            resolved_filters: The filter list produced by
+                ``SelectorService.build_filters_for_chart`` — values are
+                already resolved via ``date_tokens``. May be ``None`` or
+                empty (treated as "no selectors", i.e. entire time range
+                and no manager restriction).
+
+        Returns:
+            The ``rows`` list with an extra column named ``plan_key`` on
+            every row. Rows whose group key has no matching plan still
+            receive the "common plan" (``assigned_by_id IS NULL``) if any
+            — they do NOT fall back to zero when common plans exist.
+
+        Notes:
+            * The common plan (``assigned_by_id IS NULL``) is **always**
+              included, regardless of whether a manager filter is active.
+            * When ``group_by_column`` is not set (or missing from rows)
+              the method produces a scalar total and writes it onto every
+              row — typical for single-row "Total" charts.
+            * Malformed plan rows are skipped with a warning rather than
+              crashing the entire chart.
+        """
+        # --- Edge cases & guards ---------------------------------------------------
+        if not rows:  # scenario: empty fact → nothing to enrich
+            return []
+        if plan_fact_cfg is None:  # defensive — callers should gate on this
+            return rows
+
+        plan_key = plan_fact_cfg.plan_key or "plan"
+        group_by_column = plan_fact_cfg.group_by_column
+        table_name = plan_fact_cfg.table_name
+        field_name = plan_fact_cfg.field_name
+
+        if not table_name or not field_name:
+            logger.warning(
+                "plan_enrich: plan_fact_cfg missing table/field — skipping",
+                table_name=table_name,
+                field_name=field_name,
+            )
+            for row in rows:
+                row.setdefault(plan_key, 0)
+            return rows
+
+        # --- 1. Extract selector signals ------------------------------------------
+        assigned_ids, date_range = self._extract_selector_signals(resolved_filters)
+        range_from, range_to = (date_range if date_range is not None else (None, None))
+
+        # --- 2. Load candidate plans ----------------------------------------------
+        # The SQL always allows "common plan" rows (assigned_by_id IS NULL).
+        # When assigned_ids is None (no filter) we additionally load ALL
+        # personal plans for (table, field). When assigned_ids is an empty
+        # list (scenario #5 — "no managers matched") we include only the
+        # common plan.
+        engine = get_engine()
+        params: dict[str, Any] = {
+            "tbl": table_name,
+            "fld": field_name,
+        }
+
+        if assigned_ids is None:
+            sql_str = (
+                "SELECT id, table_name, field_name, assigned_by_id, "
+                "       period_type, period_value, date_from, date_to, plan_value "
+                "FROM plans "
+                "WHERE table_name = :tbl AND field_name = :fld"
+            )
+            stmt = text(sql_str)
+        elif len(assigned_ids) == 0:
+            sql_str = (
+                "SELECT id, table_name, field_name, assigned_by_id, "
+                "       period_type, period_value, date_from, date_to, plan_value "
+                "FROM plans "
+                "WHERE table_name = :tbl AND field_name = :fld "
+                "  AND assigned_by_id IS NULL"
+            )
+            stmt = text(sql_str)
+        else:
+            sql_str = (
+                "SELECT id, table_name, field_name, assigned_by_id, "
+                "       period_type, period_value, date_from, date_to, plan_value "
+                "FROM plans "
+                "WHERE table_name = :tbl AND field_name = :fld "
+                "  AND (assigned_by_id IS NULL OR assigned_by_id IN :ids)"
+            )
+            stmt = text(sql_str).bindparams(bindparam("ids", expanding=True))
+            params["ids"] = list(assigned_ids)
+
+        try:
+            async with engine.begin() as conn:
+                fetched = (await conn.execute(stmt, params)).fetchall()
+        except Exception as exc:
+            logger.warning(
+                "plan_enrich: failed to load plans — returning zero plan",
+                table_name=table_name,
+                field_name=field_name,
+                error=str(exc),
+            )
+            for row in rows:
+                row.setdefault(plan_key, 0)
+            return rows
+
+        if not fetched:
+            # Scenario #1: cfg points at (table, field) with no plans.
+            logger.warning(
+                "plan_enrich: no plans found for (table, field)",
+                table_name=table_name,
+                field_name=field_name,
+            )
+            for row in rows:
+                row.setdefault(plan_key, 0)
+            return rows
+
+        plan_rows: list[dict[str, Any]] = [
+            {
+                "id": r[0],
+                "table_name": r[1],
+                "field_name": r[2],
+                "assigned_by_id": r[3],
+                "period_type": r[4],
+                "period_value": r[5],
+                "date_from": r[6],
+                "date_to": r[7],
+                "plan_value": r[8],
+            }
+            for r in fetched
+        ]
+
+        # --- 3. Filter by period intersection -------------------------------------
+        candidates = [
+            p for p in plan_rows if self._period_intersects(p, range_from, range_to)
+        ]
+
+        logger.debug(
+            "plan_enrich: plans loaded and filtered",
+            table_name=table_name,
+            field_name=field_name,
+            total_loaded=len(plan_rows),
+            after_period_filter=len(candidates),
+            assigned_ids=assigned_ids,
+            range_from=range_from,
+            range_to=range_to,
+        )
+
+        # --- 4. Aggregate plan_value ----------------------------------------------
+        def _as_decimal(v: Any) -> Decimal:
+            if v is None:
+                return Decimal("0")
+            if isinstance(v, Decimal):
+                return v
+            try:
+                return Decimal(str(v))
+            except Exception:
+                return Decimal("0")
+
+        common_plan = Decimal("0")
+        per_group: dict[str, Decimal] = {}
+
+        for p in candidates:
+            pv = _as_decimal(p.get("plan_value"))
+            aid = p.get("assigned_by_id")
+            if aid is None or (isinstance(aid, str) and aid == ""):
+                common_plan += pv
+            else:
+                key = self._norm_group_key(aid)
+                per_group[key] = per_group.get(key, Decimal("0")) + pv
+
+        total_plan = common_plan + sum(per_group.values(), Decimal("0"))
+
+        # --- 5. Merge into rows ----------------------------------------------------
+        if group_by_column:
+            # Scenario #2: group column is declared but absent from rows.
+            if rows and group_by_column not in rows[0]:
+                logger.warning(
+                    "plan_enrich: group_by_column missing from fact rows — "
+                    "applying common plan only",
+                    group_by_column=group_by_column,
+                )
+                for row in rows:
+                    row[plan_key] = float(common_plan)
+                return rows
+
+            for row in rows:
+                key = self._norm_group_key(row.get(group_by_column))
+                # Rows whose group has no personal plan still get the common
+                # plan — they must NOT drop to zero when a common plan exists.
+                group_plan = per_group.get(key, Decimal("0")) + common_plan
+                row[plan_key] = float(group_plan)
+        else:
+            # No grouping → scalar total on every row (usually a single row).
+            for row in rows:
+                row[plan_key] = float(total_plan)
+
+        logger.debug(
+            "plan_enrich: enrichment done",
+            plan_key=plan_key,
+            group_by_column=group_by_column,
+            common_plan=str(common_plan),
+            per_group_count=len(per_group),
+            total_plan=str(total_plan),
+            rows_enriched=len(rows),
+        )
+
+        return rows
+
     async def get_plan_vs_actual(self, plan_id: int) -> dict[str, Any]:
         """Return plan/actual/variance snapshot for a single plan.
 
@@ -715,83 +1101,128 @@ class PlanService:
         "period_type ('month'|'quarter'|'year'|'custom'), period_value, date_from, date_to,\n"
         "plan_value, description, created_at, updated_at.\n"
         "\n"
-        "### Как выбрать нужный план\n"
+        "### ГЛАВНОЕ ПРАВИЛО (post-enrichment, БЕЗ JOIN на plans)\n"
+        "**НЕ джойни таблицу `plans` в `sql_query`.** Плановые значения подставляет backend\n"
+        "после выполнения SQL — через механизм post-enrichment, который учитывает\n"
+        "текущие селекторы дашборда (фильтр по менеджерам, диапазон дат).\n"
+        "\n"
+        "Вместо JOIN верни в JSON-ответе поле `plan_fact` внутри `chart_config` с\n"
+        "параметрами того плана, который хочешь использовать:\n"
+        "```\n"
+        "\"chart_config\": {\n"
+        "  \"plan_fact\": {\n"
+        "    \"table_name\": \"<таблица факта, например crm_deals>\",\n"
+        "    \"field_name\": \"<числовое поле, например opportunity>\",\n"
+        "    \"date_column\": \"<дата-колонка в table_name — begindate для crm_deals, date_create для остального>\",\n"
+        "    \"group_by_column\": \"<assigned_by_id если факт группируется по менеджерам; иначе не включай/null>\"\n"
+        "  }\n"
+        "}\n"
+        "```\n"
+        "Backend сам подтянет все подходящие строки из `plans` (по table_name/field_name),\n"
+        "применит фильтр менеджеров (включая общие планы с `assigned_by_id IS NULL`),\n"
+        "отфильтрует по пересечению периодов с диапазоном дат и добавит в каждую строку\n"
+        "результата колонку `plan` рядом с фактом. **Твой `sql_query` должен содержать\n"
+        "ТОЛЬКО факт** — никакого `LEFT JOIN plans`, никаких подзапросов к `plans`,\n"
+        "никаких хардкод-констант периода/менеджера из таблицы `plans`.\n"
+        "\n"
+        "Чтобы фронт нарисовал две серии (факт + план) рядом, включи обе колонки\n"
+        "в `data_keys`: `\"data_keys\": {\"x\": [\"actual\", \"plan\"], \"y\": \"manager\"}`.\n"
+        "Колонка `plan` появится в rows автоматически после enrichment — в самом\n"
+        "`sql_query` её писать НЕ нужно.\n"
+        "\n"
+        "### Как выбрать table_name/field_name для plan_fact\n"
         "План может быть поставлен на **ЛЮБОЕ числовое поле ЛЮБОЙ таблицы** — это может быть\n"
         "`crm_deals.opportunity`, количество сделок, количество звонков, сумма по кастомному полю и\n"
         "т.п. НЕ хардкодь `crm_deals.opportunity` — всегда бери `table_name` и `field_name` из\n"
-        "конкретной строки таблицы `plans`, которую собираешься использовать.\n"
+        "конкретной строки таблицы `plans`, которую собираешься использовать (см. раздел\n"
+        "«Активные планы» ниже — пары (table, field), доступные в системе).\n"
         "\n"
         "Если пользователь не указал явно, какой план использовать (по какой таблице/полю/периоду/\n"
         "менеджеру), **ВСЕГДА бери самый свежий план** — это строка с максимальным `id`\n"
-        "(эквивалентно максимальному `created_at`). Ниже в разделе «Активные планы» они уже\n"
+        "(эквивалентно максимальному `created_at`). В разделе «Активные планы» ниже они уже\n"
         "перечислены в порядке от самого нового к самому старому — первая строка списка и есть\n"
-        "план по умолчанию.\n"
+        "план по умолчанию; его `table_name` и `field_name` идут в `plan_fact`.\n"
         "\n"
-        "После того, как ты определил план, ВСЕ части SQL (FROM, WHERE по дате, SUM по полю)\n"
-        "должны строиться именно под его `table_name` / `field_name` / период / `assigned_by_id`.\n"
-        "Если самый новый план, например, по `crm_calls.duration` — факт считается как\n"
-        "`SUM(crm_calls.duration)`, а не `SUM(crm_deals.opportunity)`.\n"
+        "После того, как ты определил план, `sql_query` должен считать факт по этому же\n"
+        "`table_name`/`field_name`. Если самый новый план, например, по `crm_calls.duration` —\n"
+        "факт считается как `SUM(crm_calls.duration)`, а не `SUM(crm_deals.opportunity)`.\n"
         "\n"
-        "### Жёсткие правила построения SQL для «план/факт»:\n"
-        "1. НЕ добавляй фильтры `closed`, `stage_semantic_id`, статусы и т.п., если пользователь\n"
+        "### Жёсткие правила построения SQL для «план/факт» (только факт, без plans):\n"
+        "1. НЕ добавляй `LEFT JOIN plans`, подзапросы `SELECT ... FROM plans` или любые другие\n"
+        "   обращения к таблице `plans` в `sql_query`. План подставляется post-enrichment'ом.\n"
+        "2. НЕ хардкодь константы периода в WHERE/JOIN (`begindate >= '2026-04-01'` и т.п.),\n"
+        "   если пользователь явно не попросил фиксированный период. Период в факт попадает\n"
+        "   из селектора `date_range` дашборда, а в план — через тот же резолвнутый диапазон.\n"
+        "   SQL должен оставаться «нейтральным» к периоду, чтобы `apply_filters` мог вставить\n"
+        "   WHERE по `date_column` при открытии чарта.\n"
+        "3. НЕ добавляй фильтры `closed`, `stage_semantic_id`, статусы и т.п., если пользователь\n"
         "   их явно не попросил. План/факт сравнивает ВСЕ записи за период, а не только выигранные\n"
         "   сделки.\n"
-        "2. Bitrix-поле `closed` содержит строки `'Y'`/`'N'` (НЕ `'1'`/`'0'`).\n"
+        "4. Bitrix-поле `closed` содержит строки `'Y'`/`'N'` (НЕ `'1'`/`'0'`).\n"
         "   `stage_semantic_id`: `'P'` = в процессе, `'S'` = успешно (выигранные), `'F'` = провал.\n"
-        "3. ВСЕГДА фильтруй факт по периоду плана через WHERE на столбец даты основной таблицы:\n"
-        "   - для `crm_deals` используй `begindate` (по умолчанию);\n"
+        "5. `date_column` в `plan_fact` — это колонка даты основной таблицы, по которой\n"
+        "   селектор диапазона дат будет фильтровать факт:\n"
+        "   - для `crm_deals` — `begindate`;\n"
         "   - для остальных таблиц — `date_create`.\n"
-        "   Границы периода вычисляй сам из `period_type`/`period_value` (fixed) или бери\n"
-        "   `date_from`/`date_to` напрямую (custom). Интервал полузакрытый: `>= from AND < to`.\n"
-        "4. Для общего плана (`assigned_by_id IS NULL`) НЕ дублируй его на каждого менеджера\n"
-        "   через `OR p.assigned_by_id IS NULL` — это приведёт к тому, что общее плановое значение\n"
-        "   навесится на каждую строку группировки. Либо строй отчёт БЕЗ группировки по менеджерам\n"
-        "   (одна строка «Всего»), либо выводи общий план отдельной строкой через UNION ALL.\n"
-        "5. НИКОГДА не джойнь `bitrix_users` как источник строк результата — менеджеры, у которых\n"
-        "   нет ни записей за период, ни персонального плана, не должны появляться в отчёте.\n"
-        "   Строй строки ОТ основной таблицы (через `assigned_by_id` из записей за период) и\n"
-        "   LEFT JOIN `bitrix_users` только ради получения имён.\n"
-        "6. Используй агрегат, соответствующий смыслу поля: `SUM` для сумм, `COUNT(*)` если план\n"
+        "   Именно эту же колонку backend использует, чтобы понять, какие планы попадают\n"
+        "   в текущий диапазон.\n"
+        "6. НИКОГДА не джойнь `bitrix_users` как источник строк результата — менеджеры, у которых\n"
+        "   нет ни одной записи за период, не должны появляться в отчёте. Строй строки ОТ\n"
+        "   основной таблицы (через `assigned_by_id` из записей) и LEFT JOIN `bitrix_users`\n"
+        "   только ради получения имён.\n"
+        "7. `group_by_column` в `plan_fact` заполняй, только если факт группируется по менеджерам\n"
+        "   (обычно `assigned_by_id`) — тогда backend разложит план по тем же группам,\n"
+        "   а общие планы (`assigned_by_id IS NULL`) добавятся к каждой группе. Если чарт —\n"
+        "   одна общая метрика без группировки (индикатор, «всего по компании»), оставь\n"
+        "   `group_by_column` пустым/не включай его — план будет скаляром.\n"
+        "8. Используй агрегат, соответствующий смыслу поля: `SUM` для сумм, `COUNT(*)` если план\n"
         "   выставлен на количество записей, `AVG` — для средних. По умолчанию `SUM(field_name)`.\n"
         "\n"
-        "### Канонический пример (персональный план по месяцу, опора на plans):\n"
-        "Предположим, самый свежий план в списке:\n"
-        "`table_name='crm_deals', field_name='opportunity', assigned_by_id='16',\n"
-        " period_type='month', period_value='2026-04', plan_value=20000`.\n"
-        "Тогда SQL:\n"
-        "```sql\n"
-        "SELECT\n"
-        "  CONCAT(COALESCE(u.name,''),' ',COALESCE(u.last_name,'')) AS manager,\n"
-        "  COALESCE(SUM(d.opportunity), 0) AS actual,\n"
-        "  MAX(p.plan_value)               AS plan\n"
-        "FROM crm_deals d\n"
-        "LEFT JOIN bitrix_users u ON u.bitrix_id = d.assigned_by_id\n"
-        "LEFT JOIN plans p\n"
-        "  ON p.table_name = 'crm_deals'\n"
-        " AND p.field_name = 'opportunity'\n"
-        " AND p.assigned_by_id = d.assigned_by_id\n"
-        " AND p.period_type = 'month' AND p.period_value = '2026-04'\n"
-        "WHERE d.assigned_by_id = '16'\n"
-        "  AND d.begindate >= '2026-04-01' AND d.begindate < '2026-05-01'\n"
-        "GROUP BY d.assigned_by_id, u.name, u.last_name;\n"
+        "### Канонический пример: план vs факт по менеджерам (post-enrichment)\n"
+        "Запрос пользователя: «нужен план vs факт по менеджерам». Предположим, в разделе\n"
+        "«Активные планы» самый свежий план — по `crm_deals.opportunity`. Правильный spec:\n"
+        "```json\n"
+        "{\n"
+        "  \"title\": \"План vs Факт по менеджерам\",\n"
+        "  \"chart_type\": \"horizontal_bar\",\n"
+        "  \"sql_query\": \"SELECT CONCAT(COALESCE(u.name,''),' ',COALESCE(u.last_name,'')) AS manager, d.assigned_by_id, COALESCE(SUM(d.opportunity),0) AS actual FROM crm_deals d LEFT JOIN bitrix_users u ON u.bitrix_id = d.assigned_by_id GROUP BY d.assigned_by_id, u.name, u.last_name\",\n"
+        "  \"data_keys\": {\"x\": [\"actual\", \"plan\"], \"y\": \"manager\"},\n"
+        "  \"chart_config\": {\n"
+        "    \"plan_fact\": {\n"
+        "      \"table_name\": \"crm_deals\",\n"
+        "      \"field_name\": \"opportunity\",\n"
+        "      \"date_column\": \"begindate\",\n"
+        "      \"group_by_column\": \"assigned_by_id\"\n"
+        "    }\n"
+        "  }\n"
+        "}\n"
         "```\n"
-        "Обрати внимание: имя поля в `SUM(d.opportunity)` и имя таблицы в `FROM crm_deals d`\n"
-        "взяты ИЗ ПЛАНА, а не захардкожены.\n"
+        "Обрати внимание: в `sql_query` НЕТ `JOIN plans`, НЕТ колонки `plan`, НЕТ констант\n"
+        "периода — всё это за тебя сделает backend на этапе post-enrichment. Имя поля\n"
+        "`SUM(d.opportunity)` и таблица `crm_deals` взяты ИЗ САМОГО СВЕЖЕГО ПЛАНА, а не\n"
+        "захардкожены произвольно.\n"
         "\n"
-        "### Канонический пример (общий custom-период, план на количество звонков):\n"
-        "Предположим, свежий план: `table_name='bitrix_calls', field_name='id', assigned_by_id=NULL,\n"
-        " period_type='custom', date_from='2026-01-01', date_to='2026-04-10', plan_value=500`\n"
-        "(план на количество звонков → используем COUNT).\n"
-        "```sql\n"
-        "SELECT\n"
-        "  COUNT(*) AS actual,\n"
-        "  (SELECT plan_value FROM plans\n"
-        "     WHERE table_name='bitrix_calls' AND field_name='id'\n"
-        "       AND assigned_by_id IS NULL AND period_type='custom'\n"
-        "       AND date_from='2026-01-01' AND date_to='2026-04-10') AS plan\n"
-        "FROM bitrix_calls c\n"
-        "WHERE c.date_create >= '2026-01-01' AND c.date_create < '2026-04-10';\n"
-        "```"
+        "### Канонический пример: одна общая метрика (без группировки)\n"
+        "Запрос: «покажи общий план/факт за текущий период». Тогда `group_by_column` не\n"
+        "заполняется, `chart_type` = `indicator` или `bar`:\n"
+        "```json\n"
+        "{\n"
+        "  \"title\": \"План vs Факт\",\n"
+        "  \"chart_type\": \"bar\",\n"
+        "  \"sql_query\": \"SELECT 'Итого' AS label, COALESCE(SUM(opportunity),0) AS actual FROM crm_deals\",\n"
+        "  \"data_keys\": {\"x\": \"label\", \"y\": [\"actual\", \"plan\"]},\n"
+        "  \"chart_config\": {\n"
+        "    \"plan_fact\": {\n"
+        "      \"table_name\": \"crm_deals\",\n"
+        "      \"field_name\": \"opportunity\",\n"
+        "      \"date_column\": \"begindate\"\n"
+        "    }\n"
+        "  }\n"
+        "}\n"
+        "```\n"
+        "Здесь backend просуммирует все подходящие планы (включая общие `assigned_by_id IS NULL`\n"
+        "и персональные — если выбран фильтр менеджеров) и подставит итог в колонку `plan`\n"
+        "единственной строки результата."
     )
 
     # Max number of plans embedded into the system prompt as a concrete
@@ -854,6 +1285,12 @@ class PlanService:
             (
                 "Первая строка — план по умолчанию, если пользователь не указал "
                 "явно, какой план использовать."
+            ),
+            (
+                "Пары `(table, field)` из этой таблицы используй как `table_name` / "
+                "`field_name` в `chart_config.plan_fact` — именно они говорят backend'у, "
+                "какие плановые строки подтянуть при post-enrichment. НЕ джойни эту "
+                "таблицу в `sql_query`."
             ),
             "",
             "| id | table | field | assigned_by_id | period | plan_value | created_at |",

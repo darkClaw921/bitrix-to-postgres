@@ -30,7 +30,16 @@
       "Bash(npm run:*)",
       "Bash(grep -r \"measureWidth\\\\|useContainerWidth\" node_modules/react-grid-layout/dist/*.d.ts)",
       "Bash(ls:*)",
-      "mcp__plugin_context7_context7__query-docs"
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(bd status *)",
+      "Bash(alembic history *)",
+      "Bash(pip install *)",
+      "Bash(ls venv *)",
+      "Bash(ls .venv)",
+      "Bash(ls ../venv)",
+      "Bash(npx eslint *)",
+      "Bash(docker compose *)",
+      "Bash(mysql *)"
     ]
   }
 }

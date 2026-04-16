@@ -2,24 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   chartsApi,
   plansApi,
-  type NumericFieldInfo,
   type Plan,
-  type PlanCreateRequest,
-  type PlanPeriodType,
+  type PlanManagerInfo,
   type PlanTableInfo,
   type PlanVsActual,
 } from '../services/api'
 import AISubTabs from '../components/ai/AISubTabs'
+import PlanFormModal, {
+  type BitrixUser,
+} from '../components/plans/PlanFormModal'
+import AIGeneratePlansModal from '../components/plans/AIGeneratePlansModal'
+import PlanTemplatesDrawer from '../components/plans/PlanTemplatesDrawer'
+import ApplyTemplateModal from '../components/plans/ApplyTemplateModal'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-interface BitrixUser {
-  bitrix_id: string
-  name: string
-  last_name: string
-}
 
 function getErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -78,466 +76,6 @@ function formatVariance(vs: PlanVsActual | undefined): string {
   return `${variance} (${sign}${vs.variance_pct.toFixed(1)}%)`
 }
 
-function todayYear(): number {
-  return new Date().getFullYear()
-}
-
-// ---------------------------------------------------------------------------
-// Plan Form Modal
-// ---------------------------------------------------------------------------
-
-type PeriodMode = 'fixed' | 'custom'
-
-interface PlanFormState {
-  table_name: string
-  field_name: string
-  assigned_by_id: string // '' means "all"
-  period_mode: PeriodMode
-  period_type: 'month' | 'quarter' | 'year'
-  period_value: string
-  date_from: string
-  date_to: string
-  plan_value: string
-  description: string
-}
-
-function emptyFormState(): PlanFormState {
-  const now = new Date()
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  return {
-    table_name: '',
-    field_name: '',
-    assigned_by_id: '',
-    period_mode: 'fixed',
-    period_type: 'month',
-    period_value: month,
-    date_from: '',
-    date_to: '',
-    plan_value: '',
-    description: '',
-  }
-}
-
-function planToFormState(plan: Plan): PlanFormState {
-  const base = emptyFormState()
-  return {
-    ...base,
-    table_name: plan.table_name,
-    field_name: plan.field_name,
-    assigned_by_id: plan.assigned_by_id ?? '',
-    period_mode: plan.period_type === 'custom' ? 'custom' : 'fixed',
-    period_type:
-      plan.period_type === 'quarter' || plan.period_type === 'year'
-        ? plan.period_type
-        : 'month',
-    period_value: plan.period_value ?? '',
-    date_from: plan.date_from ?? '',
-    date_to: plan.date_to ?? '',
-    plan_value: String(plan.plan_value ?? ''),
-    description: plan.description ?? '',
-  }
-}
-
-interface PlanFormModalProps {
-  mode: 'create' | 'edit'
-  plan: Plan | null
-  tables: PlanTableInfo[]
-  users: BitrixUser[]
-  usersLoading: boolean
-  onClose: () => void
-  onSaved: () => void
-}
-
-function PlanFormModal({
-  mode,
-  plan,
-  tables,
-  users,
-  usersLoading,
-  onClose,
-  onSaved,
-}: PlanFormModalProps) {
-  const [form, setForm] = useState<PlanFormState>(() =>
-    plan ? planToFormState(plan) : emptyFormState(),
-  )
-  const [numericFields, setNumericFields] = useState<NumericFieldInfo[]>([])
-  const [fieldsLoading, setFieldsLoading] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const isEdit = mode === 'edit'
-
-  // Load numeric fields whenever table_name changes
-  useEffect(() => {
-    if (!form.table_name) {
-      setNumericFields([])
-      return
-    }
-    let cancelled = false
-    setFieldsLoading(true)
-    plansApi
-      .getNumericFields(form.table_name)
-      .then((fields) => {
-        if (!cancelled) setNumericFields(fields)
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setNumericFields([])
-          setError(getErrorMessage(err))
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setFieldsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [form.table_name])
-
-  const updateField = useCallback(<K extends keyof PlanFormState>(
-    key: K,
-    value: PlanFormState[K],
-  ) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }, [])
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-
-    // Client-side validation
-    const planValueNum = Number(form.plan_value)
-    if (!form.plan_value || Number.isNaN(planValueNum)) {
-      setError('Укажите корректное числовое значение плана')
-      return
-    }
-    if (planValueNum < 0) {
-      setError('Значение плана не может быть отрицательным')
-      return
-    }
-
-    if (!form.table_name) {
-      setError('Выберите таблицу')
-      return
-    }
-    if (!form.field_name) {
-      setError('Выберите числовое поле')
-      return
-    }
-    if (form.period_mode === 'fixed' && !form.period_value) {
-      setError('Укажите значение периода')
-      return
-    }
-    if (form.period_mode === 'custom' && (!form.date_from || !form.date_to)) {
-      setError('Укажите даты начала и окончания периода')
-      return
-    }
-
-    // Build the full payload — same shape for create and update. On edit
-    // we send every field so the backend can rebuild the logical key and
-    // re-run validations (dup check, numeric column, period mode).
-    const payload: PlanCreateRequest =
-      form.period_mode === 'fixed'
-        ? {
-            table_name: form.table_name,
-            field_name: form.field_name,
-            assigned_by_id: form.assigned_by_id || null,
-            period_type: form.period_type,
-            period_value: form.period_value,
-            date_from: null,
-            date_to: null,
-            plan_value: planValueNum,
-            description: form.description || null,
-          }
-        : {
-            table_name: form.table_name,
-            field_name: form.field_name,
-            assigned_by_id: form.assigned_by_id || null,
-            period_type: 'custom' as PlanPeriodType,
-            period_value: null,
-            date_from: form.date_from,
-            date_to: form.date_to,
-            plan_value: planValueNum,
-            description: form.description || null,
-          }
-
-    setSubmitting(true)
-    try {
-      if (isEdit && plan) {
-        await plansApi.update(plan.id, payload)
-      } else {
-        await plansApi.create(payload)
-      }
-      onSaved()
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  // For fixed-period input, the HTML input type depends on period_type
-  const periodInputType =
-    form.period_type === 'month'
-      ? 'month'
-      : form.period_type === 'year'
-      ? 'number'
-      : 'text'
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <h3 className="text-lg font-semibold">
-            {isEdit ? 'Редактировать план' : 'Добавить план'}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-            aria-label="Закрыть"
-          >
-            ✕
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          {/* Table */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Таблица
-            </label>
-            <select
-              value={form.table_name}
-              onChange={(e) => {
-                updateField('table_name', e.target.value)
-                updateField('field_name', '')
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100"
-            >
-              <option value="">— выберите таблицу —</option>
-              {tables.map((t) => (
-                <option key={t.name} value={t.name}>
-                  {t.label ? `${t.label} (${t.name})` : t.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Field */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Поле (числовое)
-            </label>
-            <select
-              value={form.field_name}
-              onChange={(e) => updateField('field_name', e.target.value)}
-              disabled={!form.table_name || fieldsLoading}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100"
-            >
-              <option value="">
-                {fieldsLoading
-                  ? 'Загрузка полей…'
-                  : form.table_name
-                  ? '— выберите поле —'
-                  : 'Сначала выберите таблицу'}
-              </option>
-              {numericFields.map((f) => (
-                <option key={f.name} value={f.name}>
-                  {f.name} ({f.data_type})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Manager */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Менеджер
-            </label>
-            <select
-              value={form.assigned_by_id}
-              onChange={(e) => updateField('assigned_by_id', e.target.value)}
-              disabled={usersLoading}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100"
-            >
-              <option value="">
-                {usersLoading ? 'Загрузка пользователей…' : 'Общий план (все менеджеры)'}
-              </option>
-              {users.map((u) => {
-                const label = `${u.name ?? ''} ${u.last_name ?? ''}`.trim() || u.bitrix_id
-                return (
-                  <option key={u.bitrix_id} value={u.bitrix_id}>
-                    {label} (id: {u.bitrix_id})
-                  </option>
-                )
-              })}
-            </select>
-          </div>
-
-          {/* Period mode */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Период
-            </label>
-            <div className="flex items-center gap-4 mb-3">
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="period_mode"
-                  value="fixed"
-                  checked={form.period_mode === 'fixed'}
-                  onChange={() => updateField('period_mode', 'fixed')}
-                />
-                Фиксированный
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="period_mode"
-                  value="custom"
-                  checked={form.period_mode === 'custom'}
-                  onChange={() => updateField('period_mode', 'custom')}
-                />
-                Произвольный
-              </label>
-            </div>
-
-            {form.period_mode === 'fixed' ? (
-              <div className="grid grid-cols-2 gap-3">
-                <select
-                  value={form.period_type}
-                  onChange={(e) => {
-                    const pt = e.target.value as 'month' | 'quarter' | 'year'
-                    updateField('period_type', pt)
-                    // Reset period_value to a sensible default
-                    const y = todayYear()
-                    const m = String(new Date().getMonth() + 1).padStart(2, '0')
-                    updateField(
-                      'period_value',
-                      pt === 'month'
-                        ? `${y}-${m}`
-                        : pt === 'quarter'
-                        ? `${y}-Q1`
-                        : `${y}`,
-                    )
-                  }}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100"
-                >
-                  <option value="month">Месяц</option>
-                  <option value="quarter">Квартал</option>
-                  <option value="year">Год</option>
-                </select>
-
-                {form.period_type === 'quarter' ? (
-                  <select
-                    value={form.period_value}
-                    onChange={(e) => updateField('period_value', e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100"
-                  >
-                    {[todayYear() - 1, todayYear(), todayYear() + 1].flatMap((y) =>
-                      ['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
-                        <option key={`${y}-${q}`} value={`${y}-${q}`}>
-                          {y} — {q}
-                        </option>
-                      )),
-                    )}
-                  </select>
-                ) : (
-                  <input
-                    type={periodInputType}
-                    value={form.period_value}
-                    onChange={(e) => updateField('period_value', e.target.value)}
-                    placeholder={
-                      form.period_type === 'month' ? '2026-04' : '2026'
-                    }
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100"
-                  />
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">С</label>
-                  <input
-                    type="date"
-                    value={form.date_from}
-                    onChange={(e) => updateField('date_from', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">По</label>
-                  <input
-                    type="date"
-                    value={form.date_to}
-                    onChange={(e) => updateField('date_to', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Plan value */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Плановое значение
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.plan_value}
-              onChange={(e) => updateField('plan_value', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              required
-            />
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Описание
-            </label>
-            <textarea
-              value={form.description}
-              onChange={(e) => updateField('description', e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              placeholder="Необязательно"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn btn-secondary"
-              disabled={submitting}
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              className="btn btn-primary disabled:opacity-50"
-              disabled={submitting}
-            >
-              {submitting ? 'Сохранение…' : isEdit ? 'Сохранить' : 'Создать'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
 // ---------------------------------------------------------------------------
 // PlansPage
 // ---------------------------------------------------------------------------
@@ -551,9 +89,21 @@ export default function PlansPage() {
   const [tables, setTables] = useState<PlanTableInfo[]>([])
   const [users, setUsers] = useState<BitrixUser[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
+  const [managers, setManagers] = useState<PlanManagerInfo[]>([])
 
+  // Edit/create form
   const [modalOpen, setModalOpen] = useState(false)
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null)
+
+  // AI generation modal
+  const [aiOpen, setAiOpen] = useState(false)
+
+  // Templates drawer + apply modal
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [applyTemplateId, setApplyTemplateId] = useState<number | null>(null)
+
+  // Toast for batch flows
+  const [toast, setToast] = useState<string | null>(null)
 
   // --- Load plans + facts
   const loadPlans = useCallback(async () => {
@@ -590,6 +140,14 @@ export default function PlansPage() {
       .getTables()
       .then(setTables)
       .catch((err) => console.error('Failed to load plan tables', err))
+  }, [])
+
+  // --- Load managers via dedicated endpoint (for drafts table name resolution)
+  useEffect(() => {
+    plansApi
+      .listManagers()
+      .then((resp) => setManagers(resp.managers))
+      .catch(() => setManagers([]))
   }, [])
 
   // --- Load bitrix_users via chartsApi.executeSql (no dedicated endpoint)
@@ -642,6 +200,13 @@ export default function PlansPage() {
     return map
   }, [users])
 
+  // Auto-hide toast after 3s
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3000)
+    return () => clearTimeout(t)
+  }, [toast])
+
   const handleCreate = () => {
     setEditingPlan(null)
     setModalOpen(true)
@@ -674,20 +239,51 @@ export default function PlansPage() {
     await loadPlans()
   }
 
+  const handleAiSuccess = async () => {
+    setToast('Планы созданы через AI')
+    await loadPlans()
+  }
+
+  const handleApplySuccess = async () => {
+    setToast('План применён')
+    await loadPlans()
+  }
+
+  const handleApplyTemplate = (templateId: number) => {
+    setApplyTemplateId(templateId)
+    setTemplatesOpen(false)
+  }
+
   return (
     <div className="space-y-6">
       <AISubTabs />
       <div className="card">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
             <h2 className="text-lg font-semibold">Планы</h2>
             <p className="text-sm text-gray-500">
               Плановые значения числовых полей — используются для отчётов «план/факт».
             </p>
           </div>
-          <button onClick={handleCreate} className="btn btn-primary">
-            + Добавить план
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={handleCreate} className="btn btn-primary">
+              + Добавить план
+            </button>
+            <button
+              onClick={() => setAiOpen(true)}
+              className="btn btn-secondary"
+              title="Сгенерировать планы через AI"
+            >
+              ✨ Сгенерировать через AI
+            </button>
+            <button
+              onClick={() => setTemplatesOpen(true)}
+              className="btn btn-secondary"
+              title="Применить один из шаблонов"
+            >
+              ⭐ Избранные
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -807,6 +403,34 @@ export default function PlansPage() {
           }}
           onSaved={handleSaved}
         />
+      )}
+
+      <AIGeneratePlansModal
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        onSuccess={handleAiSuccess}
+        managers={managers}
+      />
+
+      <PlanTemplatesDrawer
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        onApply={handleApplyTemplate}
+      />
+
+      <ApplyTemplateModal
+        open={applyTemplateId !== null}
+        onClose={() => setApplyTemplateId(null)}
+        templateId={applyTemplateId}
+        onSuccess={handleApplySuccess}
+        managers={managers}
+      />
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[80] px-4 py-3 bg-gray-900 text-white rounded-lg shadow-lg text-sm">
+          {toast}
+        </div>
       )}
     </div>
   )

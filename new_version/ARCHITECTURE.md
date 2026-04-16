@@ -67,7 +67,7 @@ Bitrix24 Sync Service — микросервис для односторонне
 ```
 app/api/
 ├── v1/
-│   ├── __init__.py          # Роутер версии API (sync, webhooks, status, charts, schema, references, dashboards, selectors, reports, plans, public)
+│   ├── __init__.py          # Роутер версии API (sync, webhooks, status, charts, schema, references, dashboards, selectors, reports, plans, departments, public)
 │   ├── endpoints/
 │   │   ├── sync.py          # Эндпоинты синхронизации
 │   │   ├── webhooks.py      # Обработка webhooks от Bitrix24
@@ -77,7 +77,8 @@ app/api/
 │   │   ├── references.py    # Синхронизация справочных данных (статусы, воронки, валюты)
 │   │   ├── dashboards.py    # CRUD дашбордов, layout, ссылки, пароли. Heading-эндпоинты: POST/PUT /headings (создание и обновление heading items). Chart-add эндпоинт: POST /charts (добавление существующего AI-чарта в дашборд)
 │   │   ├── selectors.py     # CRUD селекторов (фильтров) дашбордов и маппингов
-│   │   ├── plans.py         # CRUD планов (/api/v1/plans), plan-vs-actual и meta-эндпоинты (/meta/tables, /meta/numeric-fields). Тонкий HTTP-слой над PlanService; маппит PlanNotFoundError→404, PlanConflictError→409, PlanValidationError→400
+│   │   ├── plans.py         # CRUD планов (/api/v1/plans), batch-create, CRUD plan_templates, template expand+apply, plan-vs-actual, AI-generate (Phase 3) и meta-эндпоинты (/meta/tables, /meta/numeric-fields, /meta/managers). Тонкий HTTP-слой над PlanService + PlanTemplateService + PlansAIService. _raise_for_service_error: PlanNotFoundError→404, PlanConflictError→409, PlanValidationError→400. _raise_for_template_error: PlanTemplateNotFoundError→404, PlanTemplateConflictError/ValidationError→400 (builtin-блокировки через 400, не 409). POST /ai-generate: 503 если API-key пустой, 400 если не создано описание схемы (через ChartService.get_any_latest_schema_description), 502 на AIServiceError
+│   │   ├── departments.py   # Эндпоинты отделов (/api/v1/departments): GET / (плоский список), GET /tree (иерархия), POST /sync (BackgroundTasks + 409 при активной sync), GET /{id}/managers?recursive=true (активные менеджеры отдела и, опционально, всех подотделов). Тонкий слой над DepartmentService/DepartmentSyncService
 │   │   └── public.py        # Публичные эндпоинты: чарты, дашборды, аутентификация, фильтрованные данные. Chart data endpoints возвращают 400 если dc_id принадлежит heading
 │   └── schemas/
 │       ├── sync.py          # Pydantic схемы для sync
@@ -86,7 +87,8 @@ app/api/
 │       ├── charts.py        # Схемы чартов (ChartSpec, ChartGenerateRequest/Response и др.). ChartSpec (ответ LLM) содержит опциональное chart_config: dict — через него от LLM до /save пробрасывается plan_fact и любые другие free-form ключи. ChartConfig (extra='allow') — типизированная обёртка над ai_charts.chart_config JSON с опциональным plan_fact. PlanFactConfig (extra='forbid') — конфиг post-enrichment план/факт: table_name, field_name, date_column (обязательные), group_by_column (опц.), plan_key (default 'plan')
 │       ├── dashboards.py    # Схемы дашбордов (DashboardResponse включает selectors). Полиморфный DashboardChartResponse (item_type='chart'|'heading', chart_id Optional, heading_config Optional). Heading-схемы: HeadingConfig, HeadingCreateRequest, HeadingUpdateRequest. Chart-add: ChartAddRequest (chart_id + опциональный layout)
 │       ├── selectors.py     # Схемы селекторов (SelectorCreateRequest, SelectorResponse, FilterValue и др.)
-│       ├── plans.py         # Схемы планов: PlanCreateRequest (с model_validator для period-mode: fixed month|quarter|year+period_value vs custom+date_from/date_to), PlanUpdateRequest (plan_value/description), PlanResponse, PlanVsActualResponse (plan/actual/variance/variance_pct + period_effective_from/to), NumericFieldInfo/NumericFieldsResponse, TableInfo/TablesResponse, plan_row_to_response helper
+│       ├── plans.py         # Схемы планов: PlanCreateRequest (с model_validator для period-mode: fixed month|quarter|year+period_value vs custom+date_from/date_to), PlanUpdateRequest (plan_value/description), PlanResponse, PlanVsActualResponse (plan/actual/variance/variance_pct + period_effective_from/to), NumericFieldInfo/NumericFieldsResponse, TableInfo/TablesResponse, plan_row_to_response helper. Схемы plan_templates: PlanTemplateCreateRequest (field_validator'ы для period_mode/assignees_mode + model_validator для кросс-полей — period_type обязателен при custom_period, department_name при assignees_mode='department', specific_manager_ids при 'specific'), PlanTemplateUpdateRequest (все optional), PlanTemplateResponse, PlanTemplateExpandRequest (overrides table_name/field_name/period_value), PlanTemplateApplyRequest (template_id + entries: list[PlanDraft] + overrides). Драфты: PlanDraft (assigned_by_id/name + target + period + plan_value + warnings list). Batch: PlanBatchCreateRequest (plans: list[PlanCreateRequest], min_length=1). AI-генерация (для Phase 3): PlanAIGenerateRequest/Response. Мета: PlanManagerInfo/PlanManagersResponse. Константы ALL_PERIOD_MODES, ALL_ASSIGNEES_MODES
+│       ├── departments.py   # Схемы отделов: DepartmentResponse (плоский DTO), DepartmentTreeNode (self-ref children), DepartmentTreeResponse, DepartmentSyncResponse, ManagerInfo, ManagersListResponse
 │       └── schema_description.py  # Схемы описания схемы (TableInfo, ColumnInfo и др.)
 ```
 
@@ -149,6 +151,20 @@ app/api/
 | `GET` | `/api/v1/plans/{plan_id}/vs-actual` | Plan vs Actual снапшот: plan_value/actual_value/variance/variance_pct + period_effective_from/to. Факт считается как SUM(field) по периоду с учётом assigned_by_id |
 | `GET` | `/api/v1/plans/meta/tables` | Список таблиц-целей (префиксы crm_/ref_/bitrix_/stage_history_, исключая саму plans) из information_schema |
 | `GET` | `/api/v1/plans/meta/numeric-fields?table_name=...` | Список числовых колонок указанной таблицы (фильтр по NUMERIC_DATA_TYPES из PlanService) |
+| `POST` | `/api/v1/plans/batch` | Транзакционный batch-create (`PlanBatchCreateRequest` → `list[PlanResponse]`, 201). Все `PlanCreateRequest` проходят валидацию numeric-column + period-mode + дубликатов (в батче и в БД). Любая ошибка → rollback всего батча; `created_by_id` берётся из JWT |
+| `GET` | `/api/v1/plans/templates` | Список всех шаблонов (включая builtin) — `list[PlanTemplateResponse]` |
+| `POST` | `/api/v1/plans/templates` | Создание user-defined шаблона (is_builtin всегда False; created_by_id из JWT). 400 на ошибки валидации |
+| `GET` | `/api/v1/plans/templates/{id}` | Получить шаблон по id (404 если не найден) |
+| `PUT` | `/api/v1/plans/templates/{id}` | Partial update шаблона. Для builtin блокируется изменение name/period_mode/assignees_mode (400) |
+| `DELETE` | `/api/v1/plans/templates/{id}` | Удаление шаблона (204). 400 для builtin, 404 если не найден |
+| `POST` | `/api/v1/plans/templates/{id}/expand` | Развернуть шаблон в `list[PlanDraft]` — превью для UI. Body `PlanTemplateExpandRequest` (optional table_name/field_name/period_value overrides; обязательны для builtin с NULL-target). Для assignees_mode='department' резолвит department_name → bitrix_id через bitrix_departments, затем DepartmentService.collect_descendant_ids + list_managers_in_departments |
+| `POST` | `/api/v1/plans/templates/{id}/apply` | Применить шаблон с уже отредактированными `entries` — `PlanTemplateApplyRequest` маппится в `list[PlanCreateRequest]` и уходит в `PlanService.batch_create_plans` (всё или ничего). 400 если template_id в path и body не совпадают или если builtin без table_name/field_name override |
+| `GET` | `/api/v1/plans/meta/managers?department_id=...&recursive=true` | Активные менеджеры. Без department_id — все `bitrix_users.active='Y'`. С department_id — делегирует в DepartmentService (recursive=true собирает подотделы) |
+| `POST` | `/api/v1/plans/ai-generate` | **Phase 3**: превью AI-сгенерированных черновиков планов. Body `PlanAIGenerateRequest {description, table_name?, field_name?}` → `PlanAIGenerateResponse {plans: list[PlanDraft], warnings: list[str]}`. НЕ пишет в БД — пользователь после правок отправляет в `POST /plans/batch`. Коды ответов: 503 если `OPENAI_API_KEY` пустой, 400 если не создано описание схемы (нужно сначала `GET /api/v1/schema/describe`), 502 при невалидном JSON/ошибке LLM. Auth required (JWT). Реализация через `PlansAIService.generate_and_expand` (LLM + expand спец-значений assigned_by_id + валидация drafts через PlanService) |
+| `GET` | `/api/v1/departments` | Плоский список всех отделов (`list[DepartmentResponse]`, сортировка по (sort, bitrix_id)) |
+| `GET` | `/api/v1/departments/tree` | Иерархическое дерево отделов (`DepartmentTreeResponse`, корневые узлы с вложенными children) |
+| `POST` | `/api/v1/departments/sync` | Запуск фоновой синхронизации отделов через BackgroundTasks (`DepartmentSyncService.full_sync`). Возвращает 409 если синхронизация уже идёт (проверка через `DepartmentSyncService.is_running()`) |
+| `GET` | `/api/v1/departments/{id}/managers?recursive=true&active_only=true` | Менеджеры отдела (опц. включая подотделы). `recursive=true` (default) собирает все потомки через `collect_descendant_ids` и делает один JOIN `bitrix_user_departments + bitrix_users` |
 | `GET` | `/health` | Health check |
 
 ### 2. Domain Layer (`app/domain/`)
@@ -164,17 +180,23 @@ app/domain/
 │   ├── call.py              # Модель звонка (voximplant.statistic.get)
 │   ├── stage_history.py     # Модель истории движения по стадиям (crm.stagehistory.list)
 │   ├── reference.py         # Реестр справочных типов (ReferenceType, ReferenceFieldDef)
-│   └── plan.py              # PlanEntity (Pydantic) — доменная обёртка над строкой таблицы plans; PeriodType = month|quarter|year|custom
+│   ├── plan.py              # PlanEntity (Pydantic) — доменная обёртка над строкой таблицы plans; PeriodType = month|quarter|year|custom
+│   ├── plan_template.py     # PlanTemplateEntity (Pydantic) — доменная обёртка над строкой plan_templates. Literal-типы PeriodMode (current_month|current_quarter|current_year|custom_period), AssigneesMode (all_managers|department|specific|global), TemplatePeriodType (month|quarter|year|custom). specific_manager_ids уже распарсен из JSON в list[str]|None. default_plan_value: Decimal|None, is_builtin: bool
+│   └── department.py        # DepartmentEntity (dataclass) — доменная обёртка над строкой bitrix_departments: bitrix_id, name, parent_id, sort (default 500), uf_head
 ├── services/
 │   ├── sync_service.py      # Основная логика синхронизации (+ авто-синхронизация справочников)
 │   ├── reference_sync_service.py  # Синхронизация справочных таблиц (статусы, воронки, валюты)
-│   ├── plan_service.py      # PlanService: CRUD планов (create/list/get/update/delete) с валидацией числовых колонок через information_schema и проверкой режима периода; compute_actual() для SUM по периоду с whitelist идентификаторов; get_plan_vs_actual() с резолвом period_value -> [date_from, date_to); get_plans_llm_context() — markdown-блок для системного промпта AIService
+│   ├── plan_service.py      # PlanService: CRUD планов (create/list/get/update/delete) с валидацией числовых колонок через information_schema и проверкой режима периода; _insert_plan_in_conn(conn, payload) — общий INSERT-хелпер для single и batch; batch_create_plans(plans, created_by_id) — транзакционный all-or-nothing batch с pre-validate (numeric column + period-mode + intra-batch & DB duplicate check) и единым engine.begin() для INSERT'ов; compute_actual() для SUM по периоду с whitelist идентификаторов; get_plan_vs_actual() с резолвом period_value -> [date_from, date_to); get_plans_llm_context() — markdown-блок для системного промпта AIService
+│   ├── plan_template_service.py  # PlanTemplateService: CRUD plan_templates (list/get/create/update/delete) + expand_template(id, overrides) → list[PlanDraft]. Update блокирует изменение is_builtin; для builtin-шаблонов также защищены name/period_mode/assignees_mode. Delete блокирует is_builtin=True (PlanTemplateConflictError → 400). expand_template: (1) маппит period_mode → (period_type, period_value) — current_month='%Y-%m', current_quarter='YYYY-QN' (quarter=(m-1)//3+1), current_year='%Y', custom_period берёт template-поля; (2) по assignees_mode: all_managers → SELECT bitrix_users active='Y', department → резолв department_name → bitrix_id в bitrix_departments + DepartmentService.collect_descendant_ids + list_managers_in_departments, specific → JSON parse specific_manager_ids + _fetch_users_by_ids с warning'ами для inactive/missing, global → 1 draft с assigned_by_id=NULL; (3) применяет overrides table_name/field_name/period_value. JSON round-trip specific_manager_ids: json.dumps при write / json.loads при read с fallback '[]' на malformed. Ошибки: PlanTemplateNotFoundError, PlanTemplateConflictError, PlanTemplateValidationError
 │   ├── field_mapper.py      # Маппинг полей Bitrix → DB (кросс-БД совместимый)
-│   ├── ai_service.py        # Взаимодействие с LLM API (OpenAI/OpenRouter): чарты, схема, селекторы
+│   ├── ai_service.py        # Взаимодействие с LLM API (OpenAI/OpenRouter): чарты, схема, селекторы, отчёты, планы (Phase 3: PLANS_GENERATION_PROMPT + generate_plans_from_description — JSON {plans, warnings} с спец-значениями assigned_by_id=all_managers/department:Name/bitrix_id/null)
+│   ├── plans_ai_service.py  # PlansAIService (Phase 3): агрегирует AIService+PlanService+DepartmentService для POST /plans/ai-generate. expand_ai_drafts(raw_plans) разворачивает all_managers (fetch active bitrix_users) / department:Name (case-insensitive search в bitrix_departments + collect_descendant_ids + list_managers_in_departments active_only) / конкретный bitrix_id (verify existence) / null (global); валидирует каждый draft через PlanService._validate_numeric_column + _validate_period (БЕЗ INSERT); невалидные отбрасываются с warning. generate_and_expand(description, schema_context, hints) — endpoint-level entry point
 │   ├── chart_service.py     # SQL-валидация, выполнение запросов, CRUD чартов, apply_filters(), resolve_labels_in_data()
 │   ├── dashboard_service.py # CRUD дашбордов, JWT-аутентификация, layout, ссылки (загружает selectors). Поддержка полиморфных элементов dashboard_charts (chart|heading): _get_dashboard_charts (LEFT JOIN ai_charts), add_heading, update_heading; update_layout/remove_chart работают по dashboard_charts.id для обоих типов; get_chart_sql_by_slug использует LEFT JOIN ai_charts и возвращает dc.item_type для отделения headings
 │   ├── selector_service.py  # CRUD селекторов и маппингов, build_filters_for_chart() (с резолвом date-токенов и post_filter), get_selector_options() (поддержка JOIN с label-таблицей)
-│   └── date_tokens.py       # Резолв date-токенов (TODAY, LAST_30_DAYS, ...) и end-of-day для BETWEEN
+│   ├── date_tokens.py       # Резолв date-токенов (TODAY, LAST_30_DAYS, ...) и end-of-day для BETWEEN
+│   ├── department_sync_service.py  # DepartmentSyncService: full_sync() — get_all('department.get') + UPSERT в bitrix_departments (dialect-aware: ON CONFLICT / ON DUPLICATE KEY). Класс-level _running_syncs dedup, запись в sync_logs c entity_type='ref:department'. Нормализация пустых PARENT/UF_HEAD → NULL
+│   └── department_service.py       # DepartmentService (read-only): list_departments(), get_department(bitrix_id), build_tree() (in-memory BFS, cross-DB), collect_descendant_ids(root_bitrix_id) (iterative BFS с cycle guard), list_managers_in_departments(ids, active_only) (DISTINCT JOIN bitrix_user_departments + bitrix_users с expanding bindparam для IN)
 └── interfaces/              # Абстракции (для DI)
 ```
 
@@ -208,6 +230,25 @@ class AIService:
     async def generate_selectors(charts_context: str, schema_context: str, user_request: str | None = None) -> list[dict]  # AI-генерация селекторов с поддержкой токенов, post_filter и опционального текстового пожелания пользователя. Endpoint generate_selectors дополнительно фильтрует charts по chart_ids перед формированием charts_context
     async def generate_report_step(conversation_history: list[dict], schema_context: str) -> dict
     async def analyze_report_data(report_title, sql_results, analysis_prompt, ...) -> tuple[str, str]
+    async def generate_plans_from_description(description: str, schema_context: str, hints: dict | None = None) -> dict  # Phase 3. Формирует PLANS_GENERATION_PROMPT c подстановкой schema_context + PlanService.get_plans_llm_context() + current_date + hints ("таблица=X; поле=Y" или "не указаны"), вызывает _complete(max_output_tokens=3000), парсит JSON через _extract_json, возвращает {plans: raw list, warnings: list[str]}. Спец-значения assigned_by_id в сырых plans ("all_managers", "department:Name") разворачивает PlansAIService, а не сам AIService
+```
+
+**Phase 3 plans prompt**: [`PLANS_GENERATION_PROMPT`](backend/app/domain/services/ai_service.py) — системный промпт на русском для декомпозиции пользовательского запроса в JSON-черновики планов. Placeholder'ы: `{schema_context}`, `{current_date}`, `{hints}`. Правила: использовать только существующие числовые поля, period_value формат зависит от period_type (YYYY-MM / YYYY-QN / YYYY / null для custom), assigned_by_id ∈ {bitrix_id | "all_managers" | "department:Название" | null}, все неоднозначности → warnings, strict JSON без markdown.
+
+**PlansAIService — AI-генерация планов (Phase 3)**:
+
+```python
+class PlansAIService:
+    # Агрегатор AIService + PlanService + DepartmentService для POST /plans/ai-generate
+    def __init__(ai_service=None, plan_service=None, department_service=None)
+
+    async def expand_ai_drafts(raw_plans: list, warnings=None) -> tuple[list[PlanDraft], list[str]]
+        # Для каждого сырого plan:
+        #   - нормализует (coerce plan_value → Decimal, date_from/to → date, проверяет period_type в ALL_PERIOD_TYPES)
+        #   - expand assigned_by_id: all_managers (bitrix_users active='Y') / department:Name (LOWER(name)=LOWER search + descendants + active managers) / конкретный bitrix_id (_fetch_user_by_id, warning если не найден) / null (single global draft)
+        #   - валидирует через PlanService._validate_numeric_column + _validate_period (без INSERT)
+        #   - невалидные пропускает с warning; валидные в результат
+    async def generate_and_expand(description, schema_context, hints=None) -> PlanAIGenerateResponse  # End-to-end: LLM вызов + expand + validate
 ```
 
 **LLM Provider**: настраивается через `settings.llm_provider` (`openai` или `openrouter`). При `openrouter` `AsyncOpenAI` инициализируется с `base_url=https://openrouter.ai/api/v1` и опциональными заголовками `HTTP-Referer`/`X-Title` (`OPENROUTER_APP_URL`, `OPENROUTER_APP_TITLE`). В качестве модели для OpenRouter используется qualified id (`openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet` и т.п.).
@@ -446,6 +487,8 @@ def extend_to_end_of_day(value)       # "2026-04-06" → "2026-04-06 23:59:59"
 - Доменная сущность [`PlanEntity`](backend/app/domain/entities/plan.py) (Pydantic, `PeriodType = month|quarter|year|custom`)
 - Сервис [`PlanService`](backend/app/domain/services/plan_service.py) — основные методы:
   - `create_plan` / `list_plans` / `get_plan` / `update_plan` / `delete_plan` — CRUD с валидацией таблицы/поля через `information_schema` и проверкой режима периода; логический дубль → `PlanConflictError`
+  - `_insert_plan_in_conn(conn, payload) → int` — общий INSERT-хелпер (cross-dialect: PG `RETURNING id` / MySQL `lastrowid`), переиспользуется в `create_plan` и `batch_create_plans`; не делает валидацию (она happens до вызова) — чистый INSERT поверх уже открытого соединения
+  - `batch_create_plans(plans, created_by_id=None) → list[dict]` — транзакционный batch: (1) pre-validate ALL записей (numeric column + period-mode + intra-batch duplicate через `(table,field,assigned,period,...)`-ключ + existing-DB duplicate через `_find_duplicate`), (2) если всё ок — один `engine.begin()` и цикл `_insert_plan_in_conn` для каждой. Любая ошибка внутри `begin()` → rollback всего батча (atomic). `created_by_id` из JWT применяется ко всем записям единообразно
   - `compute_actual(table_name, field_name, assigned_by_id, date_from, date_to)` — безопасный `SUM(field)` по периоду с whitelist идентификаторов (защита от SQL-injection)
   - `get_plan_vs_actual(plan_id)` — резолв fixed `period_value` → `[date_from, date_to)` и вычисление `plan/actual/variance/variance_pct`
   - `_resolve_period_bounds(period_type, period_value, date_from, date_to) → (date, date)` — общий хелпер конвертации fixed/custom периода в полузакрытый `[start, end)`; переиспользуется `get_plan_vs_actual` и post-enrichment
@@ -455,9 +498,9 @@ def extend_to_end_of_day(value)       # "2026-04-06" → "2026-04-06 23:59:59"
     - `_period_intersects(plan_row, range_from, range_to) → bool` — проверка пересечения полузакрытого периода плана (через `_resolve_period_bounds`) с диапазоном селектора (`plan_from < range_to AND plan_to > range_from`); `True` при отсутствии диапазона; битые планы безопасно пропускаются с warning
     - `_norm_group_key(value) → str` / `_coerce_date(value) → date|None` — утилиты для единообразного сравнения ключей групп (int↔str) и парсинга дат из резолвнутых фильтров
   - `get_plans_llm_context()` — markdown-блок с описанием таблицы `plans` и правилами post-enrichment (LLM обязана возвращать `chart_config.plan_fact` вместо `JOIN plans`); включает markdown-таблицу активных планов для выбора пары `(table_name, field_name)`. Подмешивается в системный промпт LLM через `AIService._get_bitrix_context()`
-- Схемы [`api/v1/schemas/plans.py`](backend/app/api/v1/schemas/plans.py): `PlanCreateRequest` (с `model_validator` для period-mode), `PlanUpdateRequest`, `PlanResponse`, `PlanVsActualResponse`, `NumericFieldInfo`/`NumericFieldsResponse`, `TableInfo`/`TablesResponse`, `plan_row_to_response` helper
-- Эндпоинты [`api/v1/endpoints/plans.py`](backend/app/api/v1/endpoints/plans.py) — 8 маршрутов: `POST /plans`, `GET /plans`, `GET /plans/{id}`, `PUT /plans/{id}`, `DELETE /plans/{id}`, `GET /plans/{id}/vs-actual`, `GET /plans/meta/tables`, `GET /plans/meta/numeric-fields?table_name=...` (полный список в таблице эндпоинтов выше)
-- Регистрация роутера: `router.include_router(plans.router, prefix="/plans", tags=["plans"])` в [`api/v1/__init__.py`](backend/app/api/v1/__init__.py)
+- Схемы [`api/v1/schemas/plans.py`](backend/app/api/v1/schemas/plans.py): `PlanCreateRequest` (с `model_validator` для period-mode), `PlanUpdateRequest`, `PlanResponse`, `PlanVsActualResponse`, `PlanBatchCreateRequest` (plans: list[PlanCreateRequest], min 1), `NumericFieldInfo`/`NumericFieldsResponse`, `TableInfo`/`TablesResponse`, `plan_row_to_response` helper. Шаблоны: `PlanTemplateCreateRequest` / `PlanTemplateUpdateRequest` / `PlanTemplateResponse` / `PlanTemplateExpandRequest` / `PlanTemplateApplyRequest`, `PlanDraft`, AI-генерация Phase 3: `PlanAIGenerateRequest`/`PlanAIGenerateResponse`, meta: `PlanManagerInfo`/`PlanManagersResponse`. Константы `ALL_PERIOD_MODES`, `ALL_ASSIGNEES_MODES`
+- Эндпоинты [`api/v1/endpoints/plans.py`](backend/app/api/v1/endpoints/plans.py) — 17 маршрутов: CRUD plans (`POST`/`GET`/`GET {id}`/`PUT {id}`/`DELETE {id}`), `GET /plans/{id}/vs-actual`, `GET /plans/meta/tables` / `numeric-fields` / `managers`, batch + templates (`POST /plans/batch`, `GET`/`POST /plans/templates`, `GET`/`PUT`/`DELETE /plans/templates/{id}`, `POST /plans/templates/{id}/expand`, `POST /plans/templates/{id}/apply`) — полный список в таблице эндпоинтов выше. Порядок роутов: специфичные пути (`/batch`, `/templates`, `/meta/*`) объявлены ДО `/{plan_id}`, чтобы литеральные пути не перехватывались int-конвертером
+- Регистрация роутера: `router.include_router(plans.router, prefix="/plans", tags=["plans"], dependencies=_auth)` в [`api/v1/__init__.py`](backend/app/api/v1/__init__.py)
 
 **Точки вызова post-enrichment (call sites):**
 
@@ -470,11 +513,108 @@ def extend_to_end_of_day(value)       # "2026-04-06" → "2026-04-06 23:59:59"
 
 **Frontend:**
 
-- Страница [`PlansPage.tsx`](frontend/src/pages/PlansPage.tsx) — таблица планов с колонками таблица/поле/менеджер/период/план/факт/отклонение, батчевая загрузка `vs-actual` через `Promise.allSettled`, человекочитаемый период (`Апрель 2026`, `2026 — Q2`, custom-диапазон), inline `PlanFormModal` с радио fixed/custom, зависимыми селектами `table_name → numeric_fields`, списком `bitrix_users` (через `chartsApi.executeSql`); в edit-режиме редактируются только `plan_value` и `description`
-- API-клиент `plansApi` в [`services/api.ts`](frontend/src/services/api.ts): CRUD `/plans` + `/plans/{id}/vs-actual` + `/plans/meta/tables` + `/plans/meta/numeric-fields`; TS-типы `Plan`, `PlanCreateRequest`, `PlanUpdateRequest`, `PlanVsActual`, `PlanPeriodType`, `NumericFieldInfo`, `PlanTableInfo`
+- Страница [`PlansPage.tsx`](frontend/src/pages/PlansPage.tsx) — таблица планов с колонками таблица/поле/менеджер/период/план/факт/отклонение, батчевая загрузка `vs-actual` через `Promise.allSettled`, человекочитаемый период (`Апрель 2026`, `2026 — Q2`, custom-диапазон). В action-баре 3 кнопки: «+ Добавить план» (открывает `PlanFormModal`), «✨ Сгенерировать через AI» (открывает `AIGeneratePlansModal`) и «⭐ Избранные» (открывает `PlanTemplatesDrawer` → по клику «Применить» открывает `ApplyTemplateModal`). После любого create/apply — `loadPlans()` и toast. Предзагружает `users` (через `chartsApi.executeSql`) и `managers` (через `plansApi.listManagers`) для резолвинга имён в табличках
+- Компонент [`components/plans/PlanFormModal.tsx`](frontend/src/components/plans/PlanFormModal.tsx) — модалка создания/редактирования плана. В create-режиме 4 таба назначения: «Один менеджер» (single select `users` → `plansApi.create`), «Несколько» (multi-select → `plansApi.batchCreate` с N копиями), «Отдел» (select из `departmentsApi.getTree()` + чекбокс «Включая подотделы» → live-preview менеджеров через `departmentsApi.getManagers` → `plansApi.batchCreate`), «Общий» (один план с `assigned_by_id=null`). В edit-режиме табы скрыты и сохраняется обратная совместимость (single update). Зависимые селекты `table_name → numeric_fields`, fixed/custom period-mode (`month`/`quarter`/`year` либо date-range)
+- Компонент [`components/plans/PlanDraftsTable.tsx`](frontend/src/components/plans/PlanDraftsTable.tsx) — переиспользуемая таблица `PlanDraft[]` с inline-редактированием `plan_value`/`description`, крестиком удаления строки, жёлтой подсветкой строк с `warnings[]` (иконка `⚠` с tooltip) и красной подсветкой невалидных сумм. Поддерживает `readOnlyFields` и `managers` для резолвинга `assigned_by_id → имя`. Используется в `AIGeneratePlansModal` и `ApplyTemplateModal`
+- Компонент [`components/plans/AIGeneratePlansModal.tsx`](frontend/src/components/plans/AIGeneratePlansModal.tsx) — модалка AI-генерации: textarea (мин. 5 симв., плейсхолдер с примером), collapsible hints (optional `table_name`/`field_name` select из `plansApi.getTables`/`getNumericFields`), кнопка «✨ Сгенерировать» → `plansApi.aiGenerate` (таймаут до 5 мин), показывает warnings + `PlanDraftsTable` с редактируемыми drafts, «Сохранить все (N)» → `plansApi.batchCreate` с фильтром невалидных. Обработка 502/503 → «AI-сервис временно недоступен»
+- Компонент [`components/plans/PlanTemplatesDrawer.tsx`](frontend/src/components/plans/PlanTemplatesDrawer.tsx) — side drawer справа (width 520) со списком шаблонов из `plansApi.listTemplates`. Каждый шаблон: имя, description, бейдж «⭐ builtin» для `is_builtin`, мета-инфа (period_mode, assignees_mode, table.field). Действия: «Применить» (вызывает `onApply(templateId)` пропс), «Редактировать» (открывает `PlanTemplateFormModal`), «Удалить» (disabled+tooltip для builtin; `window.confirm` перед `plansApi.deleteTemplate`). Кнопка «+ Новый шаблон» открывает `PlanTemplateFormModal` в create-режиме
+- Компонент [`components/plans/PlanTemplateFormModal.tsx`](frontend/src/components/plans/PlanTemplateFormModal.tsx) — форма создания/редактирования шаблона: name (required, заморожен для builtin), description, optional `table_name`/`field_name`, radio `period_mode` (+ конкретные поля при `custom_period`), radio `assignees_mode` (с select отдела из `departmentsApi.getTree()` для `department` и multi-select менеджеров из `plansApi.listManagers` для `specific`), `default_plan_value`. Для builtin скрывает/блокирует `name`/`period_mode`/`assignees_mode` (backend enforce 400)
+- Компонент [`components/plans/ApplyTemplateModal.tsx`](frontend/src/components/plans/ApplyTemplateModal.tsx) — применение шаблона: грузит `plansApi.getTemplate(id)` по открытию; если `table_name`/`field_name` в шаблоне пусты — обязательные селекторы override (из `plansApi.getTables`/`getNumericFields`); опциональный period override (для builtin `current_*` режимов); default-bulk-value input с кнопкой «Заполнить всем» (массово проставляет `plan_value`); «Подготовить превью» → `plansApi.expandTemplate(id, overrides)` → `PlanDraftsTable` для редактирования; «Сохранить все» → `plansApi.applyTemplate(id, {table_name, field_name, period_value_override, entries})`. Ошибки expand (нет менеджеров, отдел не найден) отображаются в red alert
+- API-клиент `plansApi` в [`services/api.ts`](frontend/src/services/api.ts): CRUD `/plans` + `/plans/{id}/vs-actual` + `/plans/meta/tables` + `/plans/meta/numeric-fields` + batch/AI/templates — `batchCreate` (`POST /plans/batch`), `aiGenerate` (`POST /plans/ai-generate`, таймаут `AI_REQUEST_TIMEOUT` = 5 мин как у `chartsApi.generate`), `listTemplates`/`getTemplate`/`createTemplate`/`updateTemplate`/`deleteTemplate` (CRUD шаблонов), `expandTemplate`/`applyTemplate` (`POST /plans/templates/{id}/expand`|`apply`), `listManagers` (`GET /plans/meta/managers?department_id&recursive`); TS-типы `Plan`, `PlanCreateRequest`, `PlanUpdateRequest`, `PlanVsActual`, `PlanPeriodType`, `NumericFieldInfo`, `PlanTableInfo`, `PlanTemplate`, `PlanTemplateCreateRequest`/`UpdateRequest`/`ExpandRequest`/`ApplyRequest`, `PlanDraft`, `PlanBatchCreateRequest`, `PlanAIGenerateRequest`/`Response`, `PlanManagerInfo`, `PlanManagersResponse`, literal-типы `PlanPeriodMode` (`current_month`\|`current_quarter`\|`current_year`\|`custom_period`) и `PlanAssigneesMode` (`all_managers`\|`department`\|`specific`\|`global`)
+- API-клиент `departmentsApi` в [`services/api.ts`](frontend/src/services/api.ts): `list()` (`GET /departments`), `getTree()` (`GET /departments/tree`), `triggerSync()` (`POST /departments/sync`, 409 если sync уже идёт), `getManagers(id, {recursive?, active_only?})` (`GET /departments/{id}/managers` — DTO `PlanManagersResponse`, тот же, что у `/plans/meta/managers`); TS-типы `Department`, `DepartmentTreeNode` (self-ref), `DepartmentTreeResponse`, `DepartmentSyncResponse`
 - Роут `/ai/plans` → `<PlansPage />` в [`App.tsx`](frontend/src/App.tsx) (находится внутри группы AI вместе с `/ai/charts` и `/ai/reports`)
 - Вкладка «Планы» в компоненте [`components/ai/AISubTabs.tsx`](frontend/src/components/ai/AISubTabs.tsx) рядом с «Графики» и «Отчёты»; `PlansPage` рендерит `<AISubTabs />` в шапке
 - i18n-ключ `ai.plansTab` в [`i18n/locales/ru.ts`](frontend/src/i18n/locales/ru.ts) («Планы») и [`i18n/locales/en.ts`](frontend/src/i18n/locales/en.ts) («Plans»); типизация в [`i18n/types.ts`](frontend/src/i18n/types.ts)
+
+**Таблица `plan_templates`** (миграция [`024_create_plan_templates_table.py`](backend/alembic/versions/024_create_plan_templates_table.py)):
+
+Шаблоны массового создания планов — описывают «режим периода» (`period_mode`) + «режим получателей» (`assignees_mode`) и дефолтное `plan_value`. Фронт разворачивает шаблон в набор `PlanDraft` через `POST /plans/templates/{id}/expand`, даёт пользователю отредактировать значения и отправляет обратно в `POST /plans/templates/{id}/apply`, который мапит их в `PlanCreateRequest` и вызывает `PlanService.batch_create_plans` (all-or-nothing).
+
+| Колонка | Тип | Назначение |
+|---|---|---|
+| `id` | BIGINT PK autoincrement | Идентификатор шаблона |
+| `name` | VARCHAR(255) NOT NULL | Название шаблона (видно в UI) |
+| `description` | TEXT NULL | Пояснительный комментарий |
+| `table_name` | VARCHAR(64) NULL | Целевая таблица (nullable для builtin без привязки) |
+| `field_name` | VARCHAR(128) NULL | Целевое числовое поле (nullable для builtin) |
+| `period_mode` | VARCHAR(32) NOT NULL | `current_month` \| `current_quarter` \| `current_year` \| `custom_period` |
+| `period_type` | VARCHAR(16) NULL | Для `custom_period`: `month` \| `quarter` \| `year` \| `custom` |
+| `period_value` | VARCHAR(16) NULL | Для `custom_period` + fixed period_type: `YYYY-MM` / `YYYY-QN` / `YYYY` |
+| `date_from` / `date_to` | DATE NULL | Для `custom_period` + `period_type='custom'` |
+| `assignees_mode` | VARCHAR(32) NOT NULL | `all_managers` \| `department` \| `specific` \| `global` |
+| `department_name` | VARCHAR(255) NULL | Для `assignees_mode='department'`: имя отдела (резолвится в bitrix_id через `bitrix_departments.name` при expand) |
+| `specific_manager_ids` | TEXT NULL | JSON array bitrix_id менеджеров (для `specific`); сериализация через `json.dumps`, десериализация в `list[str]` в сервисе |
+| `default_plan_value` | NUMERIC(18,2) NULL | Значение плана по умолчанию (может быть переопределено в UI) |
+| `is_builtin` | BOOLEAN DEFAULT FALSE | Защищённый системный шаблон (нельзя удалить; name/period_mode/assignees_mode заморожены) |
+| `created_by_id` | VARCHAR(32) NULL | JWT-id пользователя, создавшего шаблон |
+| `created_at` / `updated_at` | DATETIME default `NOW()` | Время создания / последнего обновления |
+| Индекс | `ix_plan_templates_is_builtin` | Быстрая фильтрация builtin / custom |
+
+Seed-запись (в той же миграции 024): `(name='Все менеджеры на текущий месяц', description='Создать индивидуальный план для каждого активного менеджера на текущий календарный месяц', period_mode='current_month', assignees_mode='all_managers', is_builtin=TRUE)`. Вставка через `op.execute(sa.text(...).bindparams(...))` — cross-dialect PG/MySQL.
+
+**Backend-файлы plan_templates:**
+
+- Доменная сущность [`PlanTemplateEntity`](backend/app/domain/entities/plan_template.py) (Pydantic, Literal-типы `PeriodMode`/`AssigneesMode`/`TemplatePeriodType`, `specific_manager_ids: list[str] | None` уже распарсен из JSON)
+- Сервис [`PlanTemplateService`](backend/app/domain/services/plan_template_service.py):
+  - CRUD `list_templates` / `get_template` / `create_template(payload, created_by_id)` / `update_template(id, payload)` / `delete_template(id)` — для builtin: `update_template` блокирует изменение `name`/`period_mode`/`assignees_mode` (через `PlanTemplateConflictError`), `delete_template` блокирует удаление целиком
+  - `expand_template(template_id, overrides) → list[PlanDraft]`:
+    1. `_resolve_period(template, period_value_override)` → `(period_type, period_value, date_from, date_to)`: `current_month` → `(month, '%Y-%m', None, None)`, `current_quarter` → `(quarter, 'YYYY-QN', None, None)` (`quarter = (month-1)//3 + 1`), `current_year` → `(year, '%Y', None, None)`, `custom_period` → поля template как есть;
+    2. по `assignees_mode`: `all_managers` → `_fetch_all_active_managers()` (`SELECT * FROM bitrix_users WHERE active='Y'`), `department` → `_resolve_department_ids(department_name)` ищет отдел в `bitrix_departments.name` + `DepartmentService.collect_descendant_ids` + `list_managers_in_departments(active_only=True)`, `specific` → `_fetch_users_by_ids(specific_manager_ids)` с warning-ами для inactive/missing юзеров, `global` → 1 draft с `assigned_by_id=None`;
+    3. overrides `table_name`/`field_name` обязательны для builtin (иначе `PlanTemplateValidationError`), `period_value` переопределяет вычисленное значение
+  - `_parse_specific_ids` / `_serialize_specific_ids` — JSON round-trip с fallback `[]` на malformed
+  - Ошибки: `PlanTemplateNotFoundError` (404), `PlanTemplateConflictError` (400 для builtin-блокировок), `PlanTemplateValidationError` (400)
+- Эндпоинты (`api/v1/endpoints/plans.py`): `POST /plans/batch`, `GET`/`POST /plans/templates`, `GET`/`PUT`/`DELETE /plans/templates/{id}`, `POST /plans/templates/{id}/expand`, `POST /plans/templates/{id}/apply`, `GET /plans/meta/managers?department_id=...&recursive=true` (см. полный список в таблице эндпоинтов выше). Хелпер `_raise_for_template_error` маппит service-exceptions → HTTPException. Endpoint `apply` валидирует совпадение `template_id` в path и body, пропускает drafts через effective-resolution (override → draft → template) и делегирует в `PlanService.batch_create_plans` для атомарного INSERT всех записей
+
+#### Модуль «Отделы»
+
+Модуль предоставляет иерархию отделов Bitrix24 (`department.get`) и связь юзеров с отделами (через `UF_DEPARTMENT` из `user.get`). Основа для групповых планов по отделу и для механизма раскрытия шаблонов задач на всех подчинённых руководителя.
+
+**Таблица `bitrix_departments`** (миграция [`023_create_bitrix_departments_table.py`](backend/alembic/versions/023_create_bitrix_departments_table.py)):
+
+| Колонка | Тип | Назначение |
+|---|---|---|
+| `id` | BIGINT PK autoincrement | Внутренний суррогатный ключ |
+| `bitrix_id` | VARCHAR(32) UNIQUE | ID отдела в Bitrix24 (target для UPSERT) |
+| `name` | VARCHAR(255) NULL | Название отдела |
+| `parent_id` | VARCHAR(32) NULL, индекс `ix_bitrix_departments_parent` | ID родителя; NULL у корня |
+| `sort` | INT default 500 | Порядок сортировки (как в Bitrix24) |
+| `uf_head` | VARCHAR(32) NULL | `bitrix_id` пользователя-руководителя |
+| `created_at` / `updated_at` | DATETIME default `NOW()` | Время первого/последнего UPSERT |
+
+**Таблица `bitrix_user_departments`** (junction, та же миграция):
+
+| Колонка | Тип | Назначение |
+|---|---|---|
+| `user_id` | VARCHAR(32) | `bitrix_id` пользователя (из `bitrix_users`) |
+| `department_id` | VARCHAR(32) | `bitrix_id` отдела (из `bitrix_departments`) |
+| PK | `(user_id, department_id)` | Естественный UNIQUE |
+| Индексы | `ix_bud_user` по `user_id`, `ix_bud_dept` по `department_id` | Быстрая выборка «отделы юзера» и «юзеры отдела» |
+
+Таблица без FK на стороне БД (намеренно, для устойчивости к рассинхрону порядка синхронизаций); целостность поддерживается sync-слоем: DELETE-then-INSERT всех связей юзера при каждой синхронизации его записи.
+
+**Backend-файлы:**
+
+- Доменная сущность [`DepartmentEntity`](backend/app/domain/entities/department.py) (dataclass, поля `bitrix_id/name/parent_id/sort/uf_head`)
+- Сервис [`DepartmentSyncService`](backend/app/domain/services/department_sync_service.py) — одно публичное API: `full_sync()`. Вызывает `BitrixClient.get_all('department.get')`, UPSERT в `bitrix_departments` по `bitrix_id` (dialect-aware), пишет в `sync_logs` с `entity_type='ref:department'`. Класс-level `_running_syncs: dict` + `is_running()` — дедуп для HTTP-триггеров. Нормализация: пустые `PARENT`/`UF_HEAD` → NULL, `bitrix_id` всегда строка.
+- Сервис [`DepartmentService`](backend/app/domain/services/department_service.py) (read-only) — основные методы:
+  - `list_departments()` — плоский SELECT по `sort, bitrix_id` → `list[DepartmentEntity]`
+  - `get_department(bitrix_id)` — одна запись или `None`
+  - `build_tree()` → `list[dict]` — сначала `list_departments`, затем `_build_tree_in_memory` (группировка по `parent_id`, сортировка детей и корней по `(sort, id)`). Возвращает корни с вложенными `children`. Сироты (родитель не найден) поднимаются на верхний уровень
+  - `collect_descendant_ids(root_bitrix_id)` — BFS по in-memory карте parent→children; root включён в ответ, дубликатов нет, цикл защищён `visited`-set'ом. Если root не существует → `[]`
+  - `list_managers_in_departments(department_ids, active_only=True)` — один SELECT с `DISTINCT` и `JOIN bitrix_users ON bitrix_id=user_id` + `WHERE department_id IN :ids` (через `bindparam(..., expanding=True)`). Если `active_only=True`, фильтр по `bitrix_users.active='Y'` (или NULL — для записей без поля)
+- Схемы [`api/v1/schemas/departments.py`](backend/app/api/v1/schemas/departments.py): `DepartmentResponse`, `DepartmentTreeNode` (self-ref children через `model_rebuild`), `DepartmentTreeResponse`, `DepartmentSyncResponse`, `ManagerInfo`, `ManagersListResponse`
+- Эндпоинты [`api/v1/endpoints/departments.py`](backend/app/api/v1/endpoints/departments.py) — 4 маршрута: `GET /departments`, `GET /departments/tree`, `POST /departments/sync` (через `BackgroundTasks`; 409 если `DepartmentSyncService.is_running()`), `GET /departments/{id}/managers?recursive=true&active_only=true` (recursive default `true` — UI-friendly)
+- Регистрация роутера: `router.include_router(departments.router, prefix="/departments", tags=["departments"], dependencies=_auth)` в [`api/v1/__init__.py`](backend/app/api/v1/__init__.py)
+
+**Интеграция с SyncService (user sync):**
+
+В [`sync_service.py`](backend/app/domain/services/sync_service.py) добавлены:
+
+- `_sync_user_departments(conn, user_id, uf_department)` — статический хелпер, пишет связи в `bitrix_user_departments` внутри уже открытой транзакции (`conn` от `engine.begin()`): сначала `DELETE FROM bitrix_user_departments WHERE user_id=:user_id`, затем `INSERT` по каждому ID из `UF_DEPARTMENT`. Нормализация: list/tuple/scalar/None → итерируемая коллекция; каждый элемент конвертируется через `int(raw) → str`; дубликаты внутри одной записи пропускаются (`seen`-set)
+- В `_upsert_records` после UPSERT каждой записи пользователя (когда `table_name == bitrix_users`) вызывается `_sync_user_departments(conn, data['bitrix_id'], record.get('UF_DEPARTMENT'))`. `UF_DEPARTMENT` читается из исходного `record` до JSON-сериализации, чтобы получить оригинальный list
+- В `_sync_related_references` для `entity_type == 'user'` добавлен best-effort прямой вызов `DepartmentSyncService.full_sync()` — отделы синхронизируются вместе с юзерами. Не через `SyncQueue` (нет `REFERENCE` task_type для department), дедуп через `_running_syncs` самого сервиса
+
+Таким образом при вызове `POST /api/v1/sync/start/user` (или scheduled sync) в одной операции: актуализируется таблица `bitrix_users`, пересобираются связи `bitrix_user_departments` по актуальному `UF_DEPARTMENT`, и фоново синхронизируются справочники `bitrix_departments` и референсные таблицы.
 
 ### 3. Infrastructure Layer (`app/infrastructure/`)
 
@@ -484,7 +624,7 @@ app/infrastructure/
 │   └── client.py            # BitrixClient с retry и rate limiting
 ├── database/
 │   ├── connection.py        # AsyncEngine, get_session, get_dialect()
-│   ├── models.py            # SQLAlchemy модели (SyncConfig, SyncLog, SyncState, AIChart, SchemaDescription, ChartPromptTemplate, PublishedDashboard, DashboardChart, DashboardLink, DashboardSelector, SelectorChartMapping, Plan)
+│   ├── models.py            # SQLAlchemy модели (SyncConfig, SyncLog, SyncState, AIChart, SchemaDescription, ChartPromptTemplate, PublishedDashboard, DashboardChart, DashboardLink, DashboardSelector, SelectorChartMapping, Plan). Таблицы `bitrix_departments`, `bitrix_user_departments`, `plan_templates` намеренно без ORM-моделей — адресация через raw `text()` в соответствующих сервисах (DepartmentService, DepartmentSyncService, PlanTemplateService)
 │   └── dynamic_table.py     # Динамическое создание таблиц (кросс-БД, с комментариями полей). Системные колонки: record_id (PK), bitrix_id VARCHAR(50) UNIQUE, bitrix_id_int BIGINT nullable indexed, created_at, updated_at
 └── scheduler/
     └── scheduler.py         # APScheduler для периодической синхронизации
@@ -513,7 +653,9 @@ alembic/
     ├── 019_add_hide_title_to_dashboard_charts.py  # Колонка hide_title в dashboard_charts
     ├── 020_add_title_font_size_override.py  # Колонка title_font_size_override в dashboard_charts
     ├── 021_add_bitrix_id_int.py  # Идемпотентная миграция: добавление BIGINT-колонки bitrix_id_int во все динамические Bitrix-таблицы (crm_*/bitrix_*/stage_history_*), обработка трёх состояний (строковый/числовой/оба) для PG и MySQL, downgrade для state A
-    └── 022_create_plans_table.py  # Таблица plans: пользовательские плановые значения для числовых полей любых таблиц; колонки table_name/field_name/assigned_by_id/period_type/period_value/date_from/date_to/plan_value + индексы + uq_plan_key
+    ├── 022_create_plans_table.py  # Таблица plans: пользовательские плановые значения для числовых полей любых таблиц; колонки table_name/field_name/assigned_by_id/period_type/period_value/date_from/date_to/plan_value + индексы + uq_plan_key
+    ├── 023_create_bitrix_departments_table.py  # Две таблицы: bitrix_departments (справочник отделов, PK id BIGINT autoincrement, UNIQUE bitrix_id, индекс ix_bitrix_departments_parent по parent_id, поля name/sort/uf_head) и bitrix_user_departments (junction, PK (user_id, department_id), индексы ix_bud_user/ix_bud_dept). Кросс-БД: sa.BigInteger+autoincrement=True, sa.DateTime+server_default=now()
+    └── 024_create_plan_templates_table.py  # Таблица plan_templates: шаблоны массового создания планов. Колонки name, description, table_name/field_name (nullable для builtin), period_mode (current_month|current_quarter|current_year|custom_period) + period_type/period_value/date_from/date_to, assignees_mode (all_managers|department|specific|global) + department_name/specific_manager_ids (JSON text), default_plan_value Numeric(18,2), is_builtin Boolean (index ix_plan_templates_is_builtin), created_by_id, timestamps. Seed-запись в миграции: builtin-шаблон 'Все менеджеры на текущий месяц' через op.execute(sa.text(...).bindparams(...)) — cross-dialect PG/MySQL
 ```
 
 #### connection.py — ключевые функции:
@@ -821,6 +963,13 @@ frontend/src/
 │   │   ├── PublishModal.tsx   # Модальное окно публикации дашборда
 │   │   ├── HeadingItem.tsx    # Полиморфный элемент-заголовок дашборда: динамический тег h1-h6, выравнивание, цвет текста и фона, разделитель. В editable режиме — inline-edit текста (input, blur/Enter/Esc) и popover ⚙ с настройками level/align/color/bg/divider. Read-only в embed. Опциональный fontScale?: number — при значении != 1 применяет inline fontSize = baseRem[level] * fontScale rem (Tailwind text-3xl..text-sm остаётся как fallback); при undefined/1 — mergedTitleStyle === titleStyle (не-TV режим байт-стабилен).
 │   │   └── TvModeGrid.tsx     # TV-режим публичного дашборда: интерактивный react-grid-layout (24 колонки, адаптивный rowHeight = max(20, innerHeight/24)), merge layout из localStorage[tv_layout_<storageKey>] и дефолта из dc.layout_* (миграция 12→24: x*2, w*2). Внутренний TvCellMeasurer через useElementSize вычисляет fontScale = clamp(0.4, 2.5, sqrt(w*h)/350) и chartHeight = max(60, h-44), прокидывает в renderChart/renderHeading колбэки родителя. Persist layout в localStorage обёрнут в try/catch. Использует useContainerWidth + mounted гард. Все элементы имеют minW=1, minH=1 (без maxH) — даже headings — чтобы в TV-режиме можно было ужимать без ограничений.
+│   ├── plans/
+│   │   ├── PlanFormModal.tsx          # Модалка создания/редактирования одного плана. В create-режиме 4 таба назначения (single/multi/department/global): multi и department разворачиваются через plansApi.batchCreate в N копий плана. Department-режим: select отдела из departmentsApi.getTree() + чекбокс «Включая подотделы» + live-preview менеджеров через departmentsApi.getManagers. Edit-режим показывает классический single-select менеджера (backward-compat).
+│   │   ├── PlanDraftsTable.tsx        # Переиспользуемая таблица PlanDraft[] с inline-редактированием plan_value/description, удалением строки, жёлтой подсветкой warnings (иконка ⚠ с tooltip) и красной подсветкой невалидных сумм. Props: drafts, onChange, onRemove?, managers?, readOnlyFields?. Используется в AIGeneratePlansModal и ApplyTemplateModal.
+│   │   ├── AIGeneratePlansModal.tsx   # Модалка AI-генерации: textarea описания, collapsible hints (table/field select), кнопка «✨ Сгенерировать» → plansApi.aiGenerate (до 5 мин), предпросмотр через PlanDraftsTable, «Сохранить все (N)» → plansApi.batchCreate. 502/503 → «AI временно недоступен».
+│   │   ├── PlanTemplatesDrawer.tsx    # Side drawer справа со списком шаблонов (plansApi.listTemplates). На каждом шаблоне: бейдж «⭐ builtin», Применить/Редактировать/Удалить (delete disabled+tooltip для builtin). Кнопка «+ Новый шаблон» открывает PlanTemplateFormModal. onApply(id) зовёт родителя, который открывает ApplyTemplateModal.
+│   │   ├── PlanTemplateFormModal.tsx  # Форма создания/редактирования шаблона плана: name, description, optional table/field, period_mode (current_month/quarter/year/custom_period — для custom_period доп. поля), assignees_mode (all_managers/department/specific/global — select отдела или multi-select менеджеров), default_plan_value. Для builtin name/period_mode/assignees_mode заблокированы.
+│   │   └── ApplyTemplateModal.tsx     # Применение шаблона: plansApi.getTemplate → (при отсутствии target) обязательные override select'ы table/field → optional period override → default bulk value с «Заполнить всем» → «Подготовить превью» (plansApi.expandTemplate) → PlanDraftsTable для редактирования → «Сохранить все» (plansApi.applyTemplate).
 │   └── selectors/
 │       ├── SelectorBar.tsx        # Панель фильтров: auto-apply (debounce 250 мс / text 500 мс), инициализация дефолтов из config.default_value (резолв date-токенов), кнопка Reset. Опционально linkedSlug — берёт опции через linked endpoint
 │       ├── DateRangeSelector.tsx  # Два input[date] (from/to) + token-based пресеты (TODAY/LAST_7_DAYS/LAST_30_DAYS/THIS_QUARTER_START)
@@ -840,7 +989,7 @@ frontend/src/
 │   ├── ConfigPage.tsx         # Настройки синхронизации
 │   ├── MonitoringPage.tsx     # Мониторинг
 │   ├── ValidationPage.tsx     # Валидация данных
-│   ├── PlansPage.tsx          # Управление плановыми значениями («план/факт»): таблица планов (таблица/поле/менеджер/период/план/факт/отклонение), батчевая загрузка vs-actual через Promise.allSettled, человекочитаемый период (Апрель 2026, 2026 — Q2, custom-диапазон), inline PlanFormModal с радио fixed/custom, селектами table_name → numeric_fields, списком bitrix_users (грузится через chartsApi.executeSql, т.к. отдельного /users эндпоинта нет), удаление через window.confirm. В edit-режиме редактируются только plan_value и description.
+│   ├── PlansPage.tsx          # Управление плановыми значениями («план/факт»): таблица планов (таблица/поле/менеджер/период/план/факт/отклонение), батчевая загрузка vs-actual через Promise.allSettled, человекочитаемый период (Апрель 2026, 2026 — Q2, custom-диапазон). Action-бар: «+ Добавить план» (components/plans/PlanFormModal), «✨ Сгенерировать через AI» (components/plans/AIGeneratePlansModal), «⭐ Избранные» (components/plans/PlanTemplatesDrawer → ApplyTemplateModal). Предзагружает bitrix_users через chartsApi.executeSql (для single/multi/edit) и managers через plansApi.listManagers (для резолвинга имён в PlanDraftsTable). Toast 3с при успешном batch/apply. Удаление одиночного плана через window.confirm.
 │   ├── EmbedDashboardPage.tsx # Публичный дашборд: аутентификация, вкладки (linked-дашборды), авто-обновление, per-tab селекторы и per-tab filterValuesByTab (фильтры главного и вторичных табов хранятся раздельно). Полиморфный рендер dashboard.charts: ветка item_type==='heading' рендерит HeadingItem (read-only) в позицию gridStyle, остальные — DashboardChartCard. Фильтрует heading из fetchAllChartData/fetchLinkedChartData чтобы не делать запросы /chart/{id}/data. TV-режим (?tv=1 через useTvMode): чекбокс «Режим ТВ» и кнопка «Сбросить макет» в шапке (handleTvReset чистит localStorage[tv_layout_<storageKey>] и инкрементит tvKey для remount); при tvMode внешний контейнер становится fullscreen (p-2 / w-full, description скрыт); inline-функции renderTvChartCard(dc, fontScale, chartHeight) и renderTvHeading(dc, fontScale) повторяют логику DashboardChartCard/HeadingItem: заголовок чарта берётся напрямую из настроек редактора (getTitleSizeStyle(dc.title_font_size_override || config.general.titleFontSize)) БЕЗ умножения на fontScale — пользователь задаёт точный размер ползунком и TV-режим его уважает; fontScale прокидывается только в ChartRenderer/HeadingItem для осей/легенды/значений; условный рендер: tvMode → <TvModeGrid key={tvKey + '_' + tvStorageKey} storageKey charts chartData renderChart renderHeading />, иначе исходный CSS-grid без изменений. tvStorageKey = activeTab === 'main' ? slug : activeTab — каждый linked-таб хранит свой layout отдельно.
 │   └── DashboardEditorPage.tsx # Редактор дашборда: grid-layout, override, ссылки, SelectorEditorSection (CRUD фильтров + маппинги + AI генерация). Toolbar кнопки "+ Чарт" (открывает AddChartPickerModal — модалка через createPortal со списком сохранённых чартов от chartsApi.list, поиск, фильтр уже добавленных, handleAddChart через useAddDashboardChart) и "+ Заголовок" (handleAddHeading через useAddDashboardHeading). Полиморфный рендер dashboard.charts: ветка item_type==='heading' использует EditorHeadingCard (HeadingItem editable + кнопка удаления), остальные — EditorChartCard. gridLayout для heading элементов задаёт minH=1, minW=2, maxH=4 (chart остаётся minW=2, minH=2). Загрузка chart-данных пропускает heading элементы. TV-режим (?tv=1 через useTvMode): чекбокс «Режим ТВ» в шапке делегирует рендер грида к <TvModeGrid> (24 колонки, adaptive rowHeight, localStorage layout под storageKey=dashboard.slug) чтобы editor-preview был байт-идентичен публичному дашборду в TV-режиме. Inline-функции renderTvChartCard/renderTvHeading зеркалят EmbedDashboardPage. tvPreviewCharts наложены из gridLayout (несохранённые drag-изменения видны в preview). В non-TV режиме используется локальный ReactGridLayout (12 колонок, ROW_HEIGHT=120) для in-place редактирования. EditorChartCard/EditorHeadingCard рендерятся только в non-TV (TV использует единый рендер с публичным).
 ├── hooks/

@@ -2,6 +2,8 @@
 
 import json
 import re
+from datetime import date
+from typing import Any
 
 import openai
 from openai import AsyncOpenAI
@@ -301,6 +303,136 @@ Brief description of what the table stores.
 
 Make descriptions clear and useful for business users who are not developers.
 Use your knowledge of Bitrix24 CRM fields to provide accurate descriptions.
+"""
+
+
+PLANS_GENERATION_PROMPT = """Ты — AI-ассистент для генерации планов (целевых значений) в CRM-системе Bitrix24.
+Пользователь описывает в свободной форме, какие планы он хочет поставить — по каким
+таблицам/полям, на каких менеджеров (или на всех, или на отдел), за какой период,
+с какими значениями. Твоя задача — разобрать описание и вернуть СТРОГО JSON со списком
+черновиков планов и списком предупреждений.
+
+Сегодняшняя дата: {current_date}
+
+## Доступная схема базы данных (только отсюда можно брать table_name / field_name)
+{schema_context}
+
+## Менеджеры (bitrix_users) — для резолвинга имён в bitrix_id
+Столбец «Активен» показывает флаг active. Для план-генерации используй ЛЮБОГО
+найденного менеджера (даже с «Активен=нет»), но добавь warning если он неактивен.
+Если пользователь назвал имя и оно есть в таблице — ВСЕГДА подставляй его
+`bitrix_id`, НЕ ставь `null` с отговоркой «не найден».
+
+{managers_context}
+
+## Подсказки пользователя (приоритетнее, но не обязательны)
+{hints}
+
+## Формат ответа (строго JSON, без markdown-кодблоков, без комментариев)
+
+{{
+  "plans": [
+    {{
+      "table_name": "string — имя таблицы из схемы выше",
+      "field_name": "string — имя ЧИСЛОВОГО поля этой таблицы",
+      "assigned_by_id": "string | null",
+      "period_type": "month | quarter | year | custom",
+      "period_value": "string | null",
+      "date_from": "YYYY-MM-DD | null",
+      "date_to": "YYYY-MM-DD | null",
+      "plan_value": 0,
+      "description": "string — краткое описание плана на русском"
+    }}
+  ],
+  "warnings": ["string", ...]
+}}
+
+## Правила для assigned_by_id
+
+`assigned_by_id` может принимать одно из следующих значений — backend развернёт
+спец-значения сам, тебе не нужно выписывать список менеджеров вручную:
+
+- конкретный bitrix_id менеджера (строка): `"123"` — если пользователь назвал
+  менеджера по имени/фамилии, найди его в разделе «Активные менеджеры» выше
+  и подставь ТОЧНЫЙ `bitrix_id`. Регистр и падеж имени не важны: «Максима
+  Крылова», «Крылову Максиму», «М. Крылов» — всё это один и тот же менеджер.
+  Если в списке активных менеджеров есть несколько с похожим именем —
+  выбери наиболее подходящего и добавь пояснение в `warnings`. Если совсем
+  не нашёл — добавь warning и поставь `null` (общий план) ИЛИ пропусти запись.
+- `"all_managers"` — если пользователь сказал «на всех менеджеров», «каждому
+  менеджеру» и т.п. Backend развернёт это в N планов, по одному на каждого
+  активного пользователя из `bitrix_users`.
+- `"department:Название"` — если пользователь сказал «всем из отдела Продажи»,
+  «менеджерам отдела маркетинга» и т.п. Подставь точное название отдела, как
+  его назвал пользователь (регистр не важен — backend сравнит case-insensitive).
+  Backend найдёт отдел в `bitrix_departments` и развернёт план на всех
+  активных пользователей этого отдела (и всех подотделов).
+- `null` — если план общий на всю компанию (без привязки к менеджеру).
+
+НЕ перечисляй менеджеров вручную, если пользователь сказал «на всех» или «отделу»
+— используй спец-значения выше.
+
+## Правила для period_type / period_value
+
+Строго соблюдай формат `period_value` в зависимости от `period_type`:
+
+- `period_type = "month"` → `period_value = "YYYY-MM"` (например, `"2026-04"`).
+  `date_from` / `date_to` должны быть `null`.
+- `period_type = "quarter"` → `period_value = "YYYY-QN"`, где N от 1 до 4
+  (например, `"2026-Q2"`). `date_from` / `date_to` — `null`.
+- `period_type = "year"` → `period_value = "YYYY"` (например, `"2026"`).
+  `date_from` / `date_to` — `null`.
+- `period_type = "custom"` → `period_value` должно быть `null`,
+  а `date_from` и `date_to` обязательны (формат `"YYYY-MM-DD"`).
+
+«Следующий квартал», «текущий год», «в апреле» и т.п. разрешай относительно
+сегодняшней даты `{current_date}`. Если период не указан явно — по умолчанию
+используй текущий месяц: `period_type="month"`, `period_value = текущий YYYY-MM`.
+
+## Правила для table_name / field_name
+
+1. Используй ТОЛЬКО реальные таблицы и поля из схемы выше — НИКОГДА не придумывай
+   имена. Если в схеме нет поля, к которому пользователь хочет привязать план —
+   добавь предупреждение в `warnings` и пропусти этот план.
+2. `field_name` должно быть ЧИСЛОВЫМ полем (numeric / integer / decimal / float).
+   План-значение — это число, которое сравнивается с суммой этого поля по записям
+   за период. Нечисловые поля (text, date, bool) для плана не подходят.
+3. Если пользователь подсказал в `hints` конкретные `table_name` / `field_name` —
+   используй их (если они существуют и числовые).
+4. Типичные случаи (но не хардкодь, сверяйся со схемой):
+   - выручка / оборот / сумма сделок → `crm_deals.opportunity`.
+   - количество сделок / звонков / задач — соответствующая таблица с числовым
+     счётчиком/полем.
+
+## Правила для plan_value
+
+`plan_value` — число (int или float). Если пользователь пишет «500 тысяч» — ставь
+`500000`, «2 миллиона» → `2000000`, «50к» → `50000`. НЕ добавляй строки, валюту,
+единицы измерения в значение — только число.
+
+## Правила для warnings
+
+Помещай в `warnings` всё, что не смог распознать уверенно:
+
+- неоднозначность поля или таблицы («пользователь сказал \"по выручке\", взял
+  `crm_deals.opportunity`, но в схеме есть также `crm_deals.cost` — проверьте»);
+- не найденное имя отдела («отдел \"Маркетинг\" не найден в схеме — backend
+  попробует его зарезолвить, но возможно имя записано иначе»);
+- пропущенные обязательные параметры («не указан период — использую текущий
+  месяц»);
+- любые сомнительные допущения.
+
+Если описание пользователя слишком расплывчатое и разобрать его в конкретные
+планы невозможно — верни пустой `plans` и поясни проблему в `warnings`.
+
+## Обязательные требования к формату ответа
+
+- Верни СТРОГО валидный JSON-объект с двумя ключами `plans` и `warnings`.
+- БЕЗ markdown-кодблоков (без ``` ... ```), БЕЗ комментариев, БЕЗ текста до или
+  после JSON.
+- Все строки — на русском языке (кроме идентификаторов таблиц/полей и
+  `period_value`).
+- Даже если планов нет — верни `{{"plans": [], "warnings": [...]}}`.
 """
 
 
@@ -783,3 +915,141 @@ class AIService:
 
         logger.info("Report analysis generated", length=len(content))
         return content, system_message
+
+    # ------------------------------------------------------------------
+    # Plans generation (Phase 3)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _format_plans_hints(hints: dict[str, Any] | None) -> str:
+        """Format optional table/field hints for the plans prompt.
+
+        Возвращает короткий русскоязычный блок, который подставляется в
+        placeholder ``{hints}`` системного промпта
+        :data:`PLANS_GENERATION_PROMPT`. Если hints пустые — возвращает
+        «не указаны», чтобы шаблон не ломался.
+        """
+        if not hints:
+            return "не указаны"
+        parts: list[str] = []
+        table_name = hints.get("table_name")
+        field_name = hints.get("field_name")
+        if table_name:
+            parts.append(f"таблица = `{table_name}`")
+        if field_name:
+            parts.append(f"поле = `{field_name}`")
+        if not parts:
+            return "не указаны"
+        return "; ".join(parts)
+
+    async def generate_plans_from_description(
+        self,
+        description: str,
+        schema_context: str,
+        hints: dict[str, Any] | None = None,
+        managers_context: str | None = None,
+    ) -> dict[str, Any]:
+        """Generate plan drafts from a natural-language description.
+
+        Собирает системный промпт :data:`PLANS_GENERATION_PROMPT` c
+        подстановкой ``schema_context`` (markdown-описание таблиц) и
+        ``current_date`` (сегодня, в ISO), вызывает LLM через
+        ``_complete`` (OpenAI / OpenRouter — оба провайдера работают
+        через общий абстракционный метод) и парсит JSON-ответ.
+
+        Args:
+            description: Свободный пользовательский запрос на русском
+                языке. Помещается в ``user``-сообщение.
+            schema_context: Markdown-блок c описанием таблиц — тот же,
+                что используется для генерации чартов (берётся
+                endpoint'ом из ``ChartService.get_any_latest_schema_description``
+                или ``get_schema_context``).
+            hints: Опциональные подсказки о таблице/поле. Если
+                заданы — добавляются в конец description как отдельный
+                «Подсказки пользователя» блок и подставляются в
+                placeholder ``{hints}`` системного промпта.
+
+        Returns:
+            dict c ключами ``plans`` (list сырых черновиков от LLM,
+            где ``assigned_by_id`` может быть спец-значением
+            ``"all_managers"`` / ``"department:Name"``) и ``warnings``
+            (list строк). Фактический разворот спец-значений в
+            ``PlanDraft`` — обязанность вызывающего (см.
+            ``expand_ai_drafts``).
+
+        Raises:
+            AIServiceError: если LLM вернул пустой ответ или невалидный
+                JSON. Это единственный тип ошибок, который поднимается
+                слоем ``_complete`` для провайдерских сбоев (rate-limit,
+                connection, bad status).
+        """
+        plans_context = ""
+        if self._plan_service is not None:
+            try:
+                plans_context = await self._plan_service.get_plans_llm_context()
+            except Exception as exc:  # pragma: no cover — best-effort
+                logger.warning(
+                    "generate_plans_from_description: failed to load plans context",
+                    error=str(exc),
+                )
+
+        # Compose schema_context: базовая схема + markdown-блок про
+        # таблицу planов (включая список уже созданных планов). LLM
+        # подставит ``table_name``/``field_name`` в черновики только
+        # из этого объединённого контекста.
+        combined_schema = schema_context
+        if plans_context:
+            combined_schema = f"{schema_context}\n\n{plans_context}".strip()
+
+        hints_block = self._format_plans_hints(hints)
+        current_date = date.today().isoformat()
+        managers_block = managers_context or "список активных менеджеров не передан"
+
+        system_message = PLANS_GENERATION_PROMPT.format(
+            schema_context=combined_schema,
+            current_date=current_date,
+            hints=hints_block,
+            managers_context=managers_block,
+        )
+
+        logger.info(
+            "Generating plans from description",
+            model=self.model,
+            description_length=len(description or ""),
+            has_hints=bool(hints),
+        )
+
+        content = await self._complete(system_message, description, 3000)
+        if not content:
+            raise AIServiceError("AI вернул пустой ответ")
+
+        content = _extract_json(content)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error(
+                "Invalid JSON from AI (generate_plans_from_description)",
+                content=content,
+            )
+            raise AIServiceError("AI вернул невалидный JSON") from e
+
+        if not isinstance(parsed, dict):
+            raise AIServiceError("AI вернул не JSON-объект")
+
+        raw_plans = parsed.get("plans") or []
+        raw_warnings = parsed.get("warnings") or []
+        if not isinstance(raw_plans, list):
+            raise AIServiceError("AI вернул поле 'plans' не списком")
+        if not isinstance(raw_warnings, list):
+            raise AIServiceError("AI вернул поле 'warnings' не списком")
+
+        # Нормализуем warnings в list[str], фильтруем не-строки.
+        warnings: list[str] = [str(w) for w in raw_warnings if w is not None]
+
+        logger.info(
+            "Plans generated",
+            plans_count=len(raw_plans),
+            warnings_count=len(warnings),
+        )
+
+        return {"plans": raw_plans, "warnings": warnings}

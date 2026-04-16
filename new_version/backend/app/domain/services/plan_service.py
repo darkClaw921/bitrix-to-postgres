@@ -246,6 +246,67 @@ class PlanService:
     # CRUD
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Internal INSERT helper (shared by single- and batch-create)
+    # ------------------------------------------------------------------
+
+    _INSERT_COLS: list[str] = [
+        "table_name",
+        "field_name",
+        "assigned_by_id",
+        "period_type",
+        "period_value",
+        "date_from",
+        "date_to",
+        "plan_value",
+        "description",
+        "created_by_id",
+    ]
+
+    async def _insert_plan_in_conn(
+        self,
+        conn: Any,
+        payload: dict[str, Any],
+    ) -> int:
+        """Insert one plan row using the given live connection.
+
+        Assumes validations already passed (numeric column check +
+        period-mode check + duplicate check for that payload). Returns
+        the freshly inserted id.
+
+        Shared by :meth:`create_plan` (wraps it in a single ``begin()``)
+        and :meth:`batch_create_plans` (wraps many calls in one
+        transaction — any failure rolls back all inserts).
+        """
+        dialect = self._dialect()
+        col_list = ", ".join(self._INSERT_COLS)
+        placeholders = ", ".join(f":{c}" for c in self._INSERT_COLS)
+
+        params: dict[str, Any] = {
+            "table_name": payload["table_name"],
+            "field_name": payload["field_name"],
+            "assigned_by_id": payload.get("assigned_by_id"),
+            "period_type": payload.get("period_type"),
+            "period_value": payload.get("period_value"),
+            "date_from": payload.get("date_from"),
+            "date_to": payload.get("date_to"),
+            "plan_value": payload["plan_value"],
+            "description": payload.get("description"),
+            "created_by_id": payload.get("created_by_id"),
+        }
+
+        if dialect == "postgresql":
+            sql = (
+                f"INSERT INTO plans ({col_list}) VALUES ({placeholders}) "
+                f"RETURNING id"
+            )
+            result = await conn.execute(text(sql), params)
+            return int(result.scalar())
+        # mysql / mariadb
+        sql = f"INSERT INTO plans ({col_list}) VALUES ({placeholders})"
+        result = await conn.execute(text(sql), params)
+        return int(result.lastrowid)
+
     async def create_plan(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Create a new plan row.
 
@@ -270,48 +331,8 @@ class PlanService:
             )
 
         engine = get_engine()
-        dialect = self._dialect()
-
-        insert_cols = [
-            "table_name",
-            "field_name",
-            "assigned_by_id",
-            "period_type",
-            "period_value",
-            "date_from",
-            "date_to",
-            "plan_value",
-            "description",
-            "created_by_id",
-        ]
-        placeholders = ", ".join(f":{c}" for c in insert_cols)
-        col_list = ", ".join(insert_cols)
-
-        params: dict[str, Any] = {
-            "table_name": table_name,
-            "field_name": field_name,
-            "assigned_by_id": payload.get("assigned_by_id"),
-            "period_type": payload.get("period_type"),
-            "period_value": payload.get("period_value"),
-            "date_from": payload.get("date_from"),
-            "date_to": payload.get("date_to"),
-            "plan_value": plan_value,
-            "description": payload.get("description"),
-            "created_by_id": payload.get("created_by_id"),
-        }
-
         async with engine.begin() as conn:
-            if dialect == "postgresql":
-                sql = (
-                    f"INSERT INTO plans ({col_list}) VALUES ({placeholders}) "
-                    f"RETURNING id"
-                )
-                result = await conn.execute(text(sql), params)
-                new_id = int(result.scalar())
-            else:  # mysql / mariadb
-                sql = f"INSERT INTO plans ({col_list}) VALUES ({placeholders})"
-                result = await conn.execute(text(sql), params)
-                new_id = int(result.lastrowid)
+            new_id = await self._insert_plan_in_conn(conn, payload)
 
         logger.info(
             "Plan created",
@@ -327,6 +348,115 @@ class PlanService:
                 f"Plan {new_id} was created but could not be re-read"
             )
         return created
+
+    async def batch_create_plans(
+        self,
+        plans: list[dict[str, Any]],
+        created_by_id: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        """Create many plan rows in a single transaction.
+
+        All-or-nothing semantics: any validation error, logical duplicate,
+        or DB-level IntegrityError rolls back the whole batch — no plan
+        is partially created. Each plan goes through the same validation
+        chain as :meth:`create_plan` (numeric column + period mode +
+        logical-duplicate check), so the batch endpoint can not be used
+        to bypass business rules.
+
+        Args:
+            plans: Each dict has the same shape as the payload of
+                :meth:`create_plan`.
+            created_by_id: If provided, overrides/fills in
+                ``created_by_id`` on every plan (typically pulled from
+                the JWT of the authenticated user).
+
+        Returns:
+            List of freshly-inserted plan rows in the same order as the
+            input. Re-read via :meth:`get_plan` for consistent shape
+            (timestamps, etc).
+
+        Raises:
+            PlanValidationError: Bad column/period/etc for some entry.
+            PlanConflictError: Logical duplicate of an existing plan,
+                OR logical duplicate inside the batch itself (two
+                payloads collide on the unique key).
+            PlanServiceError: Any other unexpected failure.
+        """
+        if not plans:
+            return []
+
+        engine = get_engine()
+        created_ids: list[int] = []
+
+        # Pre-validate everything outside the DB transaction to fail
+        # fast with the most helpful error (and to surface logical dup
+        # conflicts inside the batch itself).
+        seen_keys: set[tuple[Any, ...]] = set()
+        resolved_payloads: list[dict[str, Any]] = []
+
+        for idx, raw in enumerate(plans):
+            # Shallow copy + apply created_by_id override.
+            payload = dict(raw)
+            if created_by_id is not None:
+                payload["created_by_id"] = created_by_id
+
+            if payload.get("plan_value") is None:
+                raise PlanValidationError(
+                    f"plan_value is required (entry #{idx})"
+                )
+
+            table_name = payload.get("table_name")
+            field_name = payload.get("field_name")
+            await self._validate_numeric_column(table_name, field_name)
+            self._validate_period(payload)
+
+            # Intra-batch duplicate check (DB unique constraint would
+            # surface later but as an opaque IntegrityError).
+            key = (
+                payload.get("table_name"),
+                payload.get("field_name"),
+                payload.get("assigned_by_id"),
+                payload.get("period_type"),
+                payload.get("period_value"),
+                payload.get("date_from"),
+                payload.get("date_to"),
+            )
+            if key in seen_keys:
+                raise PlanConflictError(
+                    f"Duplicate plan inside batch (entry #{idx}): {key}"
+                )
+            seen_keys.add(key)
+
+            # Cross-batch vs existing-DB duplicate.
+            existing_id = await self._find_duplicate(payload)
+            if existing_id is not None:
+                raise PlanConflictError(
+                    f"Plan with the same logical key already exists "
+                    f"(id={existing_id}, entry #{idx})"
+                )
+
+            resolved_payloads.append(payload)
+
+        async with engine.begin() as conn:
+            for payload in resolved_payloads:
+                new_id = await self._insert_plan_in_conn(conn, payload)
+                created_ids.append(new_id)
+
+        logger.info(
+            "Plans batch-created",
+            count=len(created_ids),
+            plan_ids=created_ids,
+        )
+
+        created_rows: list[dict[str, Any]] = []
+        for pid in created_ids:
+            row = await self.get_plan(pid)
+            if row is None:
+                raise PlanServiceError(
+                    f"Plan {pid} was created but could not be re-read"
+                )
+            created_rows.append(row)
+        return created_rows
 
     async def list_plans(
         self, filters: Optional[dict[str, Any]] = None

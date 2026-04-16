@@ -137,6 +137,11 @@ class SyncService:
 
         Uses ON CONFLICT DO UPDATE (PostgreSQL) or
         INSERT ... ON DUPLICATE KEY UPDATE (MySQL).
+
+        Side-effect: для таблицы ``bitrix_users`` дополнительно ресинхронизируется
+        junction ``bitrix_user_departments`` (парсинг ``UF_DEPARTMENT`` каждого
+        пользователя — см. ``_sync_user_departments``). Запись в junction
+        выполняется в той же транзакции, что и UPSERT самого пользователя.
         """
         if not records:
             return 0
@@ -150,6 +155,8 @@ class SyncService:
         columns = await DynamicTableBuilder.get_table_columns(table_name)
         column_set = set(columns)
         column_types = await self._get_column_types(table_name)
+
+        is_user_table = table_name == EntityType.get_table_name(EntityType.USER)
 
         async with engine.begin() as conn:
             for record in records:
@@ -187,7 +194,80 @@ class SyncService:
                 await conn.execute(query, data)
                 processed += 1
 
+                # --- Side-effect: user → departments junction ---
+                if is_user_table:
+                    # Ищем UF_DEPARTMENT в исходной записи (он прилетает из Bitrix24
+                    # как массив int). Подстраховываемся от разных регистров ключа.
+                    uf_department = (
+                        record.get("UF_DEPARTMENT")
+                        if "UF_DEPARTMENT" in record
+                        else record.get("uf_department")
+                    )
+                    await self._sync_user_departments(
+                        conn, data["bitrix_id"], uf_department
+                    )
+
         return processed
+
+    @staticmethod
+    async def _sync_user_departments(
+        conn,
+        user_id: str,
+        uf_department: Any,
+    ) -> None:
+        """Rewrite ``bitrix_user_departments`` rows for a single user.
+
+        Стратегия DELETE-then-INSERT внутри уже открытой транзакции (``conn``):
+        сначала полностью удаляем старые связи юзера, потом вставляем актуальные
+        из ``UF_DEPARTMENT``. Это покрывает все кейсы (юзер добавлен/удалён из
+        отдела, очищено поле) без диффа.
+
+        Args:
+            conn: Активное async-соединение (``engine.begin()``-контекст).
+            user_id: ``bitrix_id`` пользователя (строка, уже нормализовано).
+            uf_department: значение ``UF_DEPARTMENT`` из Bitrix24. Ожидается
+                list[int] / list[str], но допускаются также None, пустой list,
+                скаляр (int/str) — всё нормализуется. Некорректные элементы
+                (не приводятся к int/str) пропускаются.
+        """
+        if not user_id:
+            return
+
+        # Сначала чистим все текущие связи юзера (в т.ч. если UF_DEPARTMENT теперь пуст).
+        await conn.execute(
+            text(
+                "DELETE FROM bitrix_user_departments "
+                "WHERE user_id = :user_id"
+            ),
+            {"user_id": str(user_id)},
+        )
+
+        # Нормализация UF_DEPARTMENT: может быть list, scalar, None, пустая строка.
+        if uf_department is None or uf_department == "" or uf_department == []:
+            return
+
+        if not isinstance(uf_department, (list, tuple)):
+            uf_department = [uf_department]
+
+        seen: set[str] = set()
+        for raw in uf_department:
+            if raw is None or raw == "":
+                continue
+            try:
+                dep_id = str(int(raw))
+            except (TypeError, ValueError):
+                # Нечисловые идентификаторы (маловероятно для Bitrix24, но защищаемся)
+                dep_id = str(raw)
+            if dep_id in seen:
+                continue
+            seen.add(dep_id)
+            await conn.execute(
+                text(
+                    "INSERT INTO bitrix_user_departments "
+                    "(user_id, department_id) VALUES (:user_id, :dep_id)"
+                ),
+                {"user_id": str(user_id), "dep_id": dep_id},
+            )
 
     async def _get_column_types(self, table_name: str) -> dict[str, str]:
         """Get column types from database."""
@@ -627,7 +707,34 @@ class SyncService:
     }
 
     async def _sync_related_references(self, entity_type: str) -> None:
-        """Best-effort enqueue of reference sync tasks related to this entity type."""
+        """Best-effort enqueue of reference sync tasks related to this entity type.
+
+        Для ``user`` дополнительно выполняется прямой ``DepartmentSyncService.full_sync()``
+        перед записью связей (чтобы ``bitrix_departments`` содержал все ID,
+        на которые ссылается ``UF_DEPARTMENT`` юзеров). Это best-effort:
+        ошибка department sync не роняет основной sync пользователей.
+        """
+        # Отделы синхронизируются напрямую (не через SyncQueue — нет REFERENCE task_type
+        # для department, и у DepartmentSyncService собственный _running_syncs дедуп).
+        if entity_type == "user":
+            try:
+                from app.domain.services.department_sync_service import (
+                    DepartmentSyncService,
+                )
+
+                dep_service = DepartmentSyncService(bitrix_client=self._bitrix)
+                result = await dep_service.full_sync()
+                logger.info(
+                    "Department sync completed (related to user sync)",
+                    result_status=result.get("status"),
+                    processed=result.get("records_processed"),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to sync departments alongside user sync, skipping",
+                    error=str(e),
+                )
+
         ref_names = self._ENTITY_REFERENCE_MAP.get(entity_type, [])
         if not ref_names:
             return

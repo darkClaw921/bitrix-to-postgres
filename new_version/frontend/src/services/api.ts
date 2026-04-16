@@ -1301,6 +1301,271 @@ export interface PlanListFilters {
   period_type?: PlanPeriodType
 }
 
+// === Plan Templates Types ===
+
+/**
+ * Template-level period modes (backend `ALL_PERIOD_MODES`).
+ *
+ * - `current_month` / `current_quarter` / `current_year` — сервис сам
+ *   вычисляет `period_value` на момент expand/apply.
+ * - `custom_period` — требует `period_type` (month/quarter/year/custom)
+ *   + `period_value` или `date_from`/`date_to`.
+ */
+export type PlanPeriodMode =
+  | 'current_month'
+  | 'current_quarter'
+  | 'current_year'
+  | 'custom_period'
+
+/**
+ * Template-level assignee modes (backend `ALL_ASSIGNEES_MODES`).
+ *
+ * - `all_managers` — expand разворачивает на всех активных менеджеров.
+ * - `department` — разворачивает на менеджеров отдела (с подотделами).
+ * - `specific` — использует `specific_manager_ids`.
+ * - `global` — один план без `assigned_by_id` (для всей компании).
+ */
+export type PlanAssigneesMode =
+  | 'all_managers'
+  | 'department'
+  | 'specific'
+  | 'global'
+
+/**
+ * Plan template — зеркалит backend `PlanTemplateResponse`.
+ *
+ * Builtin (`is_builtin=true`) создаются только миграцией 024; через API
+ * создаются только пользовательские (`is_builtin=false`).
+ */
+export interface PlanTemplate {
+  id: number
+  name: string
+  description: string | null
+
+  table_name: string | null
+  field_name: string | null
+
+  period_mode: PlanPeriodMode
+  period_type: PlanPeriodType | null
+  period_value: string | null
+  date_from: string | null
+  date_to: string | null
+
+  assignees_mode: PlanAssigneesMode
+  department_name: string | null
+  specific_manager_ids: string[] | null
+
+  default_plan_value: number | string | null
+
+  is_builtin: boolean
+  created_by_id: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+/**
+ * Payload для `POST /plans/templates` — создание пользовательского шаблона.
+ *
+ * `is_builtin` и `created_by_id` не передаются (сервис проставляет
+ * автоматически). Связи полей: при `assignees_mode='department'` обязателен
+ * `department_name`; при `'specific'` — `specific_manager_ids` (непустой);
+ * при `period_mode='custom_period'` — `period_type` + соответствующие
+ * поля.
+ */
+export interface PlanTemplateCreateRequest {
+  name: string
+  description?: string | null
+
+  table_name?: string | null
+  field_name?: string | null
+
+  period_mode: PlanPeriodMode
+  period_type?: PlanPeriodType | null
+  period_value?: string | null
+  date_from?: string | null
+  date_to?: string | null
+
+  assignees_mode: PlanAssigneesMode
+  department_name?: string | null
+  specific_manager_ids?: string[] | null
+
+  default_plan_value?: number | string | null
+}
+
+/**
+ * Payload для `PUT /plans/templates/{id}` — частичное обновление.
+ *
+ * Все поля опциональны; backend патчит только переданные. Изменение
+ * `is_builtin` не поддерживается (поле отсутствует в схеме).
+ */
+export interface PlanTemplateUpdateRequest {
+  name?: string
+  description?: string | null
+
+  table_name?: string | null
+  field_name?: string | null
+
+  period_mode?: PlanPeriodMode
+  period_type?: PlanPeriodType | null
+  period_value?: string | null
+  date_from?: string | null
+  date_to?: string | null
+
+  assignees_mode?: PlanAssigneesMode
+  department_name?: string | null
+  specific_manager_ids?: string[] | null
+
+  default_plan_value?: number | string | null
+}
+
+/**
+ * Preview entry — возвращается из `POST /plans/templates/{id}/expand` и
+ * `POST /plans/ai-generate`, затем идёт обратно в
+ * `PlanTemplateApplyRequest.entries`.
+ *
+ * `warnings` — мягкие сообщения (менеджер неактивен, дубль и т.п.),
+ * которые UI показывает рядом со строкой.
+ */
+export interface PlanDraft {
+  assigned_by_id: string | null
+  assigned_by_name: string | null
+
+  table_name: string
+  field_name: string
+
+  period_type: PlanPeriodType
+  period_value?: string | null
+  date_from?: string | null
+  date_to?: string | null
+
+  plan_value?: number | string | null
+  description?: string | null
+
+  warnings: string[]
+}
+
+/**
+ * Payload для `POST /plans/batch` — транзакционный batch create.
+ *
+ * All-or-nothing: любая ошибка откатывает всю транзакцию.
+ */
+export interface PlanBatchCreateRequest {
+  plans: PlanCreateRequest[]
+}
+
+/**
+ * Payload для `POST /plans/templates/{id}/expand` — overrides для
+ * builtin шаблонов с NULL-target или для выбора конкретного периода.
+ *
+ * Все поля опциональны: без них шаблон разворачивается «как есть».
+ */
+export interface PlanTemplateExpandRequest {
+  table_name?: string | null
+  field_name?: string | null
+  period_value?: string | null
+}
+
+/**
+ * Payload для `POST /plans/templates/{id}/apply` — финальное сохранение
+ * отредактированных draft'ов.
+ *
+ * `template_id` дублирует path-параметр (защита от path/body mismatch).
+ * `table_name` / `field_name` — override'ы target (обязательны для
+ * builtin без привязки). `period_value_override` применяется ко всем
+ * `entries`.
+ */
+export interface PlanTemplateApplyRequest {
+  template_id: number
+  table_name?: string | null
+  field_name?: string | null
+  period_value_override?: string | null
+  entries: PlanDraft[]
+}
+
+/**
+ * Payload для `POST /plans/ai-generate` — LLM превью по описанию.
+ *
+ * `description` 5-4000 символов. `table_name` / `field_name` — опциональные
+ * подсказки для модели (если пользователь не указал цель явно).
+ */
+export interface PlanAIGenerateRequest {
+  description: string
+  table_name?: string | null
+  field_name?: string | null
+}
+
+/**
+ * Ответ `POST /plans/ai-generate`. Endpoint НЕ пишет в БД — фронт
+ * показывает `plans` пользователю, даёт отредактировать и отправляет в
+ * `POST /plans/batch`.
+ */
+export interface PlanAIGenerateResponse {
+  plans: PlanDraft[]
+  warnings: string[]
+}
+
+/**
+ * Менеджер, возвращаемый `GET /plans/meta/managers` и
+ * `GET /departments/{id}/managers` (идентичные по форме DTO).
+ */
+export interface PlanManagerInfo {
+  bitrix_id: string
+  name: string | null
+  last_name: string | null
+  active: string | null
+}
+
+/**
+ * Ответ `GET /plans/meta/managers` / `GET /departments/{id}/managers`.
+ */
+export interface PlanManagersResponse {
+  department_id: string | null
+  recursive: boolean
+  managers: PlanManagerInfo[]
+}
+
+// === Departments Types ===
+
+/**
+ * Одна запись из `bitrix_departments` — плоский DTO (backend
+ * `DepartmentResponse`).
+ */
+export interface Department {
+  bitrix_id: string
+  name: string | null
+  parent_id: string | null
+  sort: number
+  uf_head: string | null
+}
+
+/**
+ * Узел иерархического дерева отделов. Листовые отделы имеют
+ * `children=[]` (не null). Self-referencing.
+ */
+export interface DepartmentTreeNode {
+  id: string
+  name: string | null
+  sort: number
+  uf_head: string | null
+  children: DepartmentTreeNode[]
+}
+
+/** Ответ `GET /departments/tree`. */
+export interface DepartmentTreeResponse {
+  tree: DepartmentTreeNode[]
+}
+
+/**
+ * Ответ `POST /departments/sync`. `status`:
+ * - `started` — фоновая синхронизация запущена.
+ * - `already_running` — обрабатывается на уровне HTTP 409 (клиент увидит
+ *   axios-ошибку, а не этот payload).
+ */
+export interface DepartmentSyncResponse {
+  status: string
+  message: string | null
+}
+
 // === Plans API ===
 
 export const plansApi = {
@@ -1335,6 +1600,130 @@ export const plansApi = {
         params: { table_name: tableName },
       })
       .then((r) => r.data.fields),
+
+  /**
+   * Транзакционный batch create — `POST /plans/batch`. All-or-nothing:
+   * любая валидационная/DB-ошибка откатывает всю транзакцию и axios
+   * отдаст HTTP 4xx/5xx (ошибки не перехватываются здесь — React Query
+   * обработает выше по стеку).
+   */
+  batchCreate: (payload: PlanBatchCreateRequest) =>
+    api.post<Plan[]>('/plans/batch', payload).then((r) => r.data),
+
+  /**
+   * LLM-генерация черновиков планов по описанию — `POST /plans/ai-generate`.
+   * Использует увеличенный `AI_REQUEST_TIMEOUT` (5 мин), как `chartsApi.generate`.
+   * Endpoint возвращает preview (`PlanDraft[]`) — сохранение идёт отдельно
+   * через `batchCreate`.
+   */
+  aiGenerate: (payload: PlanAIGenerateRequest) =>
+    api
+      .post<PlanAIGenerateResponse>('/plans/ai-generate', payload, {
+        timeout: AI_REQUEST_TIMEOUT,
+      })
+      .then((r) => r.data),
+
+  // --- Plan templates ---
+
+  /** `GET /plans/templates` — список всех шаблонов (builtin + user), oldest first. */
+  listTemplates: () =>
+    api.get<PlanTemplate[]>('/plans/templates').then((r) => r.data),
+
+  /** `GET /plans/templates/{id}` — один шаблон. 404 если не найден. */
+  getTemplate: (id: number) =>
+    api.get<PlanTemplate>(`/plans/templates/${id}`).then((r) => r.data),
+
+  /** `POST /plans/templates` — создать пользовательский шаблон. */
+  createTemplate: (payload: PlanTemplateCreateRequest) =>
+    api.post<PlanTemplate>('/plans/templates', payload).then((r) => r.data),
+
+  /**
+   * `PUT /plans/templates/{id}` — частичное обновление. Для builtin
+   * запрещено менять name/period_mode/assignees_mode (400 с backend).
+   */
+  updateTemplate: (id: number, payload: PlanTemplateUpdateRequest) =>
+    api.put<PlanTemplate>(`/plans/templates/${id}`, payload).then((r) => r.data),
+
+  /**
+   * `DELETE /plans/templates/{id}` — удалить. 400 для builtin, 404 если нет.
+   * Backend возвращает 204 No Content — промис резолвится в void.
+   */
+  deleteTemplate: (id: number) =>
+    api.delete<void>(`/plans/templates/${id}`).then(() => undefined),
+
+  /**
+   * `POST /plans/templates/{id}/expand` — развернуть шаблон в черновики
+   * планов (по одному на менеджера, согласно `assignees_mode`). Тело
+   * опционально: без него шаблон разворачивается как есть; с ним можно
+   * переопределить `table_name` / `field_name` / `period_value`.
+   */
+  expandTemplate: (id: number, overrides?: PlanTemplateExpandRequest) =>
+    api
+      .post<PlanDraft[]>(`/plans/templates/${id}/expand`, overrides ?? {})
+      .then((r) => r.data),
+
+  /**
+   * `POST /plans/templates/{id}/apply` — финальное применение шаблона.
+   * Принимает отредактированные `entries` и транзакционно создаёт планы
+   * через `PlanService.batch_create_plans` (all-or-nothing).
+   * `payload.template_id` должен совпадать с `id` в пути (backend guard).
+   */
+  applyTemplate: (id: number, payload: PlanTemplateApplyRequest) =>
+    api
+      .post<Plan[]>(`/plans/templates/${id}/apply`, payload)
+      .then((r) => r.data),
+
+  /**
+   * `GET /plans/meta/managers` — активные менеджеры (для UI выбора
+   * `assigned_by_id`). Без параметров — все активные из `bitrix_users`.
+   * С `department_id` — только менеджеры этого отдела (и подотделов при
+   * `recursive=true`, default на backend).
+   */
+  listManagers: (params?: { department_id?: string; recursive?: boolean }) =>
+    api
+      .get<PlanManagersResponse>('/plans/meta/managers', { params })
+      .then((r) => r.data),
+}
+
+// === Departments API ===
+
+/**
+ * Клиент эндпоинтов `/api/v1/departments`.
+ *
+ * Используется для:
+ * - UI выбора отдела в PlanTemplate (`assignees_mode='department'`);
+ * - админского экрана иерархии + триггера синхронизации из Bitrix;
+ * - резолвинга менеджеров выбранного отдела (тот же DTO, что
+ *   `plansApi.listManagers` — `PlanManagersResponse`).
+ */
+export const departmentsApi = {
+  /** `GET /departments` — плоский список, отсортирован по (sort, bitrix_id). */
+  list: () => api.get<Department[]>('/departments').then((r) => r.data),
+
+  /** `GET /departments/tree` — корневые узлы с рекурсивными `children`. */
+  getTree: () =>
+    api.get<DepartmentTreeResponse>('/departments/tree').then((r) => r.data),
+
+  /**
+   * `POST /departments/sync` — запустить фоновую синхронизацию
+   * `DepartmentSyncService.full_sync`. 409 если уже запущена
+   * (дедуп через `DepartmentSyncService.is_running`).
+   */
+  triggerSync: () =>
+    api.post<DepartmentSyncResponse>('/departments/sync').then((r) => r.data),
+
+  /**
+   * `GET /departments/{id}/managers` — менеджеры отдела. Default
+   * `recursive=true`, `active_only=true` (совпадает с backend).
+   * При отсутствии отдела backend отдаёт пустой `managers` (не 404).
+   */
+  getManagers: (
+    id: string,
+    params?: { recursive?: boolean; active_only?: boolean },
+  ) =>
+    api
+      .get<PlanManagersResponse>(`/departments/${id}/managers`, { params })
+      .then((r) => r.data),
 }
 
 export default api

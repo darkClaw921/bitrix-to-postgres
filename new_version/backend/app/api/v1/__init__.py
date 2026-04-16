@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api.v1.endpoints import auth, charts, dashboards, plans, public, references, reports, schema_description, selectors, sync, webhooks, status
+from app.api.v1.endpoints import auth, charts, dashboards, departments, plans, public, references, reports, schema_description, selectors, sync, webhooks, status
 from app.core.auth import get_current_user
 
 router = APIRouter()
@@ -23,3 +23,4 @@ router.include_router(dashboards.router, prefix="/dashboards", tags=["dashboards
 router.include_router(selectors.router, prefix="/dashboards", tags=["selectors"], dependencies=_auth)
 router.include_router(reports.router, prefix="/reports", tags=["reports"], dependencies=_auth)
 router.include_router(plans.router, prefix="/plans", tags=["plans"], dependencies=_auth)
+router.include_router(departments.router, prefix="/departments", tags=["departments"], dependencies=_auth)

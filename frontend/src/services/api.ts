@@ -867,6 +867,7 @@ export const dashboardsApi = {
       .post<{ selectors: SelectorCreateRequest[] }>(
         `/dashboards/${dashboardId}/selectors/generate`,
         body,
+        { timeout: AI_REQUEST_TIMEOUT },
       )
       .then((r) => r.data)
   },

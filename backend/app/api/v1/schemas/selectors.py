@@ -183,3 +183,19 @@ class GenerateSelectorsResponse(BaseModel):
     """Response from AI-generated selector suggestions for a dashboard."""
 
     selectors: list[SelectorCreateRequest]
+
+
+class GenerateSelectorsJobResponse(BaseModel):
+    """Immediate response when a generate-selectors job is queued."""
+
+    job_id: str
+    status: str = "pending"
+
+
+class GenerateSelectorsStatusResponse(BaseModel):
+    """Poll response for a generate-selectors job."""
+
+    job_id: str
+    status: str
+    selectors: Optional[list[SelectorCreateRequest]] = None
+    error: Optional[str] = None

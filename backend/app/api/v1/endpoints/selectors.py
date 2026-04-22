@@ -1,5 +1,7 @@
 """Selector management endpoints (internal, requires app auth)."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 from app.api.v1.schemas.selectors import (
@@ -7,8 +9,10 @@ from app.api.v1.schemas.selectors import (
     ChartTablesResponse,
     FilterPreviewRequest,
     FilterPreviewResponse,
+    GenerateSelectorsJobResponse,
     GenerateSelectorsRequest,
     GenerateSelectorsResponse,
+    GenerateSelectorsStatusResponse,
     SelectorCreateRequest,
     SelectorListResponse,
     SelectorOptionsResponse,
@@ -17,6 +21,7 @@ from app.api.v1.schemas.selectors import (
     SelectorUpdateRequest,
 )
 from app.core.exceptions import AIServiceError, ChartServiceError
+from app.core.job_store import create_job, get_job, update_job
 from app.core.logging import get_logger
 from app.domain.services.ai_service import AIService
 from app.domain.services.chart_service import ChartService
@@ -168,33 +173,68 @@ async def preview_filter(
     return FilterPreviewResponse(**result)
 
 
+async def _run_generate_job(
+    job_id: str,
+    dashboard_id: int,
+    charts: list[dict],
+    request: GenerateSelectorsRequest | None,
+) -> None:
+    update_job(job_id, "running")
+    try:
+        charts_lines: list[str] = []
+        for c in charts:
+            try:
+                cols = await selector_service.get_chart_columns(c["id"])
+            except Exception:
+                cols = []
+            tables = await selector_service.get_chart_tables(c["id"])
+            title = c.get("title_override") or c.get("chart_title") or "Chart"
+            charts_lines.append(
+                f"### dashboard_chart_id={c['id']} — {title}\n"
+                f"Tables: {', '.join(tables) if tables else '(none)'}\n"
+                f"Columns: {', '.join(cols) if cols else '(unknown)'}\n"
+                f"SQL:\n```sql\n{c.get('sql_query', '')}\n```"
+            )
+        charts_context = "\n\n".join(charts_lines)
+
+        try:
+            latest = await chart_service.get_any_latest_schema_description()
+            schema_context = (
+                latest["markdown"]
+                if latest and latest.get("markdown")
+                else await chart_service.get_schema_context()
+            )
+        except Exception:
+            schema_context = await chart_service.get_schema_context()
+
+        user_request = request.user_request if request else None
+        raw_selectors = await ai_service.generate_selectors(
+            charts_context, schema_context, user_request=user_request
+        )
+        update_job(job_id, "done", result=raw_selectors)
+    except Exception as e:
+        logger.error("generate_selectors job failed", job_id=job_id, error=str(e))
+        update_job(job_id, "error", error=str(e))
+
+
 @router.post(
     "/{dashboard_id}/selectors/generate",
-    response_model=GenerateSelectorsResponse,
+    response_model=GenerateSelectorsJobResponse,
+    status_code=202,
 )
 async def generate_selectors(
     dashboard_id: int,
     request: GenerateSelectorsRequest | None = None,
-) -> GenerateSelectorsResponse:
-    """AI-generate a list of useful selectors for the dashboard.
-
-    Returns suggested selectors as a preview — caller decides which ones to
-    actually create via ``POST /{dashboard_id}/selectors``.
-
-    The optional ``user_request`` field lets the caller describe in natural
-    language which selectors they need; it is forwarded to the AI as a hint.
-    """
+) -> GenerateSelectorsJobResponse:
+    """Queue an AI-generate job for selectors. Returns job_id; poll GET /selectors/generate/{job_id}."""
     dashboard = await dashboard_service.get_dashboard_by_id(dashboard_id)
     if not dashboard:
         raise HTTPException(status_code=404, detail="Дашборд не найден")
 
     charts = dashboard.get("charts") or []
     if not charts:
-        raise HTTPException(
-            status_code=400, detail="В дашборде нет чартов для анализа"
-        )
+        raise HTTPException(status_code=400, detail="В дашборде нет чартов для анализа")
 
-    # Restrict to user-selected charts if chart_ids is provided.
     if request and request.chart_ids:
         allowed_ids = set(request.chart_ids)
         charts = [c for c in charts if c.get("id") in allowed_ids]
@@ -204,48 +244,39 @@ async def generate_selectors(
                 detail="Ни один из выбранных чартов не найден в дашборде",
             )
 
-    # Build a compact charts_context: id, title, sql, columns, tables.
-    charts_lines: list[str] = []
-    for c in charts:
-        try:
-            cols = await selector_service.get_chart_columns(c["id"])
-        except Exception:
-            cols = []
-        tables = await selector_service.get_chart_tables(c["id"])
-        title = c.get("title_override") or c.get("chart_title") or "Chart"
-        charts_lines.append(
-            f"### dashboard_chart_id={c['id']} — {title}\n"
-            f"Tables: {', '.join(tables) if tables else '(none)'}\n"
-            f"Columns: {', '.join(cols) if cols else '(unknown)'}\n"
-            f"SQL:\n```sql\n{c.get('sql_query', '')}\n```"
-        )
-    charts_context = "\n\n".join(charts_lines)
+    job_id = create_job()
+    asyncio.create_task(_run_generate_job(job_id, dashboard_id, charts, request))
+    return GenerateSelectorsJobResponse(job_id=job_id, status="pending")
 
-    # Schema context — try the latest saved description, fall back to live introspection.
-    try:
-        latest = await chart_service.get_any_latest_schema_description()
-        schema_context = (
-            latest["markdown"]
-            if latest and latest.get("markdown")
-            else await chart_service.get_schema_context()
-        )
-    except Exception:
-        schema_context = await chart_service.get_schema_context()
 
-    user_request = request.user_request if request else None
-    try:
-        raw_selectors = await ai_service.generate_selectors(
-            charts_context, schema_context, user_request=user_request
-        )
-    except (AIServiceError, ChartServiceError) as e:
-        raise HTTPException(status_code=400, detail=getattr(e, "message", str(e))) from e
+@router.get(
+    "/{dashboard_id}/selectors/generate/{job_id}",
+    response_model=GenerateSelectorsStatusResponse,
+)
+async def get_generate_selectors_job(
+    dashboard_id: int, job_id: str
+) -> GenerateSelectorsStatusResponse:
+    """Poll the status of a generate-selectors job."""
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job не найден или истёк")
 
-    # Validate/coerce into SelectorCreateRequest. Skip malformed entries with a warning.
+    if job["status"] in ("pending", "running"):
+        return GenerateSelectorsStatusResponse(job_id=job_id, status=job["status"])
+
+    if job["status"] == "error":
+        return GenerateSelectorsStatusResponse(
+            job_id=job_id, status="error", error=job["error"]
+        )
+
+    # done — coerce raw dicts into SelectorCreateRequest
     selectors: list[SelectorCreateRequest] = []
-    for raw in raw_selectors:
+    for raw in job["result"] or []:
         try:
             selectors.append(SelectorCreateRequest(**raw))
         except Exception as e:
             logger.warning("Invalid selector from AI", error=str(e), raw=raw)
 
-    return GenerateSelectorsResponse(selectors=selectors)
+    return GenerateSelectorsStatusResponse(
+        job_id=job_id, status="done", selectors=selectors
+    )

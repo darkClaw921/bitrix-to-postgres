@@ -855,21 +855,40 @@ export const dashboardsApi = {
   previewFilter: (dashboardId: number, dcId: number, data: FilterPreviewRequest) =>
     api.post<FilterPreviewResponse>(`/dashboards/${dashboardId}/charts/${dcId}/preview-filter`, data).then((r) => r.data),
 
-  generateSelectors: (
+  generateSelectors: async (
     dashboardId: number,
     userRequest?: string,
     chartIds?: number[],
-  ) => {
+  ): Promise<{ selectors: SelectorCreateRequest[] }> => {
     const body: { user_request?: string; chart_ids?: number[] } = {}
     if (userRequest) body.user_request = userRequest
     if (chartIds && chartIds.length > 0) body.chart_ids = chartIds
-    return api
-      .post<{ selectors: SelectorCreateRequest[] }>(
-        `/dashboards/${dashboardId}/selectors/generate`,
-        body,
-        { timeout: AI_REQUEST_TIMEOUT },
-      )
-      .then((r) => r.data)
+
+    const { data: job } = await api.post<{ job_id: string; status: string }>(
+      `/dashboards/${dashboardId}/selectors/generate`,
+      body,
+    )
+
+    const POLL_INTERVAL_MS = 3000
+    const MAX_POLLS = 180 // 9 min max
+
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+      const { data: status } = await api.get<{
+        job_id: string
+        status: string
+        selectors?: SelectorCreateRequest[]
+        error?: string
+      }>(`/dashboards/${dashboardId}/selectors/generate/${job.job_id}`)
+
+      if (status.status === 'done') {
+        return { selectors: status.selectors ?? [] }
+      }
+      if (status.status === 'error') {
+        throw new Error(status.error ?? 'Ошибка генерации селекторов')
+      }
+    }
+    throw new Error('Превышено время ожидания генерации селекторов')
   },
 
 }

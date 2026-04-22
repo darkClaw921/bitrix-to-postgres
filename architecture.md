@@ -691,6 +691,7 @@ async def get_session()            # Dependency для FastAPI
 app/core/
 ├── auth.py                  # JWT валидация (опциональная)
 ├── exceptions.py            # Кастомные исключения (AppException, AIServiceError, ChartServiceError и др.)
+├── job_store.py             # In-memory job store для долгих фоновых задач (asyncio.create_task); JobRecord, create_job/get_job/update_job
 ├── logging.py               # Structlog конфигурация
 └── webhooks.py              # Парсинг Bitrix24 webhooks
 

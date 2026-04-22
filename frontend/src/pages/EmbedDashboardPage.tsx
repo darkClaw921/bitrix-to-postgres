@@ -116,7 +116,10 @@ export default function EmbedDashboardPage() {
               ? publicApi.getDashboardChartDataFiltered(slug, c.id, authToken, filterList)
               : publicApi.getDashboardChartData(slug, c.id, authToken)
             return fetcher
-              .then((data) => ({ dcId: c.id, data }))
+              .then((data) => {
+                setChartData((prev) => ({ ...prev, [c.id]: data }))
+                return { dcId: c.id, data }
+              })
               .catch((err) => {
                 const axiosErr = err as { response?: { status?: number } }
                 if (axiosErr?.response?.status === 401) {
@@ -125,12 +128,7 @@ export default function EmbedDashboardPage() {
                 return { dcId: c.id, data: null }
               })
           })
-        const results = await Promise.all(promises)
-        const dataMap: Record<number, ChartDataResponse> = {}
-        for (const r of results) {
-          if (r.data) dataMap[r.dcId] = r.data
-        }
-        setChartData(dataMap)
+        await Promise.all(promises)
         setLastUpdatedAt(new Date())
       } catch (err) {
         const axiosErr = err as { response?: { status?: number } }
@@ -262,7 +260,8 @@ export default function EmbedDashboardPage() {
       .getDashboard(slug, token)
       .then((d) => {
         setDashboard(d)
-        return fetchAllChartData(d, token)
+        setLoading(false)
+        fetchAllChartData(d, token)
       })
       .catch((err) => {
         const axiosErr = err as { response?: { status?: number } }
@@ -272,8 +271,8 @@ export default function EmbedDashboardPage() {
         } else {
           setError(t('embed.dashboardNotFound'))
         }
+        setLoading(false)
       })
-      .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, token])
 
@@ -436,9 +435,7 @@ export default function EmbedDashboardPage() {
               fillHeight
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-              {t('embed.loadingChartData')}
-            </div>
+            <div className="animate-pulse h-full w-full bg-gray-100 rounded" />
           )}
         </div>
       </div>
@@ -643,7 +640,6 @@ function DashboardChartCard({
   data: ChartDataResponse | null
   isMobile?: boolean
 }) {
-  const { t } = useTranslation()
   const title = dc.title_override || dc.chart_title || 'Chart'
   const description = dc.description_override || dc.chart_description
 
@@ -714,9 +710,7 @@ function DashboardChartCard({
         {data ? (
           <ChartRenderer spec={spec} data={data.data} height={isMobile ? 250 : dc.layout_h * 80} />
         ) : (
-          <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-            {t('embed.loadingChartData')}
-          </div>
+          <div className="animate-pulse h-32 w-full bg-gray-100 rounded" />
         )}
       </div>
     </div>

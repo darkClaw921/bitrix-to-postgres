@@ -22,7 +22,7 @@ the authenticated user id pull it via ``Depends(get_current_user)``.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import text
@@ -143,16 +143,23 @@ async def create_plan(payload: PlanCreateRequest) -> PlanResponse:
 async def list_plans(
     table_name: Optional[str] = Query(None),
     field_name: Optional[str] = Query(None),
-    assigned_by_id: Optional[str] = Query(None),
+    assigned_by_id: Optional[List[str]] = Query(None),
     period_type: Optional[str] = Query(None),
+    period_value: Optional[str] = Query(None),
 ) -> list[PlanResponse]:
-    """Return plans, optionally filtered by table/field/assignee/period_type."""
-    filters = {
+    """Return plans, optionally filtered by table/field/assignee(s)/period_type/period_value.
+
+    ``assigned_by_id`` may be repeated to filter by multiple managers:
+    ``?assigned_by_id=1&assigned_by_id=2``.
+    """
+    filters: dict[str, Any] = {
         "table_name": table_name,
         "field_name": field_name,
-        "assigned_by_id": assigned_by_id,
         "period_type": period_type,
+        "period_value": period_value,
     }
+    if assigned_by_id:
+        filters["assigned_by_ids"] = assigned_by_id
     rows = await plan_service.list_plans(filters)
     return [plan_row_to_response(r) for r in rows]
 

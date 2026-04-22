@@ -461,14 +461,26 @@ class PlanService:
     async def list_plans(
         self, filters: Optional[dict[str, Any]] = None
     ) -> list[dict[str, Any]]:
-        """Return plans filtered by an optional set of columns."""
+        """Return plans filtered by an optional set of columns.
+
+        ``assigned_by_ids`` (list[str]) uses IN clause; all other keys use
+        equality.  Unknown keys are silently ignored.
+        """
         filters = filters or {}
-        allowed = {"table_name", "field_name", "assigned_by_id", "period_type"}
+        scalar_allowed = {"table_name", "field_name", "assigned_by_id", "period_type", "period_value"}
 
         where_parts: list[str] = []
         params: dict[str, Any] = {}
+        use_in_manager = False
+
+        assigned_by_ids = filters.get("assigned_by_ids")
+        if assigned_by_ids and isinstance(assigned_by_ids, list) and len(assigned_by_ids) > 0:
+            where_parts.append("assigned_by_id IN :assigned_by_ids")
+            params["assigned_by_ids"] = assigned_by_ids
+            use_in_manager = True
+
         for key, value in filters.items():
-            if key not in allowed or value is None:
+            if key == "assigned_by_ids" or key not in scalar_allowed or value is None:
                 continue
             where_parts.append(f"{key} = :{key}")
             params[key] = value
@@ -480,7 +492,11 @@ class PlanService:
 
         engine = get_engine()
         async with engine.begin() as conn:
-            rows = (await conn.execute(text(sql), params)).fetchall()
+            if use_in_manager:
+                stmt = text(sql).bindparams(bindparam("assigned_by_ids", expanding=True))
+                rows = (await conn.execute(stmt, params)).fetchall()
+            else:
+                rows = (await conn.execute(text(sql), params)).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
     async def get_plan(self, plan_id: int) -> Optional[dict[str, Any]]:

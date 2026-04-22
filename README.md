@@ -1,14 +1,11 @@
-
-сервис переходи на новую версию, смотри папку new_version
-
+Bitrix to Postgres Connector
 ![main](main.png)
 ![charts](charts.png)
 ![reports](report.png)
 
-# Bitrix to Postgres Connector
-
 Сервис для синхронизации данных между Bitrix24 и PostgreSQL.
 получает данные из Bitrix24 и записывает в PostgreSQL
+
 - Сделки
 - Лиды
 - Контакты
@@ -34,19 +31,24 @@
 - **Справочники** — автоматическая синхронизация статусов, воронок, валют и enum-значений для корректных JOIN-ов в чартах
 
 ## права доступа
-crm, 
+
+crm,
 
 ## Компоненты
+
 - FastAPI сервис
 - Airflow для управления задачами
 - PostgreSQL для хранения данных
 
 ## Установка и запуск
+
 1. Убедитесь, что у вас установлен Docker и Docker Compose
 2. Создайте файл .env с необходимыми переменными окружения
 3. Запустите сервисы командой: `docker-compose -f docker-compose-airflow.yml up -d`
 4. Добавьте в crontab команду для запуска скрипта очистки логов: `0 0 * * * /home/user/bitrix-to-postgres/bitrix_to_postgres/cleanup_logs.sh >> /home/user/bitrix-to-postgres/bitrix_to_postgres/cleanup_logs.log 2>&1`
+
 ## Установка и запуск new_version
+
 ```bash
 cd new_version
 docker-compose up -d

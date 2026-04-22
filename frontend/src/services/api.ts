@@ -1317,8 +1317,9 @@ export interface PlanTablesResponse {
 export interface PlanListFilters {
   table_name?: string
   field_name?: string
-  assigned_by_id?: string
+  assigned_by_id?: string[]
   period_type?: PlanPeriodType
+  period_value?: string
 }
 
 // === Plan Templates Types ===

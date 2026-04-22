@@ -3,6 +3,7 @@ import {
   chartsApi,
   plansApi,
   type Plan,
+  type PlanListFilters,
   type PlanManagerInfo,
   type PlanTableInfo,
   type PlanVsActual,
@@ -105,12 +106,17 @@ export default function PlansPage() {
   // Toast for batch flows
   const [toast, setToast] = useState<string | null>(null)
 
+  // --- Filters
+  const [filterManagerIds, setFilterManagerIds] = useState<string[]>([])
+  const [filterPeriodType, setFilterPeriodType] = useState<string>('')
+  const [filterPeriodValue, setFilterPeriodValue] = useState<string>('')
+
   // --- Load plans + facts
-  const loadPlans = useCallback(async () => {
+  const loadPlans = useCallback(async (filters?: PlanListFilters) => {
     setLoading(true)
     setError(null)
     try {
-      const list = await plansApi.list()
+      const list = await plansApi.list(filters)
       setPlans(list)
       // Batch-load facts
       const results = await Promise.allSettled(
@@ -131,6 +137,21 @@ export default function PlansPage() {
   }, [])
 
   useEffect(() => {
+    loadPlans()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleApplyFilters = useCallback(() => {
+    const filters: PlanListFilters = {}
+    if (filterManagerIds.length > 0) filters.assigned_by_id = filterManagerIds
+    if (filterPeriodType) filters.period_type = filterPeriodType as PlanListFilters['period_type']
+    if (filterPeriodValue) filters.period_value = filterPeriodValue
+    loadPlans(filters)
+  }, [filterManagerIds, filterPeriodType, filterPeriodValue, loadPlans])
+
+  const handleResetFilters = useCallback(() => {
+    setFilterManagerIds([])
+    setFilterPeriodType('')
+    setFilterPeriodValue('')
     loadPlans()
   }, [loadPlans])
 
@@ -283,6 +304,95 @@ export default function PlansPage() {
             >
               ⭐ Избранные
             </button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="mb-4 flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">
+              Менеджеры{filterManagerIds.length > 0 && ` (${filterManagerIds.length})`}
+            </label>
+            <select
+              multiple
+              className="border border-gray-300 rounded px-2 py-1 text-sm min-w-[180px] h-24"
+              value={filterManagerIds}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions).map((o) => o.value)
+                setFilterManagerIds(selected)
+              }}
+            >
+              {managers.map((m) => (
+                <option key={m.bitrix_id} value={m.bitrix_id}>
+                  {`${m.name ?? ''} ${m.last_name ?? ''}`.trim() || m.bitrix_id}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Тип периода</label>
+            <select
+              className="border border-gray-300 rounded px-2 py-1.5 text-sm"
+              value={filterPeriodType}
+              onChange={(e) => {
+                setFilterPeriodType(e.target.value)
+                setFilterPeriodValue('')
+              }}
+            >
+              <option value="">Любой</option>
+              <option value="month">Месяц</option>
+              <option value="quarter">Квартал</option>
+              <option value="year">Год</option>
+              <option value="custom">Произвольный</option>
+            </select>
+          </div>
+          {filterPeriodType === 'month' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Месяц</label>
+              <input
+                type="month"
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm"
+                value={filterPeriodValue}
+                onChange={(e) => setFilterPeriodValue(e.target.value)}
+                placeholder="2026-04"
+              />
+            </div>
+          )}
+          {filterPeriodType === 'quarter' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Квартал</label>
+              <input
+                type="text"
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-28"
+                value={filterPeriodValue}
+                onChange={(e) => setFilterPeriodValue(e.target.value)}
+                placeholder="2026-Q1"
+              />
+            </div>
+          )}
+          {filterPeriodType === 'year' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Год</label>
+              <input
+                type="number"
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24"
+                value={filterPeriodValue}
+                onChange={(e) => setFilterPeriodValue(e.target.value)}
+                placeholder="2026"
+                min={2000}
+                max={2099}
+              />
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={handleApplyFilters} className="btn btn-primary">
+              Применить
+            </button>
+            {(filterManagerIds.length > 0 || filterPeriodType || filterPeriodValue) && (
+              <button onClick={handleResetFilters} className="btn btn-secondary">
+                Сбросить
+              </button>
+            )}
           </div>
         </div>
 

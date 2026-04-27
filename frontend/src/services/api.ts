@@ -1592,7 +1592,27 @@ export interface DepartmentSyncResponse {
 export const plansApi = {
   list: (filters?: PlanListFilters) =>
     api
-      .get<Plan[]>('/plans', { params: filters })
+      .get<Plan[]>('/plans', {
+        params: filters,
+        paramsSerializer: {
+          serialize: (params) => {
+            const search = new URLSearchParams()
+            Object.entries(params).forEach(([key, value]) => {
+              if (value === undefined || value === null || value === '') return
+              if (Array.isArray(value)) {
+                value.forEach((v) => {
+                  if (v !== undefined && v !== null && v !== '') {
+                    search.append(key, String(v))
+                  }
+                })
+              } else {
+                search.append(key, String(value))
+              }
+            })
+            return search.toString()
+          },
+        },
+      })
       .then((r) => r.data),
 
   get: (id: number) =>

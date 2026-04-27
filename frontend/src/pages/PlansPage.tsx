@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   chartsApi,
   plansApi,
@@ -110,28 +110,47 @@ export default function PlansPage() {
   const [filterManagerIds, setFilterManagerIds] = useState<string[]>([])
   const [filterPeriodType, setFilterPeriodType] = useState<string>('')
   const [filterPeriodValue, setFilterPeriodValue] = useState<string>('')
+  const [filterMonthYear, setFilterMonthYear] = useState<string>('')
+  const [filterMonthMonth, setFilterMonthMonth] = useState<string>('')
+  const [managerDropdownOpen, setManagerDropdownOpen] = useState(false)
+  const [managerSearch, setManagerSearch] = useState('')
+  const managerDropdownRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!managerDropdownOpen) return
+    const onDocClick = (ev: MouseEvent) => {
+      if (
+        managerDropdownRef.current &&
+        !managerDropdownRef.current.contains(ev.target as Node)
+      ) {
+        setManagerDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [managerDropdownOpen])
 
   // --- Load plans + facts
   const loadPlans = useCallback(async (filters?: PlanListFilters) => {
     setLoading(true)
     setError(null)
+    setVsActualMap({})
     try {
       const list = await plansApi.list(filters)
       setPlans(list)
-      // Batch-load facts
-      const results = await Promise.allSettled(
-        list.map((p) => plansApi.getVsActual(p.id)),
-      )
-      const map: Record<number, PlanVsActual> = {}
-      results.forEach((res, idx) => {
-        if (res.status === 'fulfilled') {
-          map[list[idx].id] = res.value
-        }
+      setLoading(false)
+      // Lazy-load facts in parallel; update map as each resolves so the
+      // table fills in progressively without blocking the initial render.
+      list.forEach((p) => {
+        plansApi
+          .getVsActual(p.id)
+          .then((vs) => {
+            setVsActualMap((prev) => ({ ...prev, [p.id]: vs }))
+          })
+          .catch(() => {})
       })
-      setVsActualMap(map)
     } catch (err) {
       setError(getErrorMessage(err))
-    } finally {
       setLoading(false)
     }
   }, [])
@@ -152,6 +171,8 @@ export default function PlansPage() {
     setFilterManagerIds([])
     setFilterPeriodType('')
     setFilterPeriodValue('')
+    setFilterMonthYear('')
+    setFilterMonthMonth('')
     loadPlans()
   }, [loadPlans])
 
@@ -309,25 +330,94 @@ export default function PlansPage() {
 
         {/* Filters */}
         <div className="mb-4 flex flex-wrap gap-3 items-end">
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1" ref={managerDropdownRef}>
             <label className="text-xs text-gray-500 font-medium">
               Менеджеры{filterManagerIds.length > 0 && ` (${filterManagerIds.length})`}
             </label>
-            <select
-              multiple
-              className="border border-gray-300 rounded px-2 py-1 text-sm min-w-[180px] h-24"
-              value={filterManagerIds}
-              onChange={(e) => {
-                const selected = Array.from(e.target.selectedOptions).map((o) => o.value)
-                setFilterManagerIds(selected)
-              }}
-            >
-              {managers.map((m) => (
-                <option key={m.bitrix_id} value={m.bitrix_id}>
-                  {`${m.name ?? ''} ${m.last_name ?? ''}`.trim() || m.bitrix_id}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setManagerDropdownOpen((v) => !v)}
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[220px] text-left bg-white hover:bg-gray-50 flex items-center justify-between gap-2"
+              >
+                <span className="truncate">
+                  {filterManagerIds.length === 0
+                    ? 'Все менеджеры'
+                    : filterManagerIds.length === 1
+                    ? (() => {
+                        const m = managers.find(
+                          (x) => x.bitrix_id === filterManagerIds[0],
+                        )
+                        return m
+                          ? `${m.name ?? ''} ${m.last_name ?? ''}`.trim() ||
+                              m.bitrix_id
+                          : filterManagerIds[0]
+                      })()
+                    : `Выбрано: ${filterManagerIds.length}`}
+                </span>
+                <span className="text-gray-400">▾</span>
+              </button>
+              {managerDropdownOpen && (
+                <div className="absolute z-20 mt-1 w-72 max-h-72 overflow-auto bg-white border border-gray-300 rounded shadow-lg">
+                  <div className="sticky top-0 bg-white border-b p-2 flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Поиск…"
+                      value={managerSearch}
+                      onChange={(e) => setManagerSearch(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
+                    />
+                    {filterManagerIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setFilterManagerIds([])}
+                        className="text-xs text-gray-500 hover:text-gray-700"
+                      >
+                        Очистить
+                      </button>
+                    )}
+                  </div>
+                  {managers
+                    .filter((m) => {
+                      if (!managerSearch.trim()) return true
+                      const label = `${m.name ?? ''} ${m.last_name ?? ''} ${
+                        m.bitrix_id
+                      }`.toLowerCase()
+                      return label.includes(managerSearch.trim().toLowerCase())
+                    })
+                    .map((m) => {
+                      const label =
+                        `${m.name ?? ''} ${m.last_name ?? ''}`.trim() ||
+                        m.bitrix_id
+                      const checked = filterManagerIds.includes(m.bitrix_id)
+                      return (
+                        <label
+                          key={m.bitrix_id}
+                          className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setFilterManagerIds((prev) =>
+                                checked
+                                  ? prev.filter((id) => id !== m.bitrix_id)
+                                  : [...prev, m.bitrix_id],
+                              )
+                            }}
+                          />
+                          <span className="truncate">{label}</span>
+                        </label>
+                      )
+                    })}
+                  {managers.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-gray-500">
+                      Нет данных
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500 font-medium">Тип периода</label>
@@ -337,6 +427,8 @@ export default function PlansPage() {
               onChange={(e) => {
                 setFilterPeriodType(e.target.value)
                 setFilterPeriodValue('')
+                setFilterMonthYear('')
+                setFilterMonthMonth('')
               }}
             >
               <option value="">Любой</option>
@@ -349,39 +441,93 @@ export default function PlansPage() {
           {filterPeriodType === 'month' && (
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 font-medium">Месяц</label>
-              <input
-                type="month"
-                className="border border-gray-300 rounded px-2 py-1.5 text-sm"
-                value={filterPeriodValue}
-                onChange={(e) => setFilterPeriodValue(e.target.value)}
-                placeholder="2026-04"
-              />
+              <div className="flex gap-2">
+                <select
+                  className="border border-gray-300 rounded px-2 py-1.5 text-sm"
+                  value={filterMonthYear}
+                  onChange={(e) => {
+                    const y = e.target.value
+                    setFilterMonthYear(y)
+                    setFilterPeriodValue(y && filterMonthMonth ? `${y}-${filterMonthMonth}` : '')
+                  }}
+                >
+                  <option value="">Год</option>
+                  {(() => {
+                    const cy = new Date().getFullYear()
+                    const years: number[] = []
+                    for (let y = cy - 5; y <= cy + 2; y++) years.push(y)
+                    return years.map((y) => (
+                      <option key={y} value={String(y)}>
+                        {y}
+                      </option>
+                    ))
+                  })()}
+                </select>
+                <select
+                  className="border border-gray-300 rounded px-2 py-1.5 text-sm"
+                  value={filterMonthMonth}
+                  onChange={(e) => {
+                    const m = e.target.value
+                    setFilterMonthMonth(m)
+                    setFilterPeriodValue(filterMonthYear && m ? `${filterMonthYear}-${m}` : '')
+                  }}
+                >
+                  <option value="">Месяц</option>
+                  {MONTHS_RU.map((label, idx) => {
+                    const mm = String(idx + 1).padStart(2, '0')
+                    return (
+                      <option key={mm} value={mm}>
+                        {label}
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
             </div>
           )}
           {filterPeriodType === 'quarter' && (
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 font-medium">Квартал</label>
-              <input
-                type="text"
-                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-28"
+              <select
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm"
                 value={filterPeriodValue}
                 onChange={(e) => setFilterPeriodValue(e.target.value)}
-                placeholder="2026-Q1"
-              />
+              >
+                <option value="">— выберите —</option>
+                {(() => {
+                  const cy = new Date().getFullYear()
+                  const years = [cy - 2, cy - 1, cy, cy + 1]
+                  return years.flatMap((y) =>
+                    ['Q1', 'Q2', 'Q3', 'Q4'].map((q) => (
+                      <option key={`${y}-${q}`} value={`${y}-${q}`}>
+                        {y} — {q}
+                      </option>
+                    )),
+                  )
+                })()}
+              </select>
             </div>
           )}
           {filterPeriodType === 'year' && (
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 font-medium">Год</label>
-              <input
-                type="number"
-                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24"
+              <select
+                className="border border-gray-300 rounded px-2 py-1.5 text-sm w-28"
                 value={filterPeriodValue}
                 onChange={(e) => setFilterPeriodValue(e.target.value)}
-                placeholder="2026"
-                min={2000}
-                max={2099}
-              />
+              >
+                <option value="">— выберите —</option>
+                {(() => {
+                  const cy = new Date().getFullYear()
+                  const years: number[] = []
+                  for (let y = cy - 5; y <= cy + 2; y++) years.push(y)
+                  return years.map((y) => (
+                    <option key={y} value={String(y)}>
+                      {y}
+                    </option>
+                  ))
+                })()}
+              </select>
             </div>
           )}
           <div className="flex gap-2">

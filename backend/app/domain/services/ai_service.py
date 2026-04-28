@@ -258,6 +258,28 @@ Return JSON with this exact shape (no markdown, no commentary):
    `post_filter_resolve_id_column: "id"`.
    The generated SQL becomes
    `WHERE owner_id IN (SELECT id FROM crm_deals WHERE assigned_by_id = :p)`.
+5a. **Чарты переходов между стадиями/воронками (FROM stage_history_deals / stage_history_leads).**
+   Если на дашборде есть чарт по `stage_history_deals` и пользователь хочет
+   фильтр **по дате создания сделки** (а не по дате перехода) — генерируй
+   `date_range` селектор с маппингом `post_filter` через `crm_deals.date_create`:
+   ```json
+   {{
+     "target_column": "owner_id",
+     "target_table": "stage_history_deals",
+     "post_filter_resolve_table": "crm_deals",
+     "post_filter_resolve_column": "date_create",
+     "post_filter_resolve_id_column": "bitrix_id"
+   }}
+   ```
+   Это даст SQL
+   `WHERE sh.owner_id IN (SELECT bitrix_id FROM crm_deals WHERE date_create BETWEEN :p_from AND :p_to)`.
+   **Никогда не маппь** «дату создания сделки» на `stage_history_deals.created_time` —
+   это дата перехода, не дата создания сделки.
+   Аналогично для лидов: чарт по `stage_history_leads` →
+   `target_column: "owner_id"`, `target_table: "stage_history_leads"`,
+   `post_filter_resolve_table: "crm_leads"`,
+   `post_filter_resolve_column: "date_create"`,
+   `post_filter_resolve_id_column: "bitrix_id"`.
 6. For `dropdown`/`multi_select`, prefer DB-backed options (`source_table` +
    `source_column`) over `static_values`. **Always populate `label_table` /
    `label_column` / `label_value_column` when the source column is an ID** so

@@ -156,6 +156,33 @@ WHERE s1.name != s2.name
   AND s2.name != 'Счёт на предоплату'
 ```
 
+### Фильтр по дате создания сделки на чартах переходов
+
+**ВАЖНО**: stage_history_deals.created_time — дата перехода сделки между стадиями/воронками. crm_deals.date_create — дата создания самой сделки. Это разные вещи.
+
+Если пользователь хочет «сделки, созданные в периоде X-Y, которые перешли из воронки A в воронку B» — ВСЕГДА JOIN crm_deals и фильтруй по d.date_create, а не по sh.created_time:
+
+```sql
+SELECT COUNT(DISTINCT sh1.owner_id) AS deals_count
+FROM stage_history_deals sh1
+JOIN stage_history_deals sh2 ON sh1.owner_id = sh2.owner_id
+  AND sh2.created_time = (
+    SELECT MIN(created_time)
+    FROM stage_history_deals
+    WHERE owner_id = sh1.owner_id AND created_time > sh1.created_time
+  )
+JOIN crm_deals d ON d.bitrix_id = sh1.owner_id
+JOIN ref_crm_deal_categories c1 ON sh1.category_id = c1.id
+JOIN ref_crm_deal_categories c2 ON sh2.category_id = c2.id
+WHERE c1.name = 'Продажа'
+  AND c2.name = 'Досудебные'
+  AND d.date_create BETWEEN :date_from AND :date_to
+```
+
+Сами переходы между воронками детектируются через type_id = 5 ИЛИ через смену category_id между соседними записями истории. По умолчанию — фильтруй по category_id исходной/целевой воронки (надёжнее, чем type_id = 5, на случай неполных данных истории).
+
+Для лидов работает по аналогии: подменяем crm_deals → crm_leads и category_id → status_id (через ref_crm_statuses).
+
 ## Получение успешности менеджеров
 
 Для анализа эффективности менеджеров:

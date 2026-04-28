@@ -889,6 +889,7 @@ class AIService:
         selector_type: str,
         selector_operator: str,
         user_request: str | None = None,
+        current_mapping: dict | None = None,
     ) -> dict:
         """Regenerate a single selector→chart mapping for a specific chart.
 
@@ -900,6 +901,15 @@ class AIService:
         Optional fields may be None.
         """
         user_request_clean = (user_request or "").strip() or "(no specific request)"
+
+        if current_mapping:
+            current_block = (
+                "\nCurrent mapping (what is set right now — fix it or improve it):\n"
+                f"```json\n{json.dumps(current_mapping, ensure_ascii=False, indent=2)}\n```\n"
+            )
+        else:
+            current_block = "\nCurrent mapping: (none — building from scratch)\n"
+        user_request_clean = current_block + "\nUser request:\n" + user_request_clean
 
         system_message = MAPPING_REGENERATE_PROMPT.format(
             schema_context=schema_context,

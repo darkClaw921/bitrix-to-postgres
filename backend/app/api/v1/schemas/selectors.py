@@ -219,6 +219,12 @@ class RegenerateMappingRequest(BaseModel):
     selector_type: str = Field(..., max_length=30)
     operator: str = Field("equals", max_length=30)
     user_request: Optional[str] = Field(None, max_length=2000)
+    current_target_column: Optional[str] = Field(None, max_length=255)
+    current_target_table: Optional[str] = Field(None, max_length=255)
+    current_operator_override: Optional[str] = Field(None, max_length=30)
+    current_post_filter_resolve_table: Optional[str] = Field(None, max_length=255)
+    current_post_filter_resolve_column: Optional[str] = Field(None, max_length=255)
+    current_post_filter_resolve_id_column: Optional[str] = Field(None, max_length=255)
 
 
 class RegenerateMappingResponse(BaseModel):

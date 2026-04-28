@@ -127,6 +127,16 @@ function SelectorBoardDialogInner({
   const [aiRegenPrompt, setAiRegenPrompt] = useState('')
   const [aiRegenLoading, setAiRegenLoading] = useState(false)
   const [aiRegenError, setAiRegenError] = useState<string | null>(null)
+  // Last AI response for display in popup so user sees what was applied even
+  // when fields look unchanged (AI may pick the same target_column).
+  const [aiRegenResult, setAiRegenResult] = useState<{
+    target_column: string
+    target_table?: string | null
+    operator_override?: string | null
+    post_filter_resolve_table?: string | null
+    post_filter_resolve_column?: string | null
+    post_filter_resolve_id_column?: string | null
+  } | null>(null)
 
   // Node types (memoized to prevent re-renders)
   const nodeTypes: NodeTypes = useMemo(() => ({
@@ -286,6 +296,7 @@ function SelectorBoardDialogInner({
     setConfigEdgeId(edgeId)
     setAiRegenPrompt('')
     setAiRegenError(null)
+    setAiRegenResult(null)
     // Load SQL preview for this edge's chart
     setEdges((eds) => {
       const edge = eds.find((e) => e.id === edgeId)
@@ -507,7 +518,16 @@ function SelectorBoardDialogInner({
 
     setAiRegenLoading(true)
     setAiRegenError(null)
+    setAiRegenResult(null)
     try {
+      const ed = edge.data as {
+        targetColumn?: string
+        targetTable?: string
+        operatorOverride?: string
+        postFilterResolveTable?: string
+        postFilterResolveColumn?: string
+        postFilterResolveIdColumn?: string
+      } | undefined
       const res = await dashboardsApi.regenerateMapping(dashboardId, {
         dc_id: dcId,
         selector_name: name || 'selector',
@@ -515,6 +535,12 @@ function SelectorBoardDialogInner({
         selector_type: selectorType,
         operator: operator,
         user_request: aiRegenPrompt.trim() || undefined,
+        current_target_column: ed?.targetColumn || undefined,
+        current_target_table: ed?.targetTable || undefined,
+        current_operator_override: ed?.operatorOverride || undefined,
+        current_post_filter_resolve_table: ed?.postFilterResolveTable || undefined,
+        current_post_filter_resolve_column: ed?.postFilterResolveColumn || undefined,
+        current_post_filter_resolve_id_column: ed?.postFilterResolveIdColumn || undefined,
       })
 
       const newCol = res.target_column
@@ -561,6 +587,7 @@ function SelectorBoardDialogInner({
         ),
       )
       setConfigEdgeId(newEdgeId)
+      setAiRegenResult(res)
 
       if (refreshIds.length > 0) {
         requestAnimationFrame(() => {
@@ -824,6 +851,37 @@ function SelectorBoardDialogInner({
                     >
                       {aiRegenLoading ? 'Генерирую…' : '🪄 Перегенерировать через AI'}
                     </button>
+                    {aiRegenResult && (
+                      <div className="mt-2 p-2 bg-purple-50 border border-purple-200 rounded text-[10px] text-gray-700 space-y-0.5">
+                        <div className="font-semibold text-purple-700 mb-1">AI применил:</div>
+                        <div>
+                          <span className="text-gray-500">target_column:</span>{' '}
+                          <span className="font-mono">{aiRegenResult.target_column}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">target_table:</span>{' '}
+                          <span className="font-mono">{aiRegenResult.target_table || '—'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">operator_override:</span>{' '}
+                          <span className="font-mono">{aiRegenResult.operator_override || '—'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">post_filter:</span>{' '}
+                          {aiRegenResult.post_filter_resolve_table ? (
+                            <span className="font-mono">
+                              {aiRegenResult.post_filter_resolve_table}.
+                              {aiRegenResult.post_filter_resolve_column}
+                              {' (id: '}
+                              {aiRegenResult.post_filter_resolve_id_column || 'id'}
+                              {')'}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <button

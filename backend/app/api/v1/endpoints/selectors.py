@@ -338,6 +338,17 @@ async def regenerate_mapping(
     except Exception:
         schema_context = await chart_service.get_schema_context()
 
+    current_mapping = {
+        "target_column": request.current_target_column,
+        "target_table": request.current_target_table,
+        "operator_override": request.current_operator_override,
+        "post_filter_resolve_table": request.current_post_filter_resolve_table,
+        "post_filter_resolve_column": request.current_post_filter_resolve_column,
+        "post_filter_resolve_id_column": request.current_post_filter_resolve_id_column,
+    }
+    if not any(v for v in current_mapping.values()):
+        current_mapping = None
+
     try:
         raw = await ai_service.regenerate_mapping(
             schema_context=schema_context,
@@ -348,6 +359,7 @@ async def regenerate_mapping(
             selector_type=request.selector_type,
             selector_operator=request.operator,
             user_request=request.user_request,
+            current_mapping=current_mapping,
         )
     except AIServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))

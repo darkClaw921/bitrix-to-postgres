@@ -900,6 +900,12 @@ export const dashboardsApi = {
       selector_type: string
       operator: string
       user_request?: string
+      current_target_column?: string
+      current_target_table?: string
+      current_operator_override?: string
+      current_post_filter_resolve_table?: string
+      current_post_filter_resolve_column?: string
+      current_post_filter_resolve_id_column?: string
     },
   ) =>
     api.post<{

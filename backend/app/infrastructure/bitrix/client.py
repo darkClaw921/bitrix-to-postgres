@@ -336,7 +336,13 @@ class BitrixClient:
 
         base_params: dict[str, Any] = {"ADMIN_MODE": True}
         if filter_params:
-            base_params["FILTER"] = filter_params
+            # user.get rejects CRM-style operator-prefixed keys (>, <, >=, <=, !, =).
+            sanitized = {
+                k: v for k, v in filter_params.items()
+                if not (isinstance(k, str) and k and k[0] in "><=!")
+            }
+            if sanitized:
+                base_params["FILTER"] = sanitized
 
         try:
             logger.info("Fetching all users")

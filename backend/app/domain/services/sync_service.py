@@ -516,7 +516,13 @@ class SyncService:
         try:
             date_filter = last_modified.strftime("%Y-%m-%dT%H:%M:%S")
             date_field = self._DATE_MODIFY_FIELD.get(entity_type, "DATE_MODIFY")
-            filter_params = {f">{date_field}": date_filter}
+
+            # user.get does not support operator-prefixed filters (>, <, >=, etc.) —
+            # those are CRM-only. Fetch all users and rely on UPSERT for incremental.
+            if entity_type == "user":
+                filter_params = None
+            else:
+                filter_params = {f">{date_field}": date_filter}
 
             logger.info(
                 "Fetching modified records",

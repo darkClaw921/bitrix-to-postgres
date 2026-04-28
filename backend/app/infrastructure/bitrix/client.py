@@ -325,11 +325,57 @@ class BitrixClient:
         self,
         filter_params: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        """Get all users via user.get (non-CRM namespace)."""
-        params: dict[str, Any] = {}
+        """Get all users via user.get with manual pagination.
+
+        fast-bitrix24's get_all uses batch ranges that fail on user.get
+        ("All attempts to get data from server exhausted"). Use direct
+        paginated calls with `start` instead.
+        """
+        all_users: list[dict[str, Any]] = []
+        start = 0
+
+        base_params: dict[str, Any] = {"ADMIN_MODE": True}
         if filter_params:
-            params["FILTER"] = filter_params
-        return await self.get_all("user.get", params)
+            base_params["FILTER"] = filter_params
+
+        try:
+            logger.info("Fetching all users")
+            while True:
+                raw = await self._client.call(
+                    "user.get",
+                    items={**base_params, "start": start},
+                    raw=True,
+                )
+
+                if isinstance(raw, dict) and "error" in raw:
+                    error_code = raw.get("error", "")
+                    error_msg = raw.get("error_description", str(raw))
+                    if "QUERY_LIMIT_EXCEEDED" in str(error_code):
+                        raise BitrixRateLimitError(f"Rate limit exceeded: {error_msg}")
+                    raise BitrixAPIError(f"Bitrix API error: {error_msg}")
+
+                page = raw.get("result", []) if isinstance(raw, dict) else []
+                if not isinstance(page, list):
+                    page = []
+
+                if not page:
+                    break
+
+                all_users.extend(page)
+
+                next_start = raw.get("next") if isinstance(raw, dict) else None
+                if next_start is None:
+                    break
+                start = next_start
+
+            logger.info("Fetched users", count=len(all_users))
+            return all_users
+
+        except (BitrixRateLimitError, BitrixAPIError):
+            raise
+        except Exception as e:
+            logger.error("Failed to fetch users", error=str(e))
+            raise BitrixAPIError(f"Failed to fetch users: {str(e)}") from e
 
     async def _get_tasks(
         self,

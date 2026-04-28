@@ -74,10 +74,8 @@ FIXED_PERIOD_TYPES: frozenset[str] = frozenset({"month", "quarter", "year"})
 ALL_PERIOD_TYPES: frozenset[str] = FIXED_PERIOD_TYPES | {"custom"}
 
 # Default date column used by ``compute_actual`` when nothing is provided.
-# ``crm_deals`` uses ``begindate``; everything else falls back to ``date_create``.
-DEFAULT_DATE_COLUMNS: dict[str, str] = {
-    "crm_deals": "begindate",
-}
+# All tables fall back to ``date_create`` — план/факт считается по дате создания.
+DEFAULT_DATE_COLUMNS: dict[str, str] = {}
 FALLBACK_DATE_COLUMN = "date_create"
 
 
@@ -662,9 +660,8 @@ class PlanService:
     def _resolve_date_column(table_name: str) -> str:
         """Return the default date column to use for ``compute_actual``.
 
-        ``crm_deals`` uses ``begindate``, everything else falls back to
-        ``date_create`` — the same convention as ``date_tokens`` / the rest
-        of the codebase.
+        Always returns ``date_create`` — план/факт считается по дате
+        создания записи (включая crm_deals).
         """
         return DEFAULT_DATE_COLUMNS.get(table_name, FALLBACK_DATE_COLUMN)
 
@@ -1259,7 +1256,7 @@ class PlanService:
         "  \"plan_fact\": {\n"
         "    \"table_name\": \"<таблица факта, например crm_deals>\",\n"
         "    \"field_name\": \"<числовое поле, например opportunity>\",\n"
-        "    \"date_column\": \"<дата-колонка в table_name — begindate для crm_deals, date_create для остального>\",\n"
+        "    \"date_column\": \"<дата-колонка в table_name — всегда date_create (план/факт считается по дате создания записи)>\",\n"
         "    \"group_by_column\": \"<assigned_by_id если факт группируется по менеджерам; иначе не включай/null>\"\n"
         "  }\n"
         "}\n"
@@ -1296,7 +1293,7 @@ class PlanService:
         "### Жёсткие правила построения SQL для «план/факт» (только факт, без plans):\n"
         "1. НЕ добавляй `LEFT JOIN plans`, подзапросы `SELECT ... FROM plans` или любые другие\n"
         "   обращения к таблице `plans` в `sql_query`. План подставляется post-enrichment'ом.\n"
-        "2. НЕ хардкодь константы периода в WHERE/JOIN (`begindate >= '2026-04-01'` и т.п.),\n"
+        "2. НЕ хардкодь константы периода в WHERE/JOIN (`date_create >= '2026-04-01'` и т.п.),\n"
         "   если пользователь явно не попросил фиксированный период. Период в факт попадает\n"
         "   из селектора `date_range` дашборда, а в план — через тот же резолвнутый диапазон.\n"
         "   SQL должен оставаться «нейтральным» к периоду, чтобы `apply_filters` мог вставить\n"
@@ -1307,9 +1304,8 @@ class PlanService:
         "4. Bitrix-поле `closed` содержит строки `'Y'`/`'N'` (НЕ `'1'`/`'0'`).\n"
         "   `stage_semantic_id`: `'P'` = в процессе, `'S'` = успешно (выигранные), `'F'` = провал.\n"
         "5. `date_column` в `plan_fact` — это колонка даты основной таблицы, по которой\n"
-        "   селектор диапазона дат будет фильтровать факт:\n"
-        "   - для `crm_deals` — `begindate`;\n"
-        "   - для остальных таблиц — `date_create`.\n"
+        "   селектор диапазона дат будет фильтровать факт. Всегда используй `date_create`\n"
+        "   (включая `crm_deals`) — план/факт считается по дате создания записи.\n"
         "   Именно эту же колонку backend использует, чтобы понять, какие планы попадают\n"
         "   в текущий диапазон.\n"
         "6. НИКОГДА не джойнь `bitrix_users` как источник строк результата — менеджеры, у которых\n"
@@ -1337,7 +1333,7 @@ class PlanService:
         "    \"plan_fact\": {\n"
         "      \"table_name\": \"crm_deals\",\n"
         "      \"field_name\": \"opportunity\",\n"
-        "      \"date_column\": \"begindate\",\n"
+        "      \"date_column\": \"date_create\",\n"
         "      \"group_by_column\": \"assigned_by_id\"\n"
         "    }\n"
         "  }\n"
@@ -1361,7 +1357,7 @@ class PlanService:
         "    \"plan_fact\": {\n"
         "      \"table_name\": \"crm_deals\",\n"
         "      \"field_name\": \"opportunity\",\n"
-        "      \"date_column\": \"begindate\"\n"
+        "      \"date_column\": \"date_create\"\n"
         "    }\n"
         "  }\n"
         "}\n"

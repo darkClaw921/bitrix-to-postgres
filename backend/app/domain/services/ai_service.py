@@ -79,7 +79,7 @@ Your task: generate a JSON object with the following fields:
     "plan_fact": {{
       "table_name": "<fact table, e.g. crm_deals>",
       "field_name": "<numeric fact column, e.g. opportunity>",
-      "date_column": "<date column in table_name — begindate for crm_deals, date_create elsewhere>",
+      "date_column": "<date column in table_name — always date_create (plan/fact uses record creation date)>",
       "group_by_column": "<optional: assigned_by_id when fact is grouped by managers; omit for a single total>"
     }}
   }}

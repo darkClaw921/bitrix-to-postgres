@@ -123,6 +123,11 @@ function SelectorBoardDialogInner({
   // Edge config popup
   const [configEdgeId, setConfigEdgeId] = useState<string | null>(null)
 
+  // AI regeneration of a single mapping (per edge)
+  const [aiRegenPrompt, setAiRegenPrompt] = useState('')
+  const [aiRegenLoading, setAiRegenLoading] = useState(false)
+  const [aiRegenError, setAiRegenError] = useState<string | null>(null)
+
   // Node types (memoized to prevent re-renders)
   const nodeTypes: NodeTypes = useMemo(() => ({
     selectorNode: SelectorNode,
@@ -279,6 +284,8 @@ function SelectorBoardDialogInner({
 
   const handleConfigureEdge = useCallback((edgeId: string) => {
     setConfigEdgeId(edgeId)
+    setAiRegenPrompt('')
+    setAiRegenError(null)
     // Load SQL preview for this edge's chart
     setEdges((eds) => {
       const edge = eds.find((e) => e.id === edgeId)
@@ -486,6 +493,87 @@ function SelectorBoardDialogInner({
         postFilterResolveIdColumn?: string
       }
     | undefined
+
+  // AI regenerate the current edge's mapping. The target_column may change,
+  // so we rebuild the edge id + targetHandle and ensure the chart node has a
+  // matching <Handle> for the (possibly new) column.
+  const handleAiRegenerate = async () => {
+    if (!configEdgeId) return
+    const edge = edges.find((e) => e.id === configEdgeId)
+    if (!edge) return
+    const dcIdStr = edge.target.replace('chart-', '')
+    const dcId = Number(dcIdStr)
+    if (!dcId) return
+
+    setAiRegenLoading(true)
+    setAiRegenError(null)
+    try {
+      const res = await dashboardsApi.regenerateMapping(dashboardId, {
+        dc_id: dcId,
+        selector_name: name || 'selector',
+        selector_label: label || name || 'Filter',
+        selector_type: selectorType,
+        operator: operator,
+        user_request: aiRegenPrompt.trim() || undefined,
+      })
+
+      const newCol = res.target_column
+
+      // Make sure the chart node exposes the new column as a <Handle> target,
+      // otherwise the edge silently drops in ReactFlow.
+      const refreshIds: string[] = []
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.type !== 'chartNode') return n
+          if ((n.data as { dcId: number }).dcId !== dcId) return n
+          const cols: string[] = (n.data as { columns?: string[] }).columns || []
+          if (cols.includes(newCol)) return n
+          const prevExtras = (n.data as { extraColumns?: Set<string> }).extraColumns
+          const extras = new Set<string>(prevExtras ?? [])
+          extras.add(newCol)
+          refreshIds.push(n.id)
+          return {
+            ...n,
+            data: { ...n.data, columns: [...cols, newCol], extraColumns: extras },
+          }
+        }),
+      )
+
+      const newEdgeId = `edge-${dcIdStr}-${newCol}`
+      setEdges((eds) =>
+        eds.map((e) =>
+          e.id === configEdgeId
+            ? {
+                ...e,
+                id: newEdgeId,
+                targetHandle: `${dcIdStr}-${newCol}`,
+                data: {
+                  ...e.data,
+                  targetColumn: newCol,
+                  targetTable: res.target_table || '',
+                  operatorOverride: res.operator_override || '',
+                  postFilterResolveTable: res.post_filter_resolve_table || '',
+                  postFilterResolveColumn: res.post_filter_resolve_column || '',
+                  postFilterResolveIdColumn: res.post_filter_resolve_id_column || '',
+                },
+              }
+            : e,
+        ),
+      )
+      setConfigEdgeId(newEdgeId)
+
+      if (refreshIds.length > 0) {
+        requestAnimationFrame(() => {
+          refreshIds.forEach((id) => updateNodeInternals(id))
+        })
+      }
+    } catch (e) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string }
+      setAiRegenError(err?.response?.data?.detail || err?.message || 'Ошибка регенерации')
+    } finally {
+      setAiRegenLoading(false)
+    }
+  }
 
   const updateEdgeField = (field: string, val: string) => {
     setEdges((eds) =>
@@ -706,6 +794,36 @@ function SelectorBoardDialogInner({
                         />
                       </div>
                     </div>
+                  </div>
+
+                  {/* AI regeneration of this single mapping */}
+                  <div className="border-t pt-2 mt-2">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">
+                      AI-регенерация
+                    </div>
+                    <p className="text-[10px] text-gray-400 mb-2">
+                      Опишите что нужно (можно сослаться на другой график по
+                      названию — например «как у графика Конверсия»). Поле можно
+                      оставить пустым.
+                    </p>
+                    <textarea
+                      className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                      rows={3}
+                      placeholder="посмотри как сделан фильтр у графика «Воронка продаж» и сделай так же"
+                      value={aiRegenPrompt}
+                      onChange={(e) => setAiRegenPrompt(e.target.value)}
+                      disabled={aiRegenLoading}
+                    />
+                    {aiRegenError && (
+                      <p className="text-[10px] text-red-600 mt-1">{aiRegenError}</p>
+                    )}
+                    <button
+                      onClick={handleAiRegenerate}
+                      disabled={aiRegenLoading}
+                      className="w-full mt-2 text-xs text-white bg-purple-600 rounded py-1 hover:bg-purple-700 disabled:bg-purple-300 transition-colors"
+                    >
+                      {aiRegenLoading ? 'Генерирую…' : '🪄 Перегенерировать через AI'}
+                    </button>
                   </div>
 
                   <button

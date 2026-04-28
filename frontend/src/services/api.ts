@@ -891,6 +891,26 @@ export const dashboardsApi = {
     throw new Error('Превышено время ожидания генерации селекторов')
   },
 
+  regenerateMapping: (
+    dashboardId: number,
+    data: {
+      dc_id: number
+      selector_name: string
+      selector_label: string
+      selector_type: string
+      operator: string
+      user_request?: string
+    },
+  ) =>
+    api.post<{
+      target_column: string
+      target_table?: string | null
+      operator_override?: string | null
+      post_filter_resolve_table?: string | null
+      post_filter_resolve_column?: string | null
+      post_filter_resolve_id_column?: string | null
+    }>(`/dashboards/${dashboardId}/selectors/regenerate-mapping`, data).then((r) => r.data),
+
 }
 
 // === Public API (no auth interceptor) ===

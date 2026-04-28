@@ -308,6 +308,75 @@ Return JSON with this exact shape (no markdown, no commentary):
     explicitly forbid it, but never drop or substitute selectors the user asked for.
 """
 
+MAPPING_REGENERATE_PROMPT = """You are an analytics dashboard expert. Generate the optimal selector→chart
+MAPPING for ONE specific chart on a dashboard. The user has clicked an existing
+selector-to-chart connection and asks you to (re)build it correctly.
+
+Database schema:
+{schema_context}
+
+All charts on the dashboard (so you can compare and copy filter logic from
+sibling charts when the user references them by title):
+{charts_context}
+
+Target chart: dashboard_chart_id={target_dc_id}
+
+Selector meta (the selector that this mapping belongs to):
+  name: {sel_name}
+  label: {sel_label}
+  selector_type: {sel_type}
+  operator: {sel_operator}
+
+User request (highest priority — may reference another chart by title, e.g.
+"посмотри как сделан фильтр у графика X"):
+{user_request}
+
+Return JSON ONLY (no markdown fences, no commentary), exactly this shape:
+{{
+  "target_column": "column_in_target_chart_sql_or_base_table",
+  "target_table": "optional table qualifier or null",
+  "operator_override": "optional override or null",
+  "post_filter_resolve_table": "optional or null",
+  "post_filter_resolve_column": "optional or null",
+  "post_filter_resolve_id_column": "optional or null"
+}}
+
+## Rules
+1. `target_column` MUST exist on the TARGET chart's base table (or be the column
+   you want to filter by inside the chart's logical scope).
+2. **`post_filter_*` triple is REQUIRED** when `target_column` lives in the
+   chart's table but the selector value semantically belongs to a different
+   (related) table. Otherwise omit (null).
+   - Manager selector over a chart on `stage_history_deals` →
+     `target_column: "owner_id"`, `target_table: "stage_history_deals"`,
+     `post_filter_resolve_table: "crm_deals"`,
+     `post_filter_resolve_column: "assigned_by_id"`,
+     `post_filter_resolve_id_column: "id"`.
+   - **Date of deal CREATION** (not transition) for a chart on
+     `stage_history_deals` →
+     `target_column: "owner_id"`, `target_table: "stage_history_deals"`,
+     `post_filter_resolve_table: "crm_deals"`,
+     `post_filter_resolve_column: "date_create"`,
+     `post_filter_resolve_id_column: "bitrix_id"`.
+   - Same pattern for `stage_history_leads` → resolve via `crm_leads`.
+3. **Never** map "дата создания сделки" onto `stage_history_deals.created_time` —
+   that is the transition date, not the creation date.
+4. **NEVER** apply a `between` operator with date values directly to an integer
+   column like `owner_id` / `*_id`. If the operator is `between`/`gte`/`lte` and
+   the chart's table is a transition/history table, you MUST use `post_filter_*`
+   to redirect the date comparison to a date column.
+5. **Always set `target_table`** when the chart joins the same physical table
+   twice or when the column name is ambiguous.
+6. If the chart's outer SELECT wraps logic in a subquery
+   (`SELECT ... FROM (SELECT ...) t`), prefer a `target_column` that is exposed
+   by that outer SELECT — the runtime cannot reach inner aliases.
+7. If the user request references a sibling chart ("look how filter is set in
+   chart X"), find that chart in the list above, infer its filter pattern from
+   its SQL/columns, and copy it onto the TARGET chart's mapping.
+8. Return null (JSON null, not the string "null") for any optional field that
+   does not apply. Return only the JSON object — no extra text.
+"""
+
 SCHEMA_DESCRIPTION_PROMPT = """You are a database documentation specialist for a Bitrix24 CRM system.
 
 Analyze the following database schema and generate a detailed markdown documentation in Russian.
@@ -809,6 +878,86 @@ class AIService:
 
         logger.info("Selectors generated", count=len(selectors))
         return selectors
+
+    async def regenerate_mapping(
+        self,
+        schema_context: str,
+        charts_context: str,
+        target_dc_id: int,
+        selector_name: str,
+        selector_label: str,
+        selector_type: str,
+        selector_operator: str,
+        user_request: str | None = None,
+    ) -> dict:
+        """Regenerate a single selector→chart mapping for a specific chart.
+
+        Returns a dict with keys:
+            target_column, target_table, operator_override,
+            post_filter_resolve_table, post_filter_resolve_column,
+            post_filter_resolve_id_column
+
+        Optional fields may be None.
+        """
+        user_request_clean = (user_request or "").strip() or "(no specific request)"
+
+        system_message = MAPPING_REGENERATE_PROMPT.format(
+            schema_context=schema_context,
+            charts_context=charts_context,
+            target_dc_id=target_dc_id,
+            sel_name=selector_name,
+            sel_label=selector_label,
+            sel_type=selector_type,
+            sel_operator=selector_operator,
+            user_request=user_request_clean,
+        )
+
+        logger.info(
+            "Regenerating selector mapping",
+            model=self.model,
+            dc_id=target_dc_id,
+            selector_name=selector_name,
+        )
+
+        content = await self._complete(
+            system_message,
+            "Сгенерируй маппинг для этого чарта. Верни только валидный JSON-объект.",
+            1500,
+        )
+        if not content:
+            raise AIServiceError("AI вернул пустой ответ")
+
+        content = _extract_json(content)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error("Invalid JSON from AI (mapping)", content=content)
+            raise AIServiceError("AI вернул невалидный JSON") from e
+
+        if not isinstance(parsed, dict):
+            raise AIServiceError("AI вернул не объект")
+
+        target_column = parsed.get("target_column")
+        if not target_column or not isinstance(target_column, str):
+            raise AIServiceError("AI не вернул target_column")
+
+        def _norm(key: str) -> str | None:
+            v = parsed.get(key)
+            if v is None:
+                return None
+            if isinstance(v, str):
+                v = v.strip()
+                return v or None
+            return None
+
+        return {
+            "target_column": target_column.strip(),
+            "target_table": _norm("target_table"),
+            "operator_override": _norm("operator_override"),
+            "post_filter_resolve_table": _norm("post_filter_resolve_table"),
+            "post_filter_resolve_column": _norm("post_filter_resolve_column"),
+            "post_filter_resolve_id_column": _norm("post_filter_resolve_id_column"),
+        }
 
     async def generate_schema_description(self, schema_context: str) -> str:
         """Generate a markdown description of the DB schema.

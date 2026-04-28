@@ -199,3 +199,34 @@ class GenerateSelectorsStatusResponse(BaseModel):
     status: str
     selectors: Optional[list[SelectorCreateRequest]] = None
     error: Optional[str] = None
+
+
+# --- AI Mapping Regeneration (single edge in the selector board) ---
+
+
+class RegenerateMappingRequest(BaseModel):
+    """Request to regenerate a single selector→chart mapping via AI.
+
+    Triggered when the user clicks an existing connection in the selector
+    board and asks the AI to (re)build it. ``user_request`` may reference
+    sibling charts by title (e.g. "посмотри как сделан фильтр у графика X")
+    — the backend includes all dashboard charts in the AI context.
+    """
+
+    dc_id: int
+    selector_name: str = Field(..., max_length=100)
+    selector_label: str = Field(..., max_length=255)
+    selector_type: str = Field(..., max_length=30)
+    operator: str = Field("equals", max_length=30)
+    user_request: Optional[str] = Field(None, max_length=2000)
+
+
+class RegenerateMappingResponse(BaseModel):
+    """AI-generated single mapping ready to be applied to an edge."""
+
+    target_column: str
+    target_table: Optional[str] = None
+    operator_override: Optional[str] = None
+    post_filter_resolve_table: Optional[str] = None
+    post_filter_resolve_column: Optional[str] = None
+    post_filter_resolve_id_column: Optional[str] = None

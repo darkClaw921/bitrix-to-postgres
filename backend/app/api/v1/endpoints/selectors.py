@@ -13,6 +13,8 @@ from app.api.v1.schemas.selectors import (
     GenerateSelectorsRequest,
     GenerateSelectorsResponse,
     GenerateSelectorsStatusResponse,
+    RegenerateMappingRequest,
+    RegenerateMappingResponse,
     SelectorCreateRequest,
     SelectorListResponse,
     SelectorOptionsResponse,
@@ -280,3 +282,74 @@ async def get_generate_selectors_job(
     return GenerateSelectorsStatusResponse(
         job_id=job_id, status="done", selectors=selectors
     )
+
+
+@router.post(
+    "/{dashboard_id}/selectors/regenerate-mapping",
+    response_model=RegenerateMappingResponse,
+)
+async def regenerate_mapping(
+    dashboard_id: int,
+    request: RegenerateMappingRequest,
+) -> RegenerateMappingResponse:
+    """Regenerate a single selector→chart mapping via AI.
+
+    The dashboard's full chart context is fed to the AI so the user can
+    reference sibling charts by title in ``user_request``
+    (e.g. "посмотри, как сделан фильтр у графика X").
+    """
+    dashboard = await dashboard_service.get_dashboard_by_id(dashboard_id)
+    if not dashboard:
+        raise HTTPException(status_code=404, detail="Дашборд не найден")
+
+    charts = dashboard.get("charts") or []
+    target_chart = next((c for c in charts if c.get("id") == request.dc_id), None)
+    if not target_chart:
+        raise HTTPException(status_code=404, detail="Чарт не найден на дашборде")
+
+    # Build chart context for ALL dashboard charts; mark the target one.
+    charts_lines: list[str] = []
+    for c in charts:
+        try:
+            cols = await selector_service.get_chart_columns(c["id"])
+        except Exception:
+            cols = []
+        try:
+            tables = await selector_service.get_chart_tables(c["id"])
+        except Exception:
+            tables = []
+        title = c.get("title_override") or c.get("chart_title") or "Chart"
+        marker = "  ← TARGET CHART (regenerate mapping for this one)" if c["id"] == request.dc_id else ""
+        charts_lines.append(
+            f"### dashboard_chart_id={c['id']} — {title}{marker}\n"
+            f"Tables: {', '.join(tables) if tables else '(none)'}\n"
+            f"Columns: {', '.join(cols) if cols else '(unknown)'}\n"
+            f"SQL:\n```sql\n{c.get('sql_query', '')}\n```"
+        )
+    charts_context = "\n\n".join(charts_lines)
+
+    try:
+        latest = await chart_service.get_any_latest_schema_description()
+        schema_context = (
+            latest["markdown"]
+            if latest and latest.get("markdown")
+            else await chart_service.get_schema_context()
+        )
+    except Exception:
+        schema_context = await chart_service.get_schema_context()
+
+    try:
+        raw = await ai_service.regenerate_mapping(
+            schema_context=schema_context,
+            charts_context=charts_context,
+            target_dc_id=request.dc_id,
+            selector_name=request.selector_name,
+            selector_label=request.selector_label,
+            selector_type=request.selector_type,
+            selector_operator=request.operator,
+            user_request=request.user_request,
+        )
+    except AIServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return RegenerateMappingResponse(**raw)

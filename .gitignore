@@ -192,7 +192,7 @@ cython_debug/
 dla_importa_fiz.csv
 bi-connect.py~
 .bi-connect.py.un~
-.claude/*
+.claude
 MEMORY.md
 agents/*
 2026-04-08 00.31.06.jpg

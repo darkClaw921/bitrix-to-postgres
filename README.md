@@ -47,9 +47,8 @@ crm,
 3. Запустите сервисы командой: `docker-compose -f docker-compose-airflow.yml up -d`
 4. Добавьте в crontab команду для запуска скрипта очистки логов: `0 0 * * * /home/user/bitrix-to-postgres/bitrix_to_postgres/cleanup_logs.sh >> /home/user/bitrix-to-postgres/bitrix_to_postgres/cleanup_logs.log 2>&1`
 
-## Установка и запуск new_version
+## При проблеме с ветокой 
 
 ```bash
-cd new_version
-docker-compose up -d
+git fetch && git reset --hard origin/master
 ```
